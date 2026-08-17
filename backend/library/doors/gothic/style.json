@@ -1,0 +1,10 @@
+{
+  "id": "gothic",
+  "label": "Gothic",
+  "description": "Monumental pointed-arch cathedral doors with iron reinforcement",
+  "era": "medieval gothic",
+  "material_palette": ["Stejar masiv", "Fier forjat", "Bronz"],
+  "frame_depth_mm": 350,
+  "standards": [],
+  "note": "Arcul frânt pornește din 2/3 din înălțimea totală; tolele sunt sculptate manual"
+}

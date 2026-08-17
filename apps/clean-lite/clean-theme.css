@@ -1,0 +1,735 @@
+/**
+ * BubbleBIM Professional — Clean Lite shell theme.
+ * Scoped under `.ac-shell` so the full app is unaffected.
+ *
+ * Patterns (not a CAD clone): Navigator · contextual ribbon · document tabs · status bar.
+ * Language: calm charcoal surfaces, teal-steel accent, IBM Plex hierarchy.
+ */
+
+.ac-shell {
+  /* BubbleBIM Professional palette (light) */
+  --bb-chrome: #e8ecef;
+  --bb-chrome-2: #dde3e8;
+  --bb-panel: #f0f3f5;
+  --bb-surface: #fafbfc;
+  --bb-border: #c4ccd4;
+  --bb-border-soft: #d5dce3;
+  --bb-text: #1a222c;
+  --bb-muted: #5c6b7a;
+  --bb-accent: #0d7a6f;
+  --bb-accent-soft: rgba(13, 122, 111, 0.12);
+  --bb-accent-strong: #0a5f56;
+  --bb-success: #1a7f4b;
+  --bb-danger: #c0392b;
+  --bb-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --bb-header-top: #f4f7f8;
+  --bb-nav-top: #f7f9fa;
+  --bb-workspace-base: #d5dce2;
+  --bb-workspace-grid: rgba(0, 0, 0, 0.035);
+  --bb-hover: rgba(13, 122, 111, 0.08);
+  --bb-status-top: #eef2f4;
+  --bb-inspector-w: 272px;
+
+  /* Legacy aliases (existing class hooks) */
+  --ac-chrome: var(--bb-chrome);
+  --ac-chrome-2: var(--bb-chrome-2);
+  --ac-panel: var(--bb-panel);
+  --ac-surface: var(--bb-surface);
+  --ac-border: var(--bb-border);
+  --ac-border-soft: var(--bb-border-soft);
+  --ac-text: var(--bb-text);
+  --ac-muted: var(--bb-muted);
+  --ac-accent: var(--bb-accent);
+  --ac-accent-soft: var(--bb-accent-soft);
+  --ac-accent-strong: var(--bb-accent-strong);
+  --ac-success: var(--bb-success);
+  --ac-danger: var(--bb-danger);
+  --ac-shadow: var(--bb-shadow);
+  --ac-header-top: var(--bb-header-top);
+  --ac-nav-top: var(--bb-nav-top);
+  --ac-workspace-base: var(--bb-workspace-base);
+  --ac-workspace-grid: var(--bb-workspace-grid);
+  --ac-hover: var(--bb-hover);
+  --ac-status-top: var(--bb-status-top);
+
+  --background: 200 16% 96%;
+  --foreground: 214 24% 14%;
+  --primary: 174 80% 26%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 200 12% 91%;
+  --secondary-foreground: 214 20% 18%;
+  --muted: 200 12% 93%;
+  --muted-foreground: 210 10% 42%;
+  --accent: 174 80% 26%;
+  --accent-foreground: 0 0% 100%;
+  --border: 210 12% 78%;
+  --input: 200 14% 94%;
+  --ring: 174 80% 26%;
+  --radius: 0.25rem;
+  --card: 0 0% 100%;
+  --bb-props-bg: #fafbfc;
+
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--bb-text);
+  background: var(--bb-chrome);
+  letter-spacing: 0.005em;
+}
+
+.ac-shell.dark,
+.dark .ac-shell {
+  --bb-chrome: #1c2128;
+  --bb-chrome-2: #161b22;
+  --bb-panel: #222830;
+  --bb-surface: #171b22;
+  --bb-border: #343b46;
+  --bb-border-soft: #2c323c;
+  --bb-text: #e6e9ed;
+  --bb-muted: #8b96a5;
+  --bb-accent: #3dbeb0;
+  --bb-accent-soft: rgba(61, 190, 176, 0.14);
+  --bb-accent-strong: #5fd4c6;
+  --bb-success: #3ecf8e;
+  --bb-danger: #f07178;
+  --bb-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  --bb-header-top: #252b34;
+  --bb-nav-top: #262c35;
+  --bb-workspace-base: #11151b;
+  --bb-workspace-grid: rgba(255, 255, 255, 0.035);
+  --bb-hover: rgba(61, 190, 176, 0.1);
+  --bb-status-top: #1f252e;
+
+  --ac-chrome: var(--bb-chrome);
+  --ac-chrome-2: var(--bb-chrome-2);
+  --ac-panel: var(--bb-panel);
+  --ac-surface: var(--bb-surface);
+  --ac-border: var(--bb-border);
+  --ac-border-soft: var(--bb-border-soft);
+  --ac-text: var(--bb-text);
+  --ac-muted: var(--bb-muted);
+  --ac-accent: var(--bb-accent);
+  --ac-accent-soft: var(--bb-accent-soft);
+  --ac-accent-strong: var(--bb-accent-strong);
+  --ac-success: var(--bb-success);
+  --ac-danger: var(--bb-danger);
+  --ac-shadow: var(--bb-shadow);
+  --ac-header-top: var(--bb-header-top);
+  --ac-nav-top: var(--bb-nav-top);
+  --ac-workspace-base: var(--bb-workspace-base);
+  --ac-workspace-grid: var(--bb-workspace-grid);
+  --ac-hover: var(--bb-hover);
+  --ac-status-top: var(--bb-status-top);
+
+  --background: 216 18% 10%;
+  --foreground: 210 16% 92%;
+  --primary: 172 55% 52%;
+  --primary-foreground: 216 24% 8%;
+  --secondary: 216 14% 16%;
+  --secondary-foreground: 210 16% 92%;
+  --muted: 216 12% 18%;
+  --muted-foreground: 214 8% 62%;
+  --accent: 172 55% 52%;
+  --accent-foreground: 216 24% 8%;
+  --border: 216 12% 24%;
+  --input: 216 14% 14%;
+  --ring: 172 55% 52%;
+  --card: 216 16% 12%;
+  --bb-props-bg: #1e242c;
+}
+
+/* ─── Top application bar ─── */
+.ac-shell .bb-header {
+  height: 42px;
+  background: linear-gradient(180deg, var(--bb-header-top) 0%, var(--bb-chrome) 100%);
+  border-bottom: 1px solid var(--bb-border);
+  box-shadow: var(--bb-shadow);
+  padding: 0 12px;
+  gap: 6px;
+}
+
+.ac-shell .bb-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-right: 10px;
+  margin-right: 2px;
+  border-right: 1px solid var(--bb-border-soft);
+}
+
+.ac-shell .bb-brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: linear-gradient(145deg, var(--bb-accent-strong), var(--bb-accent));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.ac-shell .bb-brand-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--bb-text);
+  letter-spacing: -0.02em;
+}
+
+.ac-shell .bb-project-chip {
+  font-size: 11.5px;
+  color: var(--bb-muted);
+  background: var(--bb-surface);
+  border: 1px solid var(--bb-border-soft);
+  border-radius: 4px;
+  padding: 3px 9px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Buttons ─── */
+.ac-shell .bb-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--bb-text);
+  gap: 5px;
+}
+
+.ac-shell .bb-btn:hover {
+  background: var(--bb-hover);
+  border-color: var(--bb-border-soft);
+}
+
+.ac-shell .bb-btn.primary {
+  background: var(--bb-accent);
+  border-color: var(--bb-accent-strong);
+  color: #fff;
+}
+
+.ac-shell .bb-btn.primary:hover {
+  background: var(--bb-accent-strong);
+}
+
+.ac-shell .bb-btn.active {
+  background: var(--bb-accent-soft);
+  border-color: color-mix(in srgb, var(--bb-accent) 35%, transparent);
+  color: var(--bb-accent-strong);
+}
+
+.ac-shell .bb-btn.ghost {
+  color: var(--bb-muted);
+}
+
+.ac-shell .bb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--bb-border);
+  margin: 0 4px;
+  opacity: 1;
+}
+
+/* ─── Dock rails (collapsed navigator / inspector) ─── */
+.ac-shell .bb-dock-rail {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 28px;
+  padding: 10px 0;
+  border: none;
+  cursor: pointer;
+  background: var(--bb-panel);
+  color: var(--bb-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ac-shell .bb-dock-rail-left {
+  border-right: 1px solid var(--bb-border);
+  writing-mode: horizontal-tb;
+}
+
+.ac-shell .bb-dock-rail-right {
+  border-left: 1px solid var(--bb-border);
+  writing-mode: horizontal-tb;
+}
+
+.ac-shell .bb-dock-rail:hover {
+  background: var(--bb-hover);
+  color: var(--bb-text);
+}
+
+.ac-shell .bb-dock-toggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--bb-muted);
+  cursor: pointer;
+}
+
+.ac-shell .bb-dock-toggle:hover {
+  background: var(--bb-accent-soft);
+  color: var(--bb-text);
+}
+
+/* ─── Navigator (left) ─── */
+.ac-shell .bb-sidebar {
+  width: 256px;
+  background: var(--bb-panel);
+  border-right: 1px solid var(--bb-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.ac-shell .bb-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 9px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bb-muted);
+  background: linear-gradient(180deg, var(--bb-nav-top), var(--bb-panel));
+  border-bottom: 1px solid var(--bb-border);
+}
+
+.ac-shell .bb-nav-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.ac-shell .bb-section-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--bb-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--bb-border-soft);
+  cursor: pointer;
+}
+
+.ac-shell .bb-section-btn:hover {
+  background: var(--bb-accent-soft);
+  color: var(--bb-text);
+}
+
+.ac-shell .bb-section-btn.open {
+  color: var(--bb-text);
+  background: var(--bb-hover);
+}
+
+.ac-shell .bb-section-btn .bb-ico {
+  width: 13px;
+  height: 13px;
+  opacity: 0.75;
+}
+
+.ac-shell .bb-section-btn .chevron {
+  margin-left: auto;
+  font-size: 9px;
+  opacity: 0.5;
+  transition: transform 0.12s;
+}
+
+.ac-shell .bb-section-btn.open .chevron {
+  transform: rotate(90deg);
+}
+
+.ac-shell .bb-nav-badge {
+  font-size: 9.5px;
+  font-weight: 650;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bb-accent-soft);
+  color: var(--bb-accent-strong);
+}
+
+.ac-shell .bb-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 10px 5px 14px;
+  font-size: 12px;
+  border: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--bb-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ac-shell .bb-row:hover {
+  background: var(--bb-hover);
+}
+
+.ac-shell .bb-row.active {
+  background: var(--bb-accent-soft);
+  border-left-color: var(--bb-accent);
+  color: var(--bb-accent-strong);
+  font-weight: 600;
+}
+
+.ac-shell .bb-row .group-actions {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  margin-left: auto;
+}
+
+.ac-shell .bb-row:hover .group-actions {
+  opacity: 1;
+}
+
+.ac-shell .bb-row .group-actions button {
+  padding: 1px 4px;
+  font-size: 11px;
+  opacity: 0.7;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--bb-muted);
+  border-radius: 3px;
+}
+
+.ac-shell .bb-row .group-actions button:hover {
+  background: var(--bb-hover);
+  color: var(--bb-text);
+  opacity: 1;
+}
+
+.ac-shell .bb-row .group-actions button.danger:hover {
+  color: var(--bb-danger);
+}
+
+.ac-shell .bb-empty-hint {
+  padding: 8px 14px 12px;
+  font-size: 11.5px;
+  color: var(--bb-muted);
+  line-height: 1.55;
+}
+
+/* ─── Document tabs ─── */
+.ac-shell .bb-tabbar {
+  background: var(--bb-chrome);
+  border-bottom: 1px solid var(--bb-border);
+  min-height: 34px;
+  padding: 0 6px;
+  gap: 1px;
+}
+
+.ac-shell .bb-tab {
+  height: 30px;
+  border-radius: 4px 4px 0 0;
+  font-size: 11.5px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-top: 3px;
+  max-width: 200px;
+}
+
+.ac-shell .bb-tab:hover {
+  background: var(--bb-hover);
+  color: var(--bb-text);
+}
+
+.ac-shell .bb-tab.active {
+  background: var(--bb-surface);
+  border-color: var(--bb-border);
+  border-bottom-color: var(--bb-surface);
+  color: var(--bb-text);
+  font-weight: 600;
+  box-shadow: inset 0 2px 0 0 var(--bb-accent);
+}
+
+.ac-shell .bb-tab .tab-icon.bb-ico,
+.ac-shell .bb-ico {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.ac-shell .bb-tab .tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.ac-shell .bb-tab .tab-close .bb-ico {
+  width: 11px;
+  height: 11px;
+}
+
+/* ─── Context ribbon ─── */
+.ac-shell .bb-tools {
+  display: flex;
+  align-items: center;
+  background: var(--bb-surface);
+  border-bottom: 1px solid var(--bb-border);
+  min-height: 42px;
+  padding: 4px 10px;
+  gap: 2px;
+}
+
+.ac-shell .bb-ribbon {
+  align-items: stretch;
+  gap: 0;
+}
+
+.ac-shell .bb-ribbon-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.ac-shell .bb-ribbon-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ac-shell .bb-ribbon-btn {
+  height: 30px;
+  padding: 0 9px;
+  flex-direction: row;
+}
+
+.ac-shell .bb-ribbon-btn.danger {
+  color: var(--bb-danger);
+}
+
+.ac-shell .bb-ribbon-btn.danger:hover {
+  background: color-mix(in srgb, var(--bb-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--bb-danger) 30%, transparent);
+}
+
+.ac-shell .bb-ribbon-context {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--bb-muted);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.ac-shell .bb-tools-label {
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bb-muted);
+  padding: 0 6px 0 2px;
+  user-select: none;
+}
+
+/* ─── Workspace ─── */
+.ac-shell .bb-workspace {
+  background: var(--bb-workspace-base);
+  background-image:
+    linear-gradient(var(--bb-workspace-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bb-workspace-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.ac-shell .bb-workspace > .relative,
+.ac-shell .bb-workspace > div {
+  background: transparent;
+}
+
+/* ─── Inspector dock (right) ─── */
+.ac-shell .bb-inspector {
+  width: var(--bb-inspector-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--bb-border);
+  background: var(--bb-panel);
+}
+
+.ac-shell .bb-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bb-muted);
+  background: linear-gradient(180deg, var(--bb-nav-top), var(--bb-panel));
+  border-bottom: 1px solid var(--bb-border);
+}
+
+.ac-shell .bb-inspector-body {
+  flex: 1;
+  overflow: auto;
+}
+
+.ac-shell .bb-inspector-empty {
+  padding: 20px 16px;
+  font-size: 12px;
+  color: var(--bb-muted);
+  line-height: 1.55;
+  text-align: center;
+}
+
+/* ─── Status bar ─── */
+.ac-shell .bb-statusbar {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  background: linear-gradient(180deg, var(--bb-status-top), var(--bb-chrome));
+  border-top: 1px solid var(--bb-border);
+  font-size: 11px;
+  color: var(--bb-muted);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.ac-shell .bb-statusbar strong {
+  color: var(--bb-text);
+  font-weight: 600;
+}
+
+.ac-shell .bb-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bb-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bb-success) 20%, transparent);
+}
+
+.ac-shell .bb-status-dot.warn {
+  background: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.15);
+}
+
+.ac-shell .bb-status-spacer {
+  flex: 1;
+}
+
+/* ─── Welcome (Clean) ─── */
+.ac-shell .bb-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--bb-accent) 18%, transparent), transparent),
+    linear-gradient(165deg, var(--bb-chrome-2), var(--bb-chrome) 40%, var(--bb-panel));
+  color: var(--bb-text);
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+}
+
+.ac-shell .bb-welcome-brand {
+  font-size: clamp(2.4rem, 5vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0 0 12px;
+  color: var(--bb-text);
+}
+
+.ac-shell .bb-welcome-headline {
+  font-size: 1.15rem;
+  font-weight: 500;
+  margin: 0 0 8px;
+  color: var(--bb-text);
+  letter-spacing: -0.01em;
+}
+
+.ac-shell .bb-welcome-sub {
+  font-size: 0.95rem;
+  color: var(--bb-muted);
+  margin: 0 0 36px;
+  max-width: 28rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.ac-shell .bb-welcome-ctas {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 48px;
+}
+
+.ac-shell .bb-welcome-ctas .bb-btn {
+  height: 36px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+
+.ac-shell .bb-welcome-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 22rem;
+  width: 100%;
+  border-top: 1px solid var(--bb-border-soft);
+  padding-top: 24px;
+}
+
+.ac-shell .bb-welcome-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  font-size: 12.5px;
+  color: var(--bb-muted);
+  line-height: 1.45;
+}
+
+.ac-shell .bb-welcome-steps strong {
+  color: var(--bb-text);
+  font-weight: 600;
+  min-width: 5.5rem;
+}
+
+/* Quantities / cost surfaces inside Clean */
+.ac-shell .bb-qty-surface,
+.ac-shell [data-clean-surface] {
+  background: var(--bb-surface);
+  border-color: var(--bb-border);
+  color: var(--bb-text);
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://bubblegraph.local/schemas/library-index-v1.json",
+  "family": "door",
+  "version": "1.0.0",
+  "description": "Door element catalogue — all styles",
+  "columns": [
+    "id", "label", "style", "width_mm", "height_mm",
+    "depth_mm", "leaf_count", "swing",
+    "material", "description", "library_path"
+  ],
+  "rows": [
+    {
+      "id": "D-SWING-80x210",
+      "label": "Door Swing 80×210 cm",
+      "style": "default",
+      "width_mm": 800, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 1, "swing": "left",
+      "material": "Lemn stejar",
+      "description": "Ușă batantă stânga 800×2100 mm",
+      "library_path": "doors/default/D-SWING-80x210"
+    },
+    {
+      "id": "D-SWING-90x210",
+      "label": "Door Swing 90×210 cm",
+      "style": "default",
+      "width_mm": 900, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 1, "swing": "right",
+      "material": "Lemn stejar",
+      "description": "Ușă batantă dreapta 900×2100 mm",
+      "library_path": "doors/default/D-SWING-90x210"
+    },
+    {
+      "id": "D-DBL-120x210",
+      "label": "Door Double 120×210 cm",
+      "style": "default",
+      "width_mm": 1200, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 2, "swing": "double",
+      "material": "Lemn stejar",
+      "description": "Ușă dublă batantă 1200×2100 mm",
+      "library_path": "doors/default/D-DBL-120x210"
+    },
+    {
+      "id": "D-SLD-90x210-IFC",
+      "label": "Door Sliding 90×210 cm (IFC)",
+      "style": "default",
+      "width_mm": 900, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 1, "swing": "sliding",
+      "material": "Sticlă / Aluminiu",
+      "description": "Ușă glisantă 900×2100 mm — model IFC",
+      "library_path": "doors/default/D-SLD-90x210-IFC"
+    },
+    {
+      "id": "D-SLD-100x210",
+      "label": "Door Sliding 100×210 cm",
+      "style": "default",
+      "width_mm": 1000, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 1, "swing": "sliding",
+      "material": "Sticlă / Aluminiu",
+      "description": "Ușă glisantă 1000×2100 mm",
+      "library_path": "doors/default/D-SLD-100x210"
+    },
+    {
+      "id": "D-SLD-200x210",
+      "label": "Door Sliding 200×210 cm",
+      "style": "default",
+      "width_mm": 2000, "height_mm": 2100,
+      "depth_mm": 200, "leaf_count": 2, "swing": "sliding",
+      "material": "Sticlă / Aluminiu",
+      "description": "Ușă glisantă dublă 2000×2100 mm",
+      "library_path": "doors/default/D-SLD-200x210"
+    },
+    {
+      "id": "D-FR-DBL-120x240",
+      "label": "French Door Double 120×240 cm",
+      "style": "french",
+      "width_mm": 1200, "height_mm": 2400,
+      "depth_mm": 200, "leaf_count": 2, "swing": "double",
+      "material": "Lemn vopsit alb",
+      "description": "Ușă franceză dublă 1200×2400 mm",
+      "library_path": "doors/french/D-FR-DBL-120x240"
+    },
+    {
+      "id": "D-FR-SNG-90x240",
+      "label": "French Door Single 90×240 cm",
+      "style": "french",
+      "width_mm": 900, "height_mm": 2400,
+      "depth_mm": 200, "leaf_count": 1, "swing": "right",
+      "material": "Lemn vopsit alb",
+      "description": "Ușă franceză simplă 900×2400 mm",
+      "library_path": "doors/french/D-FR-SNG-90x240"
+    },
+    {
+      "id": "D-GT-DBL-140x280",
+      "label": "Gothic Door Double 140×280 cm",
+      "style": "gothic",
+      "width_mm": 1400, "height_mm": 2800,
+      "depth_mm": 350, "leaf_count": 2, "swing": "double",
+      "material": "Stejar masiv / Fier forjat",
+      "description": "Ușă gotică dublă arc frânt 1400×2800 mm",
+      "library_path": "doors/gothic/D-GT-DBL-140x280"
+    }
+  ]
+}

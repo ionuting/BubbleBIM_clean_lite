@@ -1,0 +1,10 @@
+{
+  "id": "gothic",
+  "label": "Gothic",
+  "description": "Pointed-arch lancet and rose windows typical of Gothic architecture (1100–1500)",
+  "era": "medieval gothic",
+  "material_palette": ["Piatră / Mortared stone", "Vitraliu colorat", "Plumb"],
+  "frame_depth_mm": 300,
+  "standards": [],
+  "note": "Forma arcului frânt este caracteristică. Profilul de toc este generat parametric din raza arcului"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "french",
+  "label": "French",
+  "description": "Tall French double doors with glazed panels, floor-to-lintel height",
+  "era": "classical / neoclassical",
+  "material_palette": ["Lemn vopsit alb", "Lemn vopsit gri"],
+  "frame_depth_mm": 200,
+  "standards": ["EN 14351-1"],
+  "note": "Înălțime caracteristică 2200–2600 mm; panou central vitrat"
+}

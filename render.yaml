@@ -1,0 +1,31 @@
+services:
+  # ── Backend — FastAPI Web Service ─────────────────────────────────────────
+  - type: web
+    name: bubble-graph-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # Set ALLOWED_ORIGINS to your frontend URL after first deploy, e.g.:
+      # https://bubble-graph.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: ""
+
+  # ── Frontend — Static Site (Vite build) ────────────────────────────────────
+  - type: web
+    name: bubble-graph
+    runtime: node
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: VITE_BASE_URL
+        value: "/"
+      # Point to the backend service URL after first deploy, e.g.:
+      # https://bubble-graph-api.onrender.com
+      - key: VITE_API_URL
+        value: ""

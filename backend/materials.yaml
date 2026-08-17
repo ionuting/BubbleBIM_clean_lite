@@ -1,0 +1,196 @@
+version: 1
+element_defaults:
+  column:
+    color_3d: '#1a1a1a'
+    opacity_3d: 1
+    color_2d: '#f20d93'
+    opacity_2d: 1
+    line_weight: 0.5
+    hatch: diagonal
+  beam:
+    color_3d: '#b7b4b4'
+    opacity_3d: 1
+    color_2d: '#475569'
+    opacity_2d: 1
+    line_weight: 0.4
+    hatch: diagonal
+  wall:
+    color_3d: '#ffffff'
+    opacity_3d: 1
+    color_2d: '#b4c0cf'
+    opacity_2d: 0.4
+    line_weight: 0.5
+    hatch: solid
+    section_fill_opacity: 0.3
+    section_line_color: '#ffffff'
+    view_line_color: '#ffffff'
+  slab:
+    color_3d: '#bcbbbf'
+    opacity_3d: 1
+    color_2d: '#CBD5E1'
+    opacity_2d: 1
+    line_weight: 0.35
+    hatch: diagonal
+  foundation:
+    color_3d: '#EF4444'
+    opacity_3d: 1
+    color_2d: '#7F1D1D'
+    opacity_2d: 1
+    line_weight: 0.6
+    hatch: crosshatch
+  window:
+    color_3d: '#38BDF8'
+    opacity_3d: 0.55
+    color_2d: '#BAE6FD'
+    opacity_2d: 0.7
+    line_weight: 0.25
+    hatch: none
+  door:
+    color_3d: '#5f310c'
+    opacity_3d: 1
+    color_2d: '#F59E0B'
+    opacity_2d: 1
+    line_weight: 0.3
+    hatch: none
+  room:
+    color_3d: '#14B8A6'
+    opacity_3d: 0.2
+    color_2d: '#CCFBF1'
+    opacity_2d: 0.25
+    line_weight: 0.2
+    hatch: none
+  shell:
+    color_3d: '#f2f2f2'
+    opacity_3d: 1
+    color_2d: '#f5f5f5'
+    opacity_2d: 1
+    line_weight: 0.4
+    hatch: diagonal
+    view_line_color: '#403b3b'
+    section_line_color: '#363636'
+    section_fill_color: '#ffffff'
+  covering:
+    color_3d: '#d2d0d0'
+    opacity_3d: 1
+    color_2d: '#ffffff'
+    opacity_2d: 1
+    line_weight: 0.35
+    hatch: diagonal
+    section_line_weight: 0.15
+    section_fill_color: '#ffffff'
+    section_fill_opacity: 0.1
+    view_line_color: '#a2a0a0'
+    section_line_color: '#afacac'
+  ax:
+    color_3d: '#94A3B8'
+    opacity_3d: 1
+    color_2d: '#94A3B8'
+    opacity_2d: 0.8
+    line_weight: 0.2
+    hatch: none
+  void:
+    color_3d: '#f97316'
+    opacity_3d: 0.35
+    color_2d: '#fed7aa'
+    opacity_2d: 0.5
+    line_weight: 0.4
+    hatch: crosshatch
+    section_line_color: '#f97316'
+    section_line_style: dashed
+materials:
+  concrete:
+    label: Concrete
+    color_3d: '#8A8A8A'
+    opacity_3d: 1
+    color_2d: '#BEBEBE'
+    opacity_2d: 1
+    line_weight: 0.5
+    hatch: solid
+  concrete_reinforced:
+    label: Reinforced concrete
+    color_3d: '#6B7280'
+    opacity_3d: 1
+    color_2d: '#9CA3AF'
+    opacity_2d: 1
+    line_weight: 0.5
+    hatch: crosshatch
+  brick:
+    label: Brick
+    color_3d: '#C0614A'
+    opacity_3d: 1
+    color_2d: '#D4836A'
+    opacity_2d: 1
+    line_weight: 0.4
+    hatch: brick
+  steel:
+    label: Steel
+    color_3d: '#4A5568'
+    opacity_3d: 1
+    color_2d: '#718096'
+    opacity_2d: 1
+    line_weight: 0.35
+    hatch: crosshatch
+  glass:
+    label: Glass
+    color_3d: '#87CEEB'
+    opacity_3d: 0.35
+    color_2d: '#BAE6FD'
+    opacity_2d: 0.5
+    line_weight: 0.2
+    hatch: none
+  wood:
+    label: Wood
+    color_3d: '#8B6914'
+    opacity_3d: 1
+    color_2d: '#C4A05A'
+    opacity_2d: 1
+    line_weight: 0.4
+    hatch: diagonal
+  gypsum:
+    label: Gypsum board
+    color_3d: '#F5F5DC'
+    opacity_3d: 1
+    color_2d: '#EFEFD0'
+    opacity_2d: 1
+    line_weight: 0.25
+    hatch: solid
+  insulation:
+    label: Thermal insulation
+    color_3d: '#FFD580'
+    opacity_3d: 0.9
+    color_2d: '#FFF3B0'
+    opacity_2d: 0.9
+    line_weight: 0.2
+    hatch: wave
+  stone:
+    label: Stone
+    color_3d: '#9E9E9E'
+    opacity_3d: 1
+    color_2d: '#BDBDBD'
+    opacity_2d: 1
+    line_weight: 0.5
+    hatch: stone
+  aluminium:
+    label: Aluminium
+    color_3d: '#C0C0CC'
+    opacity_3d: 1
+    color_2d: '#D1D5DB'
+    opacity_2d: 1
+    line_weight: 0.3
+    hatch: diagonal
+  timber_structural:
+    label: Structural timber
+    color_3d: '#A0522D'
+    opacity_3d: 1
+    color_2d: '#D2B48C'
+    opacity_2d: 1
+    line_weight: 0.4
+    hatch: diagonal
+window_glazing:
+  frame_color: '#ffffff'
+  frame_metalness: 0.5
+  frame_roughness: 0.35
+  glass_color: '#1F61A6'
+  glass_opacity: 0.35
+  glass_roughness: 0.05
+  glass_metalness: 0.15

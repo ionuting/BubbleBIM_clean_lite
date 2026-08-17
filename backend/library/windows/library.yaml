@@ -1,0 +1,176 @@
+# windows/library.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# BubbleGraph BIM — Window Element Library
+# Human-editable catalogue; served by backend at GET /api/library/window
+#
+# To add a custom window type, append an entry to the `entries` list.
+# Drop any matching geometry assets (IFC, SVG) into:
+#   backend/library/windows/<style>/<id>/
+# ─────────────────────────────────────────────────────────────────────────────
+
+family: window
+version: "1.1.0"
+description: "Window element catalogue — all styles"
+
+entries:
+  # ── default style ────────────────────────────────────────────────────────
+  - id: W-FIX-60x60
+    label: "Window Fix 60×60 cm"
+    style: default
+    width_mm: 600
+    height_mm: 600
+    sill_height_mm: 1200
+    depth_mm: 200
+    opening: none
+    material: "PVC alb"
+    description: "Fereastră fixă 600×600 mm"
+    library_path: "windows/default/W-FIX-60x60"
+
+  - id: W-FIX-100x120
+    label: "Window Fix 100×120 cm"
+    style: default
+    width_mm: 1000
+    height_mm: 1200
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: none
+    material: "PVC alb"
+    description: "Fereastră fixă 1000×1200 mm"
+    library_path: "windows/default/W-FIX-100x120"
+
+  - id: W-SNG-80x120
+    label: "Window Single 80×120 cm"
+    style: default
+    width_mm: 800
+    height_mm: 1200
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: single
+    material: "PVC alb"
+    description: "Fereastră simplu batant 800×1200 mm"
+    library_path: "windows/default/W-SNG-80x120"
+
+  - id: W-SNG-100x140
+    label: "Window Single 100×140 cm"
+    style: default
+    width_mm: 1000
+    height_mm: 1400
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: single
+    material: "PVC alb"
+    description: "Fereastră simplu batant 1000×1400 mm"
+    library_path: "windows/default/W-SNG-100x140"
+
+  - id: W-DBL-120x140
+    label: "Window Double 120×140 cm"
+    style: default
+    width_mm: 1200
+    height_mm: 1400
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: double
+    material: "PVC alb"
+    description: "Fereastră dublu batant 1200×1400 mm"
+    library_path: "windows/default/W-DBL-120x140"
+
+  - id: W-DBL-150x150
+    label: "Window Double 150×150 cm"
+    style: default
+    width_mm: 1500
+    height_mm: 1500
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: double
+    material: "PVC alb"
+    description: "Fereastră dublu batant 1500×1500 mm"
+    library_path: "windows/default/W-DBL-150x150"
+
+  - id: W-TT-100x140
+    label: "Window Tilt-Turn 100×140 cm"
+    style: default
+    width_mm: 1000
+    height_mm: 1400
+    sill_height_mm: 900
+    depth_mm: 200
+    opening: tilt-turn
+    material: "PVC alb"
+    description: "Fereastră tilt-turn 1000×1400 mm"
+    library_path: "windows/default/W-TT-100x140"
+
+  # ── french style ─────────────────────────────────────────────────────────
+  - id: W-FR-DBL-120x220
+    label: "French Door-Window 120×220 cm"
+    style: french
+    width_mm: 1200
+    height_mm: 2200
+    sill_height_mm: 0
+    depth_mm: 200
+    opening: double
+    material: "Lemn vopsit alb"
+    description: "Fereastră franceză 1200×2200 mm, până la podea"
+    library_path: "windows/french/W-FR-DBL-120x220"
+
+  - id: W-FR-SNG-80x220
+    label: "French Window Single 80×220 cm"
+    style: french
+    width_mm: 800
+    height_mm: 2200
+    sill_height_mm: 0
+    depth_mm: 200
+    opening: single
+    material: "Lemn vopsit alb"
+    description: "Fereastră franceză simplu batant 800×2200 mm"
+    library_path: "windows/french/W-FR-SNG-80x220"
+
+  # ── gothic style ─────────────────────────────────────────────────────────
+  - id: W-GT-SNG-60x180
+    label: "Gothic Window 60×180 cm"
+    style: gothic
+    width_mm: 600
+    height_mm: 1800
+    sill_height_mm: 1200
+    depth_mm: 300
+    opening: none
+    material: "Piatră / Vitraliu"
+    description: "Fereastră gotică arc frânt 600×1800 mm"
+    library_path: "windows/gothic/W-GT-SNG-60x180"
+
+  - id: W-GT-DBL-100x220
+    label: "Gothic Window Double 100×220 cm"
+    style: gothic
+    width_mm: 1000
+    height_mm: 2200
+    sill_height_mm: 900
+    depth_mm: 300
+    opening: double
+    material: "Piatră / Vitraliu"
+    description: "Fereastră gotică dublu arc 1000×2200 mm"
+    library_path: "windows/gothic/W-GT-DBL-100x220"
+
+  # ── IFC-referenced entries ────────────────────────────────────────────────
+  - id: W-FIX-90X140-IFC
+    label: "Window Fix 110×263 cm (IFC)"
+    style: default
+    width_mm: 1100
+    height_mm: 2630
+    sill_height_mm: 0
+    depth_mm: 200
+    opening: none
+    material: "PVC alb"
+    description: "Fereastră/toc fix 1100×2630 mm — geometrie IFC referențiată"
+    library_path: "windows/default/W-FIX-90X140-IFC"
+
+  # ── Add your custom window types below ───────────────────────────────────
+  # Example:
+  # - id: W-CUSTOM-120x150
+  #   label: "Custom Window 120×150 cm"
+  #   style: default
+  #   width_mm: 1200
+  #   height_mm: 1500
+  #   sill_height_mm: 900
+  #   depth_mm: 200
+  #   opening: double
+  #   material: "Aluminiu RAL 7016"
+  #   description: "Custom window added by user"
+  #   library_path: "windows/default/W-CUSTOM-120x150"

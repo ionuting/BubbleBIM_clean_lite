@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>BubbleGraph — Board Scanner</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; flex-direction: column; }
+  header { background: #16213e; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #0f3460; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header span { font-size: 12px; color: #888; }
+  .container { display: flex; flex: 1; overflow: hidden; }
+  .left-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #0f0f23; }
+  .right-panel { width: 420px; background: #16213e; border-left: 1px solid #0f3460; display: flex; flex-direction: column; overflow-y: auto; }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed #334; margin: 16px; padding: 40px; text-align: center;
+    border-radius: 12px; cursor: pointer; transition: border-color .2s;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #4fc3f7; background: rgba(79,195,247,.05); }
+  .upload-area p { font-size: 14px; color: #888; margin: 8px 0; }
+  .upload-area .big { font-size: 36px; }
+  .upload-area input { display: none; }
+
+  /* Canvas area */
+  .canvas-wrap { flex: 1; position: relative; overflow: auto; display: flex; align-items: center; justify-content: center; }
+  .canvas-wrap canvas { max-width: 100%; max-height: 100%; display: block; }
+
+  /* Right panel sections */
+  .section { padding: 14px 16px; border-bottom: 1px solid #1a1a3e; }
+  .section h3 { font-size: 13px; color: #4fc3f7; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+  .status { padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 6px; }
+  .status.ok { background: #1b5e20; color: #a5d6a7; }
+  .status.warn { background: #e65100; color: #ffcc80; }
+  .status.info { background: #0d47a1; color: #90caf9; }
+
+  /* Detected items list */
+  .item-list { max-height: 300px; overflow-y: auto; }
+  .item { padding: 6px 10px; font-size: 12px; border-radius: 4px; margin-bottom: 3px; display: flex; justify-content: space-between; }
+  .item.corner { background: #1a237e; }
+  .item.room { background: #1b5e20; }
+  .item.eraser { background: #b71c1c; }
+  .item.window { background: #01579b; }
+  .item.door { background: #4e342e; }
+  .item .pos { color: #aaa; font-family: monospace; font-size: 11px; }
+
+  /* Graph preview */
+  .graph-preview { background: #0a0a1a; border-radius: 8px; padding: 10px; margin-top: 8px; max-height: 200px; overflow: auto; }
+  .graph-preview pre { font-size: 10px; color: #8f8; white-space: pre-wrap; word-break: break-all; }
+
+  /* Buttons */
+  .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .btn-primary { background: #1976d2; color: #fff; }
+  .btn-primary:hover { background: #1565c0; }
+  .btn-success { background: #2e7d32; color: #fff; }
+  .btn-success:hover { background: #1b5e20; }
+  .btn-import { background: #7c3aed; color: #fff; flex: 1; font-size: 14px; padding: 10px 16px; }
+  .btn-import:hover { background: #6d28d9; }
+  .btn-group { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* Camera controls */
+  .camera-controls { display: flex; gap: 8px; margin: 8px 16px; }
+  .camera-controls button { flex: 1; }
+  video { max-width: 100%; display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📷 BubbleGraph Board Scanner</h1>
+  <span>Încarcă o poză a board-ului cu tokenuri QR → Export BubbleGraph JSON</span>
+</header>
+
+<div class="container">
+  <div class="left-panel">
+    <div class="camera-controls">
+      <button class="btn btn-primary" onclick="openCamera()">📹 Cameră</button>
+      <button class="btn btn-primary" onclick="captureFrame()" id="captureBtn" style="display:none">📸 Captură</button>
+      <button class="btn btn-primary" onclick="stopCamera()" id="stopCamBtn" style="display:none">⏹ Stop</button>
+    </div>
+
+    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="big">📁</div>
+      <p>Click sau trage o imagine aici</p>
+      <p style="font-size:11px;color:#555">PNG, JPG — poza board-ului cu tokenuri plasate</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div class="canvas-wrap">
+      <video id="video" autoplay playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="section">
+      <h3>📊 Status detectare</h3>
+      <div id="statusArea"><div class="status info">Încarcă o imagine pentru a începe scanarea.</div></div>
+    </div>
+
+    <div class="section">
+      <h3>📍 Coduri QR detectate</h3>
+      <div class="item-list" id="itemList">
+        <div style="font-size:12px;color:#666;">Niciun cod detectat încă.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>🗺️ Hartă grid</h3>
+      <canvas id="gridCanvas" width="300" height="250" style="background:#0a0a1a;border-radius:8px;width:100%;"></canvas>
+    </div>
+
+    <div class="section">
+      <h3>📦 Graph JSON</h3>
+      <div class="graph-preview" id="graphPreview">
+        <pre>Scanează mai întâi...</pre>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-success" onclick="downloadJSON()" id="downloadBtn" disabled>💾 Descarcă JSON</button>
+        <button class="btn btn-primary" onclick="postToAPI()" id="postBtn" disabled>📤 POST /graph</button>
+        <button class="btn btn-import" onclick="sendToParent()" id="importBtn" style="display:none">✅ Importă în BubbleGraph</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   BubbleGraph Board Scanner
+   ─────────────────────────────────────────────────────────
+   1. Upload/camera → detect ALL QR codes
+   2. Find 4 corner markers → compute homography
+   3. Map each token QR to grid position
+   4. Build BubbleGraph-compatible JSON
+   ════════════════════════════════════════════════════════════ */
+
+let graphResult = null;
+let videoStream = null;
+
+/* ── File / drag handling ─────────────────────────────── */
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d', { willReadFrequently: true });
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) loadImage(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) loadImage(fileInput.files[0]); });
+
+function loadImage(file) {
+  const img = new Image();
+  img.onload = () => {
+    // Scale down if too large (for performance)
+    const MAX = 2000;
+    let w = img.width, h = img.height;
+    if (w > MAX || h > MAX) {
+      const scale = MAX / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    canvas.width = w; canvas.height = h;
+    canvas.style.display = 'block';
+    ctx.drawImage(img, 0, 0, w, h);
+    dropZone.style.display = 'none';
+    document.getElementById('video').style.display = 'none';
+    scanImage();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+/* ── Camera ───────────────────────────────────────────── */
+async function openCamera() {
+  try {
+    const video = document.getElementById('video');
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    video.srcObject = videoStream;
+    video.style.display = 'block';
+    canvas.style.display = 'none';
+    dropZone.style.display = 'none';
+    document.getElementById('captureBtn').style.display = '';
+    document.getElementById('stopCamBtn').style.display = '';
+  } catch (err) {
+    setStatus('warn', `Cameră indisponibilă: ${err.message}`);
+  }
+}
+
+function captureFrame() {
+  const video = document.getElementById('video');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+  canvas.style.display = 'block';
+  video.style.display = 'none';
+  stopCamera();
+  scanImage();
+}
+
+function stopCamera() {
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  document.getElementById('captureBtn').style.display = 'none';
+  document.getElementById('stopCamBtn').style.display = 'none';
+}
+
+/* ════════════════════════════════════════════════════════════
+   QR DETECTION — multi-QR via jsQR with iterative masking
+   ════════════════════════════════════════════════════════════ */
+
+async function detectAllQR(imageData, w, h) {
+  // Try native BarcodeDetector first (Chrome/Edge)
+  if ('BarcodeDetector' in window) {
+    try {
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      const imgBitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(imageData), w, h));
+      const results = await detector.detect(imgBitmap);
+      if (results.length > 0) {
+        return results.map(r => ({
+          rawValue: r.rawValue,
+          center: {
+            x: r.cornerPoints.reduce((s, p) => s + p.x, 0) / 4,
+            y: r.cornerPoints.reduce((s, p) => s + p.y, 0) / 4,
+          },
+          corners: r.cornerPoints,
+        }));
+      }
+    } catch (_) { /* fall through to jsQR */ }
+  }
+
+  // Fallback: jsQR iterative masking
+  const data = new Uint8ClampedArray(imageData);
+  const results = [];
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const code = jsQR(data, w, h, { inversionAttempts: 'dontInvert' });
+    if (!code) break;
+
+    const tl = code.location.topLeftCorner;
+    const tr = code.location.topRightCorner;
+    const br = code.location.bottomRightCorner;
+    const bl = code.location.bottomLeftCorner;
+
+    results.push({
+      rawValue: code.data,
+      center: { x: (tl.x + br.x) / 2, y: (tl.y + br.y) / 2 },
+      corners: [tl, tr, br, bl],
+    });
+
+    // White-out detected QR region + padding
+    const pad = 15;
+    const xs = [tl.x, tr.x, br.x, bl.x];
+    const ys = [tl.y, tr.y, br.y, bl.y];
+    const minX = Math.max(0, Math.floor(Math.min(...xs)) - pad);
+    const maxX = Math.min(w, Math.ceil(Math.max(...xs)) + pad);
+    const minY = Math.max(0, Math.floor(Math.min(...ys)) - pad);
+    const maxY = Math.min(h, Math.ceil(Math.max(...ys)) + pad);
+
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        const idx = (y * w + x) * 4;
+        data[idx] = data[idx + 1] = data[idx + 2] = 200;
+      }
+    }
+  }
+  return results;
+}
+
+/* ════════════════════════════════════════════════════════════
+   HOMOGRAPHY — 4-point perspective transform
+   ════════════════════════════════════════════════════════════ */
+
+function solveLinearSystem(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  // Forward elimination with partial pivoting
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
+    }
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+
+    if (Math.abs(M[col][col]) < 1e-12) return null; // singular
+
+    for (let row = col + 1; row < n; row++) {
+      const factor = M[row][col] / M[col][col];
+      for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
+    }
+  }
+
+  // Back substitution
+  const x = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    x[i] = M[i][n];
+    for (let j = i + 1; j < n; j++) x[i] -= M[i][j] * x[j];
+    x[i] /= M[i][i];
+  }
+  return x;
+}
+
+function computeHomography(src, dst) {
+  // src[i], dst[i] = { x, y }, 4 points each
+  // Maps src (pixel) → dst (grid)
+  // H * [sx, sy, 1]^T = [w*dx, w*dy, w]^T
+  const M = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i];
+    const { x: u, y: v } = dst[i];
+    M.push([x, y, 1, 0, 0, 0, -u * x, -u * y]);
+    b.push(u);
+    M.push([0, 0, 0, x, y, 1, -v * x, -v * y]);
+    b.push(v);
+  }
+  const h = solveLinearSystem(M, b);
+  if (!h) return null;
+  return [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+}
+
+function applyHomography(H, px, py) {
+  const w = H[2][0] * px + H[2][1] * py + H[2][2];
+  return {
+    x: (H[0][0] * px + H[0][1] * py + H[0][2]) / w,
+    y: (H[1][0] * px + H[1][1] * py + H[1][2]) / w,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════
+   PARSE QR PAYLOADS
+   ════════════════════════════════════════════════════════════ */
+
+function parseBBCode(raw) {
+  if (!raw.startsWith('BB:')) return null;
+  const parts = raw.split(':');
+  const type = parts[1];
+
+  if (type === 'C') {
+    // Corner: BB:C:TL:5:4:6000
+    return { kind: 'corner', pos: parts[2], cols: +parts[3], rows: +parts[4], scaleMM: +parts[5] };
+  }
+  if (type === 'R') {
+    // Room: BB:R:Living
+    return { kind: 'room', name: parts[2] };
+  }
+  if (type === 'E') {
+    // Eraser: BB:E
+    return { kind: 'eraser' };
+  }
+  if (type === 'W') {
+    // Window: BB:W:120x150
+    return { kind: 'window', size: parts[2] };
+  }
+  if (type === 'D') {
+    // Door: BB:D:90x210
+    return { kind: 'door', size: parts[2] };
+  }
+  return null;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SCAN PIPELINE
+   ════════════════════════════════════════════════════════════ */
+
+function setStatus(type, msg) {
+  document.getElementById('statusArea').innerHTML = `<div class="status ${type}">${msg}</div>`;
+}
+
+function addStatus(type, msg) {
+  document.getElementById('statusArea').innerHTML += `<div class="status ${type}">${msg}</div>`;
+}
+
+async function scanImage() {
+  setStatus('info', '⏳ Scanare QR-uri...');
+
+  const w = canvas.width, h = canvas.height;
+  const imageData = ctx.getImageData(0, 0, w, h).data;
+
+  const qrCodes = await detectAllQR(imageData, w, h);
+
+  if (qrCodes.length === 0) {
+    setStatus('warn', '❌ Niciun QR detectat. Verifică calitatea imaginii.');
+    return;
+  }
+
+  setStatus('ok', `✅ ${qrCodes.length} coduri QR detectate`);
+
+  // Parse all
+  const parsed = [];
+  const corners = {};
+
+  qrCodes.forEach(qr => {
+    const bb = parseBBCode(qr.rawValue);
+    if (!bb) {
+      parsed.push({ ...qr, parsed: null });
+      return;
+    }
+    bb.center = qr.center;
+    bb.corners = qr.corners;
+    parsed.push({ ...qr, parsed: bb });
+
+    if (bb.kind === 'corner') {
+      corners[bb.pos] = bb;
+    }
+  });
+
+  // Show detected items
+  renderItemList(parsed);
+
+  // Draw overlay on canvas
+  drawOverlay(parsed);
+
+  // Need at least 3 corners (ideally 4) for homography
+  const cornerKeys = Object.keys(corners);
+  if (cornerKeys.length < 3) {
+    addStatus('warn', `⚠️ Detectate doar ${cornerKeys.length}/4 colțuri. Trebuie minim 3.`);
+    return;
+  }
+
+  // Get grid params from any corner
+  const ref = corners[cornerKeys[0]];
+  const cols = ref.cols, rows = ref.rows, scaleMM = ref.scaleMM;
+  addStatus('info', `Grid: ${cols}×${rows}, scara: ${scaleMM}mm`);
+
+  // Build homography
+  const H = buildHomography(corners, cols, rows, w, h);
+  if (!H) {
+    addStatus('warn', '⚠️ Nu s-a putut calcula homografia. Verifică pozițiile colțurilor.');
+    return;
+  }
+
+  addStatus('ok', '✅ Homografie calculată');
+
+  // Map all non-corner QRs to grid positions
+  const mappedTokens = [];
+  parsed.forEach(item => {
+    if (!item.parsed || item.parsed.kind === 'corner') return;
+    const gp = applyHomography(H, item.parsed.center.x, item.parsed.center.y);
+    mappedTokens.push({ ...item.parsed, gridX: gp.x, gridY: gp.y });
+  });
+
+  // Classify tokens (cell vs edge)
+  const classified = classifyTokens(mappedTokens, cols, rows);
+  addStatus('ok', `✅ ${classified.rooms.length} rooms, ${classified.erasers.length} erasers, ${classified.windows.length} ferestre, ${classified.doors.length} uși`);
+
+  // Log detailed classification for debugging
+  classified.windows.forEach((w, i) =>
+    addStatus('ok', `   🪟 Win${i}: gridPos(${w.gx.toFixed(2)},${w.gy.toFixed(2)}) → edge ${w.edge?.dir} col=${w.edge?.col} row=${w.edge?.row} size=${w.size}`));
+  classified.doors.forEach((d, i) =>
+    addStatus('ok', `   🚪 Door${i}: gridPos(${d.gx.toFixed(2)},${d.gy.toFixed(2)}) → edge ${d.edge?.dir} col=${d.edge?.col} row=${d.edge?.row} size=${d.size}`));
+  classified.erasers.forEach((e, i) =>
+    addStatus('ok', `   ✕ Eraser${i}: gridPos(${e.gx.toFixed(2)},${e.gy.toFixed(2)}) → edge ${e.edge?.dir} col=${e.edge?.col} row=${e.edge?.row}`));
+
+  // Build graph
+  graphResult = buildGraph(cols, rows, scaleMM, classified);
+  addStatus('ok', `✅ Graph generat: ${graphResult.nodes.length} noduri, ${graphResult.edges.length} muchii`);
+
+  // Show preview
+  document.getElementById('graphPreview').innerHTML =
+    `<pre>${JSON.stringify(graphResult, null, 2).substring(0, 3000)}${JSON.stringify(graphResult).length > 3000 ? '\n...' : ''}</pre>`;
+  document.getElementById('downloadBtn').disabled = false;
+  document.getElementById('postBtn').disabled = false;
+
+  // Draw grid map
+  drawGridMap(cols, rows, classified);
+}
+
+/* ── Build homography from corners ────────────────────── */
+function buildHomography(corners, cols, rows, imgW, imgH) {
+  // Grid positions for each corner — CAD convention: A1 = bottom-left
+  // On paper: TL = top-left = highest CAD Y, BL = bottom-left = CAD Y=0
+  // gridX: 0=left, cols=right  (same as paper left→right)
+  // gridY: 0=bottom (row A), rows=top (on paper top-left = high Y)
+  const gridPos = {
+    TL: { x: 0, y: rows },    // top-left of paper → (0, rows) in CAD
+    TR: { x: cols, y: rows },  // top-right of paper → (cols, rows)
+    BL: { x: 0, y: 0 },       // bottom-left of paper → (0, 0) = A1
+    BR: { x: cols, y: 0 },    // bottom-right of paper → (cols, 0)
+  };
+
+  const available = Object.keys(corners);
+
+  if (available.length >= 4) {
+    // Full 4-corner homography
+    const src = ['TL', 'TR', 'BL', 'BR'].map(k => corners[k].center);
+    const dst = ['TL', 'TR', 'BL', 'BR'].map(k => gridPos[k]);
+    return computeHomography(src, dst);
+  }
+
+  // 3 corners: estimate the 4th
+  const missing = ['TL', 'TR', 'BL', 'BR'].find(k => !corners[k]);
+  const have = available.map(k => ({ id: k, px: corners[k].center, grid: gridPos[k] }));
+
+  // Simple estimation: use parallelogram assumption
+  // If missing BR: BR_pixel ≈ TR_pixel + BL_pixel - TL_pixel
+  const getC = id => corners[id]?.center;
+  let estimated;
+  if (missing === 'BR') estimated = { x: getC('TR').x + getC('BL').x - getC('TL').x, y: getC('TR').y + getC('BL').y - getC('TL').y };
+  else if (missing === 'BL') estimated = { x: getC('TL').x + getC('BR').x - getC('TR').x, y: getC('TL').y + getC('BR').y - getC('TR').y };
+  else if (missing === 'TR') estimated = { x: getC('TL').x + getC('BR').x - getC('BL').x, y: getC('TL').y + getC('BR').y - getC('BL').y };
+  else estimated = { x: getC('TR').x + getC('BL').x - getC('BR').x, y: getC('TR').y + getC('BL').y - getC('BR').y };
+
+  const allCorners = { ...corners };
+  allCorners[missing] = { center: estimated };
+
+  const src = ['TL', 'TR', 'BL', 'BR'].map(k => allCorners[k].center);
+  const dst = ['TL', 'TR', 'BL', 'BR'].map(k => gridPos[k]);
+  return computeHomography(src, dst);
+}
+
+/* ── Classify tokens into cells/edges ─────────────────── */
+function classifyTokens(tokens, cols, rows) {
+  const result = { rooms: [], erasers: [], windows: [], doors: [] };
+  const EDGE_THRESH = 0.3; // how close to 0.5 fractional means "on edge"
+
+  tokens.forEach(t => {
+    const gx = t.gridX, gy = t.gridY;
+    const fx = gx - Math.floor(gx); // fractional X
+    const fy = gy - Math.floor(gy); // fractional Y
+    const nearEdgeX = Math.abs(fx - 0.5) < EDGE_THRESH;
+    const nearEdgeY = Math.abs(fy - 0.5) < EDGE_THRESH;
+    const nearIntX  = fx < EDGE_THRESH || fx > (1 - EDGE_THRESH);
+    const nearIntY  = fy < EDGE_THRESH || fy > (1 - EDGE_THRESH);
+
+    if (t.kind === 'room') {
+      // Room → assign to cell center
+      const cellX = Math.floor(gx);
+      const cellY = Math.floor(gy);
+      // If room is near an edge, it spans 2 cells
+      let span = null;
+      if (nearIntX && !nearIntY) {
+        // On vertical edge → spans two horizontal cells
+        const ci = Math.round(gx);
+        span = { type: 'vertical', edgeCol: ci, row: Math.floor(gy) };
+      } else if (nearIntY && !nearIntX) {
+        // On horizontal edge → spans two vertical cells
+        const ri = Math.round(gy);
+        span = { type: 'horizontal', col: Math.floor(gx), edgeRow: ri };
+      }
+      result.rooms.push({ name: t.name, cellX, cellY, span, gx, gy });
+    }
+    else if (t.kind === 'eraser' || t.kind === 'window' || t.kind === 'door') {
+      // Edge modifier — determine which wall edge this token sits on.
+      // A token on a HORIZONTAL grid line (near integer Y) → horizontal wall segment
+      // A token on a VERTICAL grid line (near integer X) → vertical wall segment
+      let edge = null;
+      if (nearIntX && !nearIntY) {
+        // Near vertical grid line → vertical wall segment
+        const ci = Math.round(gx);
+        const ri = Math.floor(gy);
+        if (ci >= 0 && ci <= cols && ri >= 0 && ri < rows) {
+          edge = { dir: 'vertical', col: ci, row: ri };
+        }
+      } else if (nearIntY && !nearIntX) {
+        // Near horizontal grid line → horizontal wall segment
+        const ri = Math.round(gy);
+        const ci = Math.floor(gx);
+        if (ri >= 0 && ri <= rows && ci >= 0 && ci < cols) {
+          edge = { dir: 'horizontal', col: ci, row: ri };
+        }
+      }
+      // If not clearly on an edge, find nearest edge
+      if (!edge) {
+        const distToVertical   = Math.min(fx, 1 - fx);
+        const distToHorizontal = Math.min(fy, 1 - fy);
+        if (distToVertical < distToHorizontal) {
+          const ci = Math.round(gx);
+          const ri = Math.floor(gy);
+          if (ci >= 0 && ci <= cols && ri >= 0 && ri < rows) {
+            edge = { dir: 'vertical', col: ci, row: ri };
+          }
+        } else {
+          const ri = Math.round(gy);
+          const ci = Math.floor(gx);
+          if (ri >= 0 && ri <= rows && ci >= 0 && ci < cols) {
+            edge = { dir: 'horizontal', col: ci, row: ri };
+          }
+        }
+      }
+      // Last resort: snap to any valid edge
+      if (!edge) {
+        const ci = Math.max(0, Math.min(cols, Math.round(gx)));
+        const ri = Math.max(0, Math.min(rows, Math.round(gy)));
+        const floorGx = Math.max(0, Math.min(cols - 1, Math.floor(gx)));
+        const floorGy = Math.max(0, Math.min(rows - 1, Math.floor(gy)));
+        const distV = Math.min(fx, 1 - fx);
+        const distH = Math.min(fy, 1 - fy);
+        if (distV <= distH) {
+          edge = { dir: 'vertical', col: ci, row: floorGy };
+        } else {
+          edge = { dir: 'horizontal', col: floorGx, row: ri };
+        }
+      }
+
+      const entry = { edge, gx, gy };
+      if (t.kind === 'eraser') result.erasers.push(entry);
+      else if (t.kind === 'window') result.windows.push({ ...entry, size: t.size });
+      else result.doors.push({ ...entry, size: t.size });
+    }
+  });
+
+  return result;
+}
+
+/* ════════════════════════════════════════════════════════════
+   BUILD BUBBLEGRAPH-COMPATIBLE JSON
+   ════════════════════════════════════════════════════════════ */
+
+function buildGraph(cols, rows, scaleMM, classified) {
+  const nodes = [];
+  const edges = [];
+  let _uid = 0;
+  const uid = () => `${Date.now()}_${(++_uid).toString(36)}`;
+
+  // Canvas spacing — matches BIM mm convention (1 canvas unit = 1 mm)
+  // Center grid so it's symmetric around origin, same as existing graph
+  const SPACING_X = scaleMM;
+  const SPACING_Y = scaleMM;
+  const totalW = cols * SPACING_X;
+  const totalH = rows * SPACING_Y;
+  const ORIGIN_X  = -totalW / 2;
+  const ORIGIN_Y  = -totalH / 2;
+
+  // ── Axes (mm from origin)
+  const axesX = Array.from({ length: cols + 1 }, (_, i) => i * scaleMM);
+  const axesY = Array.from({ length: rows + 1 }, (_, i) => i * scaleMM);
+
+  // ── Storey node
+  const storeyId = 'storey_0';
+  nodes.push({
+    id: storeyId,
+    type: 'storey',
+    name: 'Board Game Ground Floor',
+    x: 0, y: ORIGIN_Y - 2000, z: 0,
+    properties: {
+      bottomElevation: 0,
+      topElevation: 3000,
+      axesX, axesY,
+      storeyNumber: 0,
+    }
+  });
+
+  // ── Ax nodes (grid intersections)
+  const axMap = {}; // `${gridX}_${gridY}` → nodeId
+  let wallCount = 0;
+  for (let gx = 0; gx <= cols; gx++) {
+    for (let gy = 0; gy <= rows; gy++) {
+      const id = `ax_${uid()}`;
+      axMap[`${gx}_${gy}`] = id;
+      nodes.push({
+        id,
+        type: 'ax',
+        name: `${gx + 1}${String.fromCharCode(65 + gy)}`,
+        x: ORIGIN_X + gx * SPACING_X,
+        y: ORIGIN_Y + gy * SPACING_Y,
+        z: 0,
+        parentId: storeyId,
+        properties: {
+          gridX: gx,
+          gridY: gy,
+          axNodeIndex: gy * (cols + 1) + gx,
+          has_column: 'True',
+          column_type: 'C25x25',
+        }
+      });
+    }
+  }
+
+  // ── Build eraser set for quick lookup
+  const erasedEdges = new Set();
+  classified.erasers.forEach(e => {
+    if (e.edge) erasedEdges.add(`${e.edge.dir}_${e.edge.col}_${e.edge.row}`);
+  });
+
+  // ── Also erase edges for room-over-edge spans
+  classified.rooms.forEach(r => {
+    if (r.span) {
+      if (r.span.type === 'vertical') {
+        erasedEdges.add(`vertical_${r.span.edgeCol}_${r.span.row}`);
+      } else {
+        erasedEdges.add(`horizontal_${r.span.col}_${r.span.edgeRow}`);
+      }
+    }
+  });
+
+  // Helper: create a wall node between two ax nodes with optional window/door
+  function addWall(fromAxId, toAxId, fromX, fromY, toX, toY, winHere, doorHere) {
+    wallCount++;
+    const wallId = `wall_${uid()}`;
+    const mx = (fromX + toX) / 2;
+    const my = (fromY + toY) / 2;
+
+    // Wall node properties (matches BubbleGraph nodeLibrary.json defaults)
+    const props = {
+      wall_type: 'W25',
+      height: 3000,
+      offset_start: 0,
+      offset_end: 0,
+      wall_join_start: 'auto',
+      wall_join_end: 'auto',
+      has_beam: 'True',
+      beam_section: 'B20x30',
+      material: 'Beton C30/37',
+      has_windows: 'False',
+      windows: '[]',
+      has_doors: 'False',
+      doors: '[]',
+    };
+
+    // Embed windows into wall properties (inline array, same as graph editor)
+    if (winHere) {
+      const [ww, wh] = winHere.size.split('x').map(Number);
+      props.has_windows = 'True';
+      props.windows = JSON.stringify([{
+        id: `inl_win_${uid()}`,
+        window_type: `W-FIX-${winHere.size}`,
+        width: ww * 10,
+        height: wh * 10,
+        sill_height: 900,
+        wall_offset: null,
+        count: 1,
+      }]);
+    }
+
+    if (doorHere) {
+      const [dw, dh] = doorHere.size.split('x').map(Number);
+      props.has_doors = 'True';
+      props.doors = JSON.stringify([{
+        id: `inl_door_${uid()}`,
+        door_type: `D-SWING-${doorHere.size}`,
+        width: dw * 10,
+        height: dh * 10,
+        wall_offset: null,
+        swing: 'left',
+        count: 1,
+      }]);
+    }
+
+    nodes.push({
+      id: wallId, type: 'wall',
+      name: `Wall${wallCount}`,
+      x: mx, y: my, z: 0,
+      parentId: storeyId,
+      properties: props,
+    });
+
+    // Two edges: ax → wall, wall → ax
+    edges.push({ id: `edge_${uid()}_1`, from: fromAxId, to: wallId });
+    edges.push({ id: `edge_${uid()}_2`, from: wallId, to: toAxId });
+  }
+
+  // ── Horizontal walls (along X axis)
+  for (let gy = 0; gy <= rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const key = `horizontal_${gx}_${gy}`;
+      if (erasedEdges.has(key)) continue;
+
+      const fromId = axMap[`${gx}_${gy}`];
+      const toId   = axMap[`${gx + 1}_${gy}`];
+      const fromX = ORIGIN_X + gx * SPACING_X, toX = ORIGIN_X + (gx + 1) * SPACING_X;
+      const yPos = ORIGIN_Y + gy * SPACING_Y;
+
+      const winHere = classified.windows.find(w =>
+        w.edge?.dir === 'horizontal' && w.edge.col === gx && w.edge.row === gy);
+      const doorHere = classified.doors.find(d =>
+        d.edge?.dir === 'horizontal' && d.edge.col === gx && d.edge.row === gy);
+
+      addWall(fromId, toId, fromX, yPos, toX, yPos, winHere, doorHere);
+    }
+  }
+
+  // ── Vertical walls (along Y axis)
+  for (let gx = 0; gx <= cols; gx++) {
+    for (let gy = 0; gy < rows; gy++) {
+      const key = `vertical_${gx}_${gy}`;
+      if (erasedEdges.has(key)) continue;
+
+      const fromId = axMap[`${gx}_${gy}`];
+      const toId   = axMap[`${gx}_${gy + 1}`];
+      const xPos = ORIGIN_X + gx * SPACING_X;
+      const fromY = ORIGIN_Y + gy * SPACING_Y, toY = ORIGIN_Y + (gy + 1) * SPACING_Y;
+
+      const winHere = classified.windows.find(w =>
+        w.edge?.dir === 'vertical' && w.edge.col === gx && w.edge.row === gy);
+      const doorHere = classified.doors.find(d =>
+        d.edge?.dir === 'vertical' && d.edge.col === gx && d.edge.row === gy);
+
+      addWall(fromId, toId, xPos, fromY, xPos, toY, winHere, doorHere);
+    }
+  }
+
+  // ── Room nodes
+  classified.rooms.forEach(r => {
+    const roomId = `room_${uid()}`;
+    const cx = r.span
+      ? (r.span.type === 'vertical'
+          ? ORIGIN_X + r.span.edgeCol * SPACING_X
+          : ORIGIN_X + r.span.col * SPACING_X + SPACING_X / 2)
+      : ORIGIN_X + r.cellX * SPACING_X + SPACING_X / 2;
+    const cy = r.span
+      ? (r.span.type === 'horizontal'
+          ? ORIGIN_Y + r.span.edgeRow * SPACING_Y
+          : ORIGIN_Y + r.span.row * SPACING_Y + SPACING_Y / 2)
+      : ORIGIN_Y + r.cellY * SPACING_Y + SPACING_Y / 2;
+
+    nodes.push({
+      id: roomId, type: 'room',
+      name: r.name,
+      x: cx, y: cy, z: 0,
+      parentId: storeyId,
+      properties: {
+        cellX: r.cellX, cellY: r.cellY,
+        span: r.span || null,
+      }
+    });
+  });
+
+  return {
+    nodes, edges,
+    buildingAxes: { xValues: axesX, yValues: axesY },
+    projectName: 'Board Game Import',
+  };
+}
+
+/* ════════════════════════════════════════════════════════════
+   UI RENDERING
+   ════════════════════════════════════════════════════════════ */
+
+function renderItemList(parsed) {
+  const list = document.getElementById('itemList');
+  list.innerHTML = '';
+  parsed.forEach(item => {
+    const div = document.createElement('div');
+    const p = item.parsed;
+    if (!p) {
+      div.className = 'item';
+      div.innerHTML = `<span>❓ ${item.rawValue.substring(0, 30)}</span><span class="pos">(${Math.round(item.center.x)}, ${Math.round(item.center.y)})</span>`;
+    } else {
+      div.className = `item ${p.kind}`;
+      let label = '';
+      if (p.kind === 'corner') label = `📐 Corner ${p.pos} (${p.cols}×${p.rows})`;
+      else if (p.kind === 'room') label = `🏠 ${p.name}`;
+      else if (p.kind === 'eraser') label = '❌ Eraser';
+      else if (p.kind === 'window') label = `🪟 Window ${p.size}`;
+      else if (p.kind === 'door') label = `🚪 Door ${p.size}`;
+      div.innerHTML = `<span>${label}</span><span class="pos">(${Math.round(item.center.x)}, ${Math.round(item.center.y)})</span>`;
+    }
+    list.appendChild(div);
+  });
+}
+
+function drawOverlay(parsed) {
+  // Draw markers on detected QR positions
+  parsed.forEach(item => {
+    const p = item.parsed;
+    const cx = item.center.x, cy = item.center.y;
+
+    ctx.save();
+    ctx.lineWidth = 3;
+
+    if (p?.kind === 'corner') {
+      ctx.strokeStyle = '#ff0';
+      ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ff0'; ctx.font = 'bold 16px Arial';
+      ctx.fillText(p.pos, cx + 22, cy + 5);
+    } else if (p?.kind === 'room') {
+      ctx.strokeStyle = '#0f0';
+      ctx.strokeRect(cx - 15, cy - 15, 30, 30);
+      ctx.fillStyle = '#0f0'; ctx.font = '12px Arial';
+      ctx.fillText(p.name, cx + 18, cy + 4);
+    } else if (p?.kind === 'eraser') {
+      ctx.strokeStyle = '#f00';
+      ctx.beginPath(); ctx.moveTo(cx - 12, cy - 12); ctx.lineTo(cx + 12, cy + 12); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 12, cy - 12); ctx.lineTo(cx - 12, cy + 12); ctx.stroke();
+    } else if (p?.kind === 'window') {
+      ctx.strokeStyle = '#4fc3f7';
+      ctx.strokeRect(cx - 12, cy - 12, 24, 24);
+      ctx.fillStyle = '#4fc3f7'; ctx.font = '10px Arial';
+      ctx.fillText(`W${p.size}`, cx + 14, cy + 3);
+    } else if (p?.kind === 'door') {
+      ctx.strokeStyle = '#ffab40';
+      ctx.strokeRect(cx - 12, cy - 12, 24, 24);
+      ctx.fillStyle = '#ffab40'; ctx.font = '10px Arial';
+      ctx.fillText(`D${p.size}`, cx + 14, cy + 3);
+    }
+    ctx.restore();
+  });
+}
+
+function drawGridMap(cols, rows, classified) {
+  const gc = document.getElementById('gridCanvas');
+  const g = gc.getContext('2d');
+  const W = gc.width, H = gc.height;
+  g.clearRect(0, 0, W, H);
+
+  const pad = 30;
+  const cellW = (W - 2 * pad) / cols;
+  const cellH = (H - 2 * pad) / rows;
+  const ox = pad, oy = pad;
+
+  // Helper: convert CAD gridY to canvas Y (flip — gridY=0 is bottom of canvas)
+  const cadY = (gy) => oy + (rows - gy) * cellH;
+  const cadX = (gx) => ox + gx * cellW;
+
+  // Grid
+  g.strokeStyle = '#334'; g.lineWidth = 1;
+  for (let c = 0; c <= cols; c++) {
+    g.beginPath(); g.moveTo(cadX(c), oy); g.lineTo(cadX(c), oy + rows * cellH); g.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    g.beginPath(); g.moveTo(ox, cadY(r)); g.lineTo(ox + cols * cellW, cadY(r)); g.stroke();
+  }
+
+  // Labels — CAD convention: 1,2,3... left-right at bottom; A,B,C... bottom-up at left
+  g.fillStyle = '#888'; g.font = '10px Arial'; g.textAlign = 'center';
+  for (let c = 0; c <= cols; c++) g.fillText(c + 1, cadX(c), oy + rows * cellH + 16);
+  g.textAlign = 'right';
+  for (let r = 0; r <= rows; r++) g.fillText(String.fromCharCode(65 + r), ox - 8, cadY(r) + 4);
+
+  // Ax nodes
+  g.fillStyle = '#555';
+  for (let c = 0; c <= cols; c++)
+    for (let r = 0; r <= rows; r++) {
+      g.beginPath(); g.arc(cadX(c), cadY(r), 3, 0, Math.PI * 2); g.fill();
+    }
+
+  // Erased edges (red dashed)
+  g.save();
+  g.setLineDash([4, 3]); g.strokeStyle = '#f44'; g.lineWidth = 3;
+  classified.erasers.forEach(e => {
+    if (!e.edge) return;
+    const { dir, col, row } = e.edge;
+    if (dir === 'vertical') {
+      g.beginPath();
+      g.moveTo(cadX(col), cadY(row));
+      g.lineTo(cadX(col), cadY(row + 1));
+      g.stroke();
+    } else {
+      g.beginPath();
+      g.moveTo(cadX(col), cadY(row));
+      g.lineTo(cadX(col + 1), cadY(row));
+      g.stroke();
+    }
+  });
+  g.restore();
+
+  // Rooms (green fill)
+  classified.rooms.forEach(r => {
+    g.fillStyle = 'rgba(76, 175, 80, 0.3)';
+    // Cell (cellX, cellY): bottom-left corner at (cellX, cellY), top-right at (cellX+1, cellY+1)
+    const x = cadX(r.cellX), y = cadY(r.cellY + 1); // top of cell in canvas
+    if (r.span?.type === 'vertical') {
+      g.fillRect(cadX(r.cellX - 0.5), y, cellW * 2, cellH);
+    } else if (r.span?.type === 'horizontal') {
+      g.fillRect(x, cadY(r.cellY + 1.5), cellW, cellH * 2);
+    } else {
+      g.fillRect(x, y, cellW, cellH);
+    }
+    g.fillStyle = '#4CAF50'; g.font = 'bold 9px Arial'; g.textAlign = 'center';
+    g.fillText(r.name, x + cellW / 2, y + cellH / 2 + 3);
+  });
+
+  // Windows (blue diamonds)
+  classified.windows.forEach(w => {
+    if (!w.edge) return;
+    const { dir, col, row } = w.edge;
+    let cx, cy;
+    if (dir === 'vertical') { cx = cadX(col); cy = (cadY(row) + cadY(row + 1)) / 2; }
+    else { cx = (cadX(col) + cadX(col + 1)) / 2; cy = cadY(row); }
+    g.fillStyle = '#4fc3f7';
+    g.beginPath(); g.moveTo(cx, cy - 6); g.lineTo(cx + 6, cy); g.lineTo(cx, cy + 6); g.lineTo(cx - 6, cy); g.closePath(); g.fill();
+  });
+
+  // Doors (orange squares)
+  classified.doors.forEach(d => {
+    if (!d.edge) return;
+    const { dir, col, row } = d.edge;
+    let cx, cy;
+    if (dir === 'vertical') { cx = cadX(col); cy = (cadY(row) + cadY(row + 1)) / 2; }
+    else { cx = (cadX(col) + cadX(col + 1)) / 2; cy = cadY(row); }
+    g.fillStyle = '#ffab40';
+    g.fillRect(cx - 5, cy - 5, 10, 10);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   EXPORT
+   ════════════════════════════════════════════════════════════ */
+
+function downloadJSON() {
+  if (!graphResult) return;
+  const blob = new Blob([JSON.stringify(graphResult, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'board_game_graph.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function postToAPI() {
+  if (!graphResult) return;
+  try {
+    const res = await fetch('http://localhost:8000/graph', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(graphResult),
+    });
+    if (res.ok) {
+      addStatus('ok', '✅ Graph trimis cu succes la backend!');
+    } else {
+      addStatus('warn', `⚠️ Eroare backend: ${res.status} ${res.statusText}`);
+    }
+  } catch (err) {
+    addStatus('warn', `❌ Nu s-a putut conecta la backend: ${err.message}`);
+  }
+}
+
+function sendToParent() {
+  if (!graphResult) return;
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'board-game-import', graph: graphResult }, '*');
+    addStatus('ok', '✅ Trimis la BubbleGraph — se importă...');
+  } else {
+    addStatus('warn', '⚠️ Scannerul nu este deschis într-un iframe BubbleGraph.');
+  }
+}
+
+/* ── Embedded mode: show import button when inside iframe ── */
+const isEmbedded = (window.parent && window.parent !== window);
+if (isEmbedded) {
+  document.getElementById('importBtn').style.display = '';
+  // Hide standalone-only buttons in embedded mode
+  document.getElementById('postBtn').style.display = 'none';
+  document.getElementById('downloadBtn').style.display = 'none';
+}
+</script>
+</body>
+</html>

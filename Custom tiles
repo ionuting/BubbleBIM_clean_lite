@@ -1,0 +1,210 @@
+# IFC Custom GLB Tiles — Implementation Status
+
+## Approach: Frontend-Only (Option B)
+No Python backend required. All processing runs in the browser.
+Zero new npm packages needed (web-ifc, GLTFExporter, three-mesh-bvh already installed).
+
+---
+
+## Files Created
+
+### src/lib/tileManifest.ts
+Shared types used across all pipeline files.
+
+Types:
+  TileBBox           { min: [x,y,z], max: [x,y,z] }  — metres, Three.js Y-up
+  FloorInfo          { id, name, elevationM, heightM }
+  TileManifestEntry  { id, floor, gridCol, gridRow, bbox, elementCount, categories[] }
+  RootManifest       { version, projectName, sourceHash, createdAt, bounds, floors[], tiles[] }
+  ElementMeta        { expressID, category, name, type, tileId, properties? }
+  WorkerElementGeom  { expressID, category, positions, normals, indices, r,g,b,a, bbox }
+
+Worker message protocol:
+  Main → Worker:  { type:'process', ifcBuffer, gridSizeM, wasmPath }
+  Worker → Main:  progress | tile_data | complete | error
+
+Category → color defaults:
+  wall       #d1c7b8  slab    #b3b3b3  column  #8c8c99
+  beam       #80808e  window  #80bff2  door    #b88a59
+  stair      #c7b89e  roof    #a66147  other   #a6a6a6
+
+IFC type code → category mapping (numeric codes, no web-ifc import needed).
+
+---
+
+### src/lib/ifcTileCache.ts
+IndexedDB persistence. No external dependencies (native IDB API).
+
+Database: ifctiles_v1  (version 1)
+Object stores:
+  glb        key: "${hash}::${tileId}"  →  ArrayBuffer  (GLB binary)
+  manifests  key: hash                  →  JSON string
+  metadata   key: hash                  →  JSON string
+  projects   key: hash                  →  JSON string { name, date, tileCount }
+
+Exports:
+  hashBuffer(buf)                        → SHA-256 first 16 hex chars (Web Crypto API)
+  cacheTileGLB / loadTileGLB
+  cacheManifest / loadManifest
+  cacheMetadata / loadMetadata
+  registerProject / listCachedProjects / deleteProject / projectExists
+
+---
+
+### src/lib/ifcTilePipeline.worker.ts
+Web Worker — runs off main thread. Imports only web-ifc (WASM).
+
+Pipeline:
+  1. IfcAPI.Init() with SetWasmPath('/node_modules/web-ifc/')
+  2. OpenModel(uint8Array, { COORDINATE_TO_ORIGIN:true, USE_FAST_BOOLS:true })
+  3. Parse IFCBUILDINGSTOREY → FloorInfo[] sorted by elevation
+  4. GetLineIDsWithType × 15 element types → expressID→{category,typeName,name} map
+  5. StreamAllMeshes:
+       per mesh → deinterleave pos+norm → applyMatrix4 (flatTransformation)
+       → compute bbox → assignFloor(centroidY) → gridKey(centroidX,centroidZ,20m)
+       → accumulate into Map<tileId, TileAccum>
+  6. Per tile: postMessage tile_data with Float32Array/Uint32Array transferred (zero-copy)
+  7. postMessage complete with RootManifest + ElementMetaMap
+
+Geometry helpers (pure math, no Three.js):
+  deinterleave(interleaved)             splits [x,y,z,nx,ny,nz,...] into pos+norm
+  applyMatrix4ToPositions(pos, m16)     transforms positions in-place
+  applyMatrix4ToNormals(norm, m16)      transforms normals in-place (+ re-normalise)
+  computeBBox(positions)                AABB of flat position array
+  unionBBox(a, b)                       merge two AABBs
+
+Floor assignment:  highest storey elevation ≤ element centroid Y
+Tile ID format:    "F0_G2_1"  (floor_gridCol_gridRow, grid cell = 20m × 20m)
+
+---
+
+### src/components/views/IFCTilesViewer.tsx
+Main React component. Tab type: 'ifc-tiles'.
+
+Phases:
+  idle        File drop area + cached project list
+  hashing     SHA-256 of IFC buffer (crypto.subtle)
+  checking    IndexedDB lookup
+  processing  Worker running (progress bar %)
+  building    GLTFExporter building GLB tiles (main thread, 5 tiles/yield)
+  streaming   Normal render loop
+  error       Error message + retry
+
+Three.js scene setup:
+  WebGLRenderer  antialias + shadow maps (PCFSoft)
+  HemisphereLight + DirectionalLight with shadow
+  PerspectiveCamera  FOV 50, near 0.1, far 2000
+  OrbitControls  damping 0.1, distance 0.5–800
+  GridHelper  200m × 40 cells
+  Fog  100–500m
+
+TileStreamingManager (class inside component):
+  Frustum test per tile bbox every requestAnimationFrame
+  Sort load queue by camera distance (nearest first)
+  Max 3 concurrent GLTFLoader.parse() calls
+  LRU eviction when totalBytes > 512 MB
+  LOD switch distance: 40m × 4 = 160m unload threshold
+  BVH: geometry.computeBoundsTree() on every loaded mesh
+  Floor filter: setFloorFilter(floorIds[]) — instantly evicts hidden floors
+
+buildTileGLB(elements[]) → ArrayBuffer:
+  Creates THREE.Scene from WorkerElementGeom[]
+  MeshLambertMaterial with element color + transparency for windows/spaces
+  mesh.userData = { expressID, category, name } → preserved in GLB extras
+  GLTFExporter({ binary: true, embedImages: false })
+
+Selection:
+  raycaster.firstHitOnly = true  (three-mesh-bvh optimisation)
+  Raycast against all loaded tile meshes
+  hits[0].object.userData.expressID → ElementMeta lookup → properties panel
+
+UI:
+  Toolbar: project name, floor filter buttons (one per storey), stats, change file
+  Drop zone: drag-and-drop + file input + cached project list with delete
+  Progress overlay: phase label + message + animated progress bar
+  Properties panel: category, name, IFC type, expressID, tile, custom properties
+
+---
+
+## Modified Files
+
+src/store/index.ts
+  Added 'ifc-tiles' to ViewTabType union
+
+src/components/views/ViewTabBar.tsx
+  Added 'ifc-tiles': '📦' to TAB_ICONS
+
+src/components/bubble-graph/BubbleGraphPanel.tsx
+  Import: IFCTilesViewer
+  Explorer sidebar: "📦 IFC Tiles" section with "+ New IFC Tiles Viewer" button
+  Render case: activeTab?.type === 'ifc-tiles' → <IFCTilesViewer />
+
+---
+
+## Full Data Flow
+
+  Drop .ifc file
+       │
+  crypto.subtle SHA-256  →  16-char hex hash
+       │
+  IndexedDB: manifests[hash] exists?
+       │ YES → load manifest + metadata → TileStreamingManager.setProject()
+       │ NO  ↓
+  new Worker(ifcTilePipeline.worker.ts, { type:'module' })
+  postMessage({ type:'process', ifcBuffer }, [ifcBuffer])   ← zero-copy transfer
+       │
+  [Worker] web-ifc WASM parses IFC
+  [Worker] postMessage tile_data × N  ← Float32Array/Uint32Array transferred
+  [Worker] postMessage complete
+       │
+  [Main] receive tile_data[] → accumulate in pendingTilesRef
+  [Main] receive complete → iterate pending tiles:
+           buildTileGLB(elements) → GLTFExporter → ArrayBuffer
+           cacheTileGLB(hash, tileId, glb) → IndexedDB
+           every 5 tiles: await setTimeout(0)  ← yield to event loop
+  [Main] cacheManifest + cacheMetadata + registerProject
+       │
+  TileStreamingManager.setProject(hash, manifest)
+       │
+  requestAnimationFrame loop:
+    controls.update()
+    streaming.update(camera)  →  frustum cull → load/evict tiles
+    renderer.render(scene, camera)
+
+---
+
+## No New Dependencies Required
+
+web-ifc          0.0.77   already installed — WASM IFC parser (used in Worker)
+three            0.182    already installed — BufferGeometry, Scene, GLTFExporter
+three-mesh-bvh   transitive via three-bvh-csg — BVH raycasting
+GLTFExporter     three/examples/jsm — already used in WorldViewer.tsx
+OrbitControls    three/examples/jsm — already used in IFC3DFloatingPanel.tsx
+IndexedDB        built-in browser API — no wrapper library needed
+crypto.subtle    built-in browser API — SHA-256 hashing
+
+---
+
+## Roadmap / Next Steps
+
+Phase 2 — Draco compression
+  Add gltf-transform (@gltf-transform/core + @gltf-transform/extensions)
+  Compress GLB before caching: transform → draco encoder → smaller IndexedDB size
+  Decoder: DRACOLoader from three/examples/jsm already available
+
+Phase 3 — LOD levels
+  Worker generates 2 geometry sets: full detail (LOD0) + simplified (LOD1, 30% triangles)
+  TileStreamingManager: load LOD1 first (fast), swap to LOD0 when dist < 30m
+
+Phase 4 — Instancing detection
+  Worker: hash geometry fingerprint per element type → detect identical shapes
+  Replace N individual meshes with 1 THREE.InstancedMesh per unique geometry
+  Reduces GPU draw calls for windows/doors/columns significantly
+
+Phase 5 — Occlusion culling
+  Integrate three-mesh-bvh OcclusionHelper or custom GPU readback
+  Skip tiles fully behind other opaque tiles
+
+Phase 6 — Web Worker pool
+  Use Comlink or manual round-robin to run 2–4 Workers in parallel
+  Divide IFC element types across workers → 2–4× faster initial processing

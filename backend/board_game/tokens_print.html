@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>BubbleGraph — Tokens Print</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  @media print {
+    body { margin: 0; background: #fff; }
+    .no-print { display: none !important; }
+    .page { box-shadow: none !important; break-after: page; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Arial', sans-serif; background: #e0e0e0; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 16px; }
+  .no-print { background: #fff; padding: 14px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: flex; gap: 12px; align-items: center; }
+  .no-print button { padding: 6px 18px; background: #1976d2; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.2); padding: 6mm; }
+  .page h2 { text-align: center; font-size: 11pt; margin-bottom: 4mm; color: #333; }
+  .token-grid { display: flex; flex-wrap: wrap; gap: 0; }
+  .token {
+    width: 30mm; height: 34mm;
+    border: 0.3mm dashed #bbb;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 1.5mm;
+    position: relative;
+  }
+  .token img { width: 20mm; height: 20mm; image-rendering: pixelated; }
+  .token .label { font-size: 6pt; font-weight: 600; margin-top: 1mm; color: #333; text-align: center; line-height: 1.2; }
+  .token .sublabel { font-size: 5pt; color: #888; margin-top: 0.5mm; }
+  .token .icon { font-size: 10pt; position: absolute; top: 1mm; right: 1.5mm; }
+  /* Color badges per type */
+  .token[data-type="room"] { background: #f0fff0; }
+  .token[data-type="eraser"] { background: #fff5f5; }
+  .token[data-type="window"] { background: #f0f8ff; }
+  .token[data-type="door"] { background: #fffff0; }
+  .cut-hint { text-align: center; font-size: 7pt; color: #aaa; margin-top: 3mm; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <span style="font-size:13px;font-weight:600">Tokenuri BubbleGraph — printează și decupează pe linii</span>
+  <button onclick="window.print()">🖨️ Printează</button>
+</div>
+
+<div class="page" id="page1">
+  <h2>🏠 Tokenuri Room</h2>
+  <div class="token-grid" id="room-tokens"></div>
+  <div class="cut-hint">✂ Decupează pe liniile punctate</div>
+</div>
+
+<div class="page" id="page2">
+  <h2>🧱 Tokenuri Eraser / Window / Door</h2>
+  <div class="token-grid" id="edge-tokens"></div>
+  <div class="cut-hint">✂ Decupează pe liniile punctate</div>
+</div>
+
+<script>
+/* ── QR helper ─────────────────────────────────────────── */
+function makeQRDataURL(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${count} ${count}">`;
+  for (let r = 0; r < count; r++)
+    for (let c = 0; c < count; c++)
+      if (qr.isDark(r, c))
+        svg += `<rect x="${c}" y="${r}" width="1" height="1" fill="#000"/>`;
+  svg += '</svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+function createToken(container, qrText, label, sublabel, icon, type) {
+  const div = document.createElement('div');
+  div.className = 'token';
+  div.dataset.type = type;
+  const img = document.createElement('img');
+  img.src = makeQRDataURL(qrText);
+  img.alt = qrText;
+  div.appendChild(img);
+
+  const lbl = document.createElement('div');
+  lbl.className = 'label';
+  lbl.textContent = label;
+  div.appendChild(lbl);
+
+  if (sublabel) {
+    const sub = document.createElement('div');
+    sub.className = 'sublabel';
+    sub.textContent = sublabel;
+    div.appendChild(sub);
+  }
+
+  if (icon) {
+    const ico = document.createElement('div');
+    ico.className = 'icon';
+    ico.textContent = icon;
+    div.appendChild(ico);
+  }
+
+  container.appendChild(div);
+}
+
+/* ── Generate room tokens ──────────────────────────────── */
+const roomContainer = document.getElementById('room-tokens');
+const rooms = [
+  { name: 'Living',   icon: '🛋️', count: 4, color: '#4CAF50' },
+  { name: 'Bedroom',  icon: '🛏️', count: 4, color: '#9C27B0' },
+  { name: 'Kitchen',  icon: '🍳', count: 2, color: '#FF9800' },
+  { name: 'Bathroom', icon: '🚿', count: 3, color: '#2196F3' },
+  { name: 'Hallway',  icon: '🚪', count: 2, color: '#607D8B' },
+  { name: 'Office',   icon: '💼', count: 2, color: '#795548' },
+  { name: 'Storage',  icon: '📦', count: 2, color: '#9E9E9E' },
+  { name: 'Laundry',  icon: '🧺', count: 2, color: '#00BCD4' },
+  { name: 'Dining',   icon: '🍽️', count: 2, color: '#E91E63' },
+  { name: 'Balcony',  icon: '🌿', count: 2, color: '#8BC34A' },
+];
+
+rooms.forEach(room => {
+  for (let i = 0; i < room.count; i++) {
+    createToken(roomContainer, `BB:R:${room.name}`, room.name, `room token`, room.icon, 'room');
+  }
+});
+
+/* ── Generate edge tokens ──────────────────────────────── */
+const edgeContainer = document.getElementById('edge-tokens');
+
+// Erasers
+for (let i = 0; i < 8; i++) {
+  createToken(edgeContainer, 'BB:E', 'ERASER', 'șterge perete', '❌', 'eraser');
+}
+
+// Windows
+const windows = [
+  { size: '120x150', label: 'Fereastră 120×150', count: 4 },
+  { size: '90x120',  label: 'Fereastră 90×120',  count: 4 },
+  { size: '60x60',   label: 'Fereastră 60×60',   count: 2 },
+  { size: '180x150', label: 'Fereastră 180×150', count: 2 },
+];
+windows.forEach(w => {
+  for (let i = 0; i < w.count; i++) {
+    createToken(edgeContainer, `BB:W:${w.size}`, w.label, `${w.size} cm`, '🪟', 'window');
+  }
+});
+
+// Doors
+const doors = [
+  { size: '90x210',  label: 'Ușă 90×210',  count: 4 },
+  { size: '80x210',  label: 'Ușă 80×210',  count: 4 },
+  { size: '70x210',  label: 'Ușă 70×210',  count: 2 },
+  { size: '120x210', label: 'Ușă dublă 120', count: 2 },
+];
+doors.forEach(d => {
+  for (let i = 0; i < d.count; i++) {
+    createToken(edgeContainer, `BB:D:${d.size}`, d.label, `${d.size} cm`, '🚪', 'door');
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+{
+  "source": "DEVIZ PE CATEGORII.ods",
+  "catalogVersion": "deviz-zidarie-confinata-1",
+  "categories": [
+    "Zidarie",
+    "Stalpisori",
+    "Centuri",
+    "Planseu lemn",
+    "Sarpanta",
+    "Invelitoare",
+    "Sapa egalizare",
+    "Tencuiala",
+    "Termoizolatie",
+    "Vopsitorii",
+    "Diverse",
+    "Soclu"
+  ],
+  "articles": [
+    {
+      "id": "0001_00201A01_02",
+      "symbol": "00201A01 02",
+      "denumire": "ZIDARIE LA PERETI STRUCTURALI DIN BLOCURI CERAMICE POROTHERM 38 (250X380X238) CU LOCAS DE MORTAR",
+      "unit": "mc",
+      "categorie": "Zidarie",
+      "categorie_code": "0001",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0001_RPCE26A_09",
+      "symbol": "RPCE26A 09",
+      "denumire": "HIDROIZOLATIE DIN EMULSIE BITUMINOASA APLICATA LA RECE: 1 STRAT DE AMORSA + 1 STRAT DE EMULSIE",
+      "unit": "mp",
+      "categorie": "Zidarie",
+      "categorie_code": "0001",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0002_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "categorie": "Stalpisori",
+      "categorie_code": "0002",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0002_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "categorie": "Stalpisori",
+      "categorie_code": "0002",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0002_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "categorie": "Stalpisori",
+      "categorie_code": "0002",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0002_CC01A1_02",
+      "symbol": "CC01A1 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 6 MM",
+      "unit": "kg",
+      "categorie": "Stalpisori",
+      "categorie_code": "0002",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0003_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "categorie": "Centuri",
+      "categorie_code": "0003",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0003_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "categorie": "Centuri",
+      "categorie_code": "0003",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0003_CC01A1_02",
+      "symbol": "CC01A1 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 6 MM",
+      "unit": "kg",
+      "categorie": "Centuri",
+      "categorie_code": "0003",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0003_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "categorie": "Centuri",
+      "categorie_code": "0003",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0004_RPCH05A_91",
+      "symbol": "RPCH05A 91",
+      "denumire": "PLANSEU DE LEMN CU DECHID.PINA LA 4 M EXEC.DIN GRI NZI LEMN DE RASIN.SAU FOIOASE 24MM PE SIPCI24X48MM",
+      "unit": "mp",
+      "categorie": "Planseu lemn",
+      "categorie_code": "0004",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0004_RPCE19C_09",
+      "symbol": "RPCE19C 09",
+      "denumire": "ST.TERMOIZOL,PROD.VATA MIN,TERASE-ACOP-PLANS-PER:S ALTELE VATA MINERALA,PODURI NECIRC,S.ORIZ-INCL<20%",
+      "unit": "mp",
+      "categorie": "Planseu lemn",
+      "categorie_code": "0004",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0005_CE28A_02",
+      "symbol": "CE28A 02",
+      "denumire": "SARPANTA PE SCAUNE LEMN ECARISAT,CONTUR REGULAT 1. ..4 PANTE PT INCERCARI CLIMATICE NORMALE",
+      "unit": "mp",
+      "categorie": "Sarpanta",
+      "categorie_code": "0005",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE08A_02",
+      "symbol": "CE08A 02",
+      "denumire": "COAME PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE07A_02",
+      "symbol": "CE07A 02",
+      "denumire": "INVELITORI DIN TABLA ONDULATA TIP LINDAB - TABLA C UTATA (TIGLE MATALICE)",
+      "unit": "mp",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE08B_02",
+      "symbol": "CE08B 02",
+      "denumire": "DOLII PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE08C_02",
+      "symbol": "CE08C 02",
+      "denumire": "PAZII PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE08D_02",
+      "symbol": "CE08D 02",
+      "denumire": "STREASINI PT INVELITORI DIN TABLA ONDULATA SI PRO FILATA TIP LINDAB",
+      "unit": "ml",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0006_CE08E_02",
+      "symbol": "CE08E 02",
+      "denumire": "SORTURI PT INVELITORI DIN TABLA ONDULATA SI PROFI LATA TIP LINDAB",
+      "unit": "ml",
+      "categorie": "Invelitoare",
+      "categorie_code": "0006",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0007_CG01F1_82",
+      "symbol": "CG01F1 82",
+      "denumire": "SAPA SUPORT DIN IPSOS AUTONIVELATOARE SUB PARDOSEL I DE 3CM GROSIME",
+      "unit": "mp",
+      "categorie": "Sapa egalizare",
+      "categorie_code": "0007",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0011_CF24A_02",
+      "symbol": "CF24A 02",
+      "denumire": "TENCUIELI INTERIOARE DIN IPSOS DE 1 CM GROSIME, AP LICATE MANUAL",
+      "unit": "mp",
+      "categorie": "Tencuiala",
+      "categorie_code": "0011",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0011_CF06B1_82",
+      "symbol": "CF06B1 82",
+      "denumire": "TENCUIELI EXTERIOARE OBISNUITE,DRISCUITE PE ZIDURI ,IN GROSIME MEDIE DE 2,5CM",
+      "unit": "mp",
+      "categorie": "Tencuiala",
+      "categorie_code": "0011",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0012_00107A011_02",
+      "symbol": "00107A011 02",
+      "denumire": "TERMOIZOLARE FATADE - DEKO THERM CU POLISTIREN EXP ANDAT CU ADEZIV \"DEKOMAX\"",
+      "unit": "mp",
+      "categorie": "Termoizolatie",
+      "categorie_code": "0012",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0013_CN05A_02",
+      "symbol": "CN05A 02",
+      "denumire": "VOPSITORII INTERIOARE CU VOPSELE LAVABILE ACRILICE APLICATE PE SUPORT DE GLET DE IPSOS",
+      "unit": "mp",
+      "categorie": "Vopsitorii",
+      "categorie_code": "0013",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0013_CN11A_02",
+      "symbol": "CN11A 02",
+      "denumire": "VOPSITORII EXTERIOARE CU VOPSELE LAVABILE ACRILICE APLICATE PE TENCUIALA DRISCUITA",
+      "unit": "mp",
+      "categorie": "Vopsitorii",
+      "categorie_code": "0013",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0015_CK26A_02",
+      "symbol": "CK26A 02",
+      "denumire": "GLAFURI MONTATE LA FERESTRE DIN MASE PLASTICE",
+      "unit": "ml",
+      "categorie": "Diverse",
+      "categorie_code": "0015",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0016_RPCE26A_09",
+      "symbol": "RPCE26A 09",
+      "denumire": "HIDROIZOLATIE DIN EMULSIE BITUMINOASA APLICATA LA RECE: 1 STRAT DE AMORSA + 1 STRAT DE EMULSIE",
+      "unit": "mp",
+      "categorie": "Soclu",
+      "categorie_code": "0016",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0016_CD03A_02",
+      "symbol": "CD03A 02",
+      "denumire": "ZID DIN CARAMIDA PLINA PRESATA ARSA 240X115X63 MM CU M25Z PROT HIDROIZ SUBSOL TENC 0,5-1CM ZID 7,5CM",
+      "unit": "mc",
+      "categorie": "Soclu",
+      "categorie_code": "0016",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0016_00301E_02",
+      "symbol": "00301E 02",
+      "denumire": "TENCUIALA PENTRU SOCLU BAUMIT - 3 CM",
+      "unit": "mp",
+      "categorie": "Soclu",
+      "categorie_code": "0016",
+      "capitol": "4. Investiție de bază"
+    }
+  ]
+}

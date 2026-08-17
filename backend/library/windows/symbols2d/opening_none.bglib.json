@@ -1,0 +1,129 @@
+{
+  "name": "opening_none",
+  "defaultWidth": 1009,
+  "defaultHeight": 109,
+  "bounds": {
+    "minX": -9.0,
+    "maxX": 1000.0,
+    "minY": -9.0,
+    "maxY": 100.0
+  },
+  "insertionPoint": {
+    "x": 0.0,
+    "y": 0.0
+  },
+  "sliders": [
+    {
+      "id": "slider_length",
+      "axis": "x",
+      "factor": 1.0,
+      "polygon": [
+        [
+          883.864,
+          -160.768
+        ],
+        [
+          1021.418,
+          -160.768
+        ],
+        [
+          1023.637,
+          260.768
+        ],
+        [
+          886.083,
+          260.768
+        ]
+      ]
+    }
+  ],
+  "geometry": [
+    {
+      "type": "circle",
+      "layer": "0",
+      "color": "#000000",
+      "lineweight": 0.25,
+      "center": [
+        0.0,
+        0.0
+      ],
+      "radius": 9.0
+    },
+    {
+      "type": "lwpolyline",
+      "layer": "0",
+      "color": "#000000",
+      "lineweight": 0.25,
+      "closed": true,
+      "vertices": [
+        [
+          900.0,
+          0.0
+        ],
+        [
+          1000.0,
+          0.0
+        ],
+        [
+          1000.0,
+          100.0
+        ],
+        [
+          900.0,
+          100.0
+        ]
+      ]
+    },
+    {
+      "type": "lwpolyline",
+      "layer": "0",
+      "color": "#000000",
+      "lineweight": 0.25,
+      "closed": true,
+      "vertices": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          100.0,
+          0.0
+        ],
+        [
+          100.0,
+          100.0
+        ],
+        [
+          0.0,
+          100.0
+        ]
+      ]
+    },
+    {
+      "type": "lwpolyline",
+      "layer": "0",
+      "color": "#000000",
+      "lineweight": 0.25,
+      "closed": true,
+      "vertices": [
+        [
+          100.0,
+          60.0
+        ],
+        [
+          900.0,
+          60.0
+        ],
+        [
+          900.0,
+          40.0
+        ],
+        [
+          100.0,
+          40.0
+        ]
+      ]
+    }
+  ],
+  "labels": []
+}

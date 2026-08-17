@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "label": "Default",
+  "description": "Contemporary swing, sliding and folding doors in wood, glass or aluminium",
+  "era": "contemporary",
+  "material_palette": ["Lemn stejar", "Lemn MDF vopsit", "Sticlă / Aluminiu", "PVC"],
+  "frame_depth_mm": 200,
+  "standards": ["EN 14351-1"],
+  "note": "Profil de referință pentru clădiri rezidențiale și comerciale"
+}

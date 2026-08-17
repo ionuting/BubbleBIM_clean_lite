@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "moduleResolution": "bundler",
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@ifc-lite/create": ["./packages/create/src"],
+      "@ifc-lite/drawing-2d": ["./packages/drawing-2d/src"],
+      "@ifc-lite/geometry": ["./packages/geometry/src"],
+      "@ifc-lite/data": ["./packages/data/src"],
+      "@ifc-lite/wasm": ["./packages/wasm/pkg"],
+      "@armare/nucleu": ["./packages/armare-nucleu/src"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}

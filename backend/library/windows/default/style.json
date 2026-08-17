@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "label": "Default",
+  "description": "Contemporary PVC/aluminium windows and doors, standard European profiles",
+  "era": "contemporary",
+  "material_palette": ["PVC alb", "PVC antracit", "Aluminiu RAL 9016", "Aluminiu RAL 7016"],
+  "frame_depth_mm": 200,
+  "standards": ["EN 14351-1", "SR EN ISO 6946"],
+  "note": "Profil de referință pentru clădiri rezidențiale și comerciale moderne"
+}

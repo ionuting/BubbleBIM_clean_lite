@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-lite/
+dist-minimal/
+dist-clean-lite/
+build/
+# vite-plugin-cesium writes here when outDir is absolute — never commit it
+apps/clean-lite/Users/
+*.tsbuildinfo
+*.zip
+
+# Vite
+.vite/
+
+# Environment — real secrets. Only the .example templates are committed.
+.env
+.env.local
+.env.*.local
+deploy/.env
+deploy/.env.deploy
+deploy/data/
+
+# ── Backend runtime state — never commit (user data / secrets) ────────────
+backend/data/             # SQLite: user accounts, per-user projects, support threads
+backend/objects/          # version-history content-addressable blobs
+backend/history.json      # version-history commit log
+backend/bubble_graph.json # single-user live graph
+backend/backups/
+backend/uploads/          # user-uploaded IFC models
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln.DotSettings.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# C# / .NET
+BubbleGraphApp/bin/
+BubbleGraphApp/obj/
+BubbleGraphApp/*.user
+
+# Backend test scratch output
+backend/test_escape.py
+backend/test_escape_out.txt
+backend/test_esc*.db
+backend/test_esc*.db.wal
+backend/backend_test_out.txt
+backend/build_out.txt
+backend/bubble_graph.db
+backend/bubble_graph.db.wal
+
+# Tooling caches
+.codegraph/
+
+# Third-party asset pack — CC0 by Quaternius, not redistributed here.
+# See the README ("Optional: nature assets") for the download link.
+Ultimate Stylized Nature/
+
+# Vite temp config transpiles
+vite.config.ts.timestamp-*.mjs

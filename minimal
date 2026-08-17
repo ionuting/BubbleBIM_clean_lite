@@ -1,0 +1,12 @@
+
+> bubble-graph@1.14.1 dev /Users/ionutciuntuc/Documents/GitHub/BubbleBIM-Standalone
+> vite
+
+Re-optimizing dependencies because vite config has changed
+Port 3100 is in use, trying another one...
+
+  VITE v5.4.21  ready in 313 ms
+
+  ➜  Local:   http://localhost:3101/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help

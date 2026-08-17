@@ -1,0 +1,5 @@
+# Imagine web: Clean Lite prebuilt pe Mac (dist-clean-lite/)
+FROM nginx:1.27-alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY dist-clean-lite/ /usr/share/nginx/html/
+EXPOSE 80

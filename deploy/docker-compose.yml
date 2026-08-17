@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    image: bubblebim-api:latest
+    container_name: bubblebim-api
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://bbim.ciuntucbimstudio.ro}
+      JWT_SECRET: ${JWT_SECRET:-change-me-bubblebim-jwt}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      BUBBLEBIM_DATA_DIR: /app/data
+    volumes:
+      - ./data/bubble_graph.json:/app/bubble_graph.json
+      - ./data/backups:/app/backups
+      - ./data/uploads:/app/uploads
+      - ./data/materials.yaml:/app/materials.yaml
+      - ./data/auth:/app/data
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    image: bubblebim:latest
+    container_name: bubblebim-web
+    restart: unless-stopped
+    ports:
+      - "3458:80"
+    depends_on:
+      - api

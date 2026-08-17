@@ -1,0 +1,1531 @@
+{
+  "formatVersion": 1,
+  "projectName": "My Building",
+  "savedAt": "2026-04-23T10:05:49.573Z",
+  "model": {
+    "nodes": [
+      {
+        "id": "wall_1775653303651_jomnb9gop",
+        "type": "wall",
+        "name": "Wall1",
+        "x": 3000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2800,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "storey_1775653294970_ou3kk3c60o",
+        "type": "storey",
+        "name": "1",
+        "x": 8000,
+        "y": 6000,
+        "parentId": null,
+        "properties": {
+          "bottomElevation": 0,
+          "topElevation": 2800,
+          "axesX": [
+            0,
+            4000,
+            6000,
+            14000
+          ],
+          "axesY": [
+            0,
+            4000,
+            6000,
+            10000
+          ],
+          "width": 14000,
+          "height": 10000,
+          "discipline": "architectural"
+        }
+      },
+      {
+        "id": "node_1776426958349_10z7k1khgo4q",
+        "type": "window",
+        "name": "Window1",
+        "x": 3000,
+        "y": 440,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "window_type": "W-DBL-120x140",
+          "width": 1200,
+          "height": 1400,
+          "sill_height": 700,
+          "frame_depth": 100,
+          "offset": null,
+          "material": "PVC alb"
+        }
+      },
+      {
+        "id": "wall_1776427748386_28t4g6nv68g",
+        "type": "wall",
+        "name": "Wall2",
+        "x": 6000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "node_1776437158552_noea1b9433a",
+        "type": "door",
+        "name": "Door1",
+        "x": 6000,
+        "y": 1560,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar",
+          "flip_across": true
+        }
+      },
+      {
+        "id": "wall_1776437360183_wgeb6ttopzr",
+        "type": "wall",
+        "name": "Wall3",
+        "x": 1000,
+        "y": 3000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776437361836_4xdu14eph2d",
+        "type": "wall",
+        "name": "Wall4",
+        "x": 3000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776437363605_6mljowp2hiw",
+        "type": "wall",
+        "name": "Wall5",
+        "x": 5000,
+        "y": 3000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "node_1776437374864_67go3xw0v2",
+        "type": "room",
+        "name": "Room1",
+        "x": 3028.2509981581334,
+        "y": 3037.7957778284112,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "contour_offset": "-125",
+          "covering_height": 2650,
+          "covering_thickness": 15,
+          "covering_offset": "-125"
+        }
+      },
+      {
+        "id": "node_1776487010187_2mfk9vg13mp",
+        "type": "shell",
+        "name": "Shell1",
+        "x": 20424.59698753907,
+        "y": 6690.267476694564,
+        "parentId": null,
+        "properties": {
+          "material": "Beton C30/37",
+          "contour_offset": "325",
+          "thickness": 200
+        }
+      },
+      {
+        "id": "wall_1776493156441_vl31eaog34o",
+        "type": "wall",
+        "name": "Wall6",
+        "x": 11000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "node_1776493161687_z1wd2gmmue",
+        "type": "window",
+        "name": "Window2",
+        "x": 11000,
+        "y": 1560,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "window_type": "W-DBL-120x140",
+          "width": 1200,
+          "height": 1400,
+          "sill_height": 700,
+          "frame_depth": 100,
+          "offset": null,
+          "material": "PVC alb"
+        }
+      },
+      {
+        "id": "node_1776508653195_dgb829n4bwl",
+        "type": "section",
+        "name": "Section1",
+        "x": 10012.381032818588,
+        "y": 4703.162873318879,
+        "parentId": null,
+        "properties": {
+          "cut_depth_mm": 5000,
+          "cut_height_mm": 3000,
+          "cut_plane_offset_mm": 1000,
+          "start_elevation_mm": 0,
+          "offset_left_mm": 0,
+          "offset_right_mm": 0,
+          "flipped": true,
+          "show_in_plan": true
+        }
+      },
+      {
+        "id": "wall_1776660422247_dsx9yub4pew",
+        "type": "wall",
+        "name": "Wall7",
+        "x": 5000,
+        "y": 6000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660424045_qv8d274rump",
+        "type": "wall",
+        "name": "Wall8",
+        "x": 5000,
+        "y": 9000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660429691_hi8y24con9u",
+        "type": "wall",
+        "name": "Wall9",
+        "x": 6000,
+        "y": 7000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660432382_2o87jmmocqf",
+        "type": "wall",
+        "name": "Wall10",
+        "x": 7000,
+        "y": 3000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660433841_iicazbpi28p",
+        "type": "wall",
+        "name": "Wall11",
+        "x": 7000,
+        "y": 6000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660435734_9d47ia6nnv",
+        "type": "wall",
+        "name": "Wall12",
+        "x": 7000,
+        "y": 9000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660438400_vdvsio0ixnd",
+        "type": "wall",
+        "name": "Wall13",
+        "x": 1000,
+        "y": 6000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660439917_c68uq6286o",
+        "type": "wall",
+        "name": "Wall14",
+        "x": 1000,
+        "y": 9000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660441791_nxcr52vc499",
+        "type": "wall",
+        "name": "Wall15",
+        "x": 3000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660443475_uk5nu1i1f9e",
+        "type": "wall",
+        "name": "Wall16",
+        "x": 6000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660444825_10t5079k44jr",
+        "type": "wall",
+        "name": "Wall17",
+        "x": 11000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660449423_15uhmsqe0vq",
+        "type": "wall",
+        "name": "Wall18",
+        "x": 11000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660451144_pr9mdrtk63l",
+        "type": "wall",
+        "name": "Wall19",
+        "x": 15000,
+        "y": 3000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660455246_dk1wdphowb",
+        "type": "wall",
+        "name": "Wall20",
+        "x": 15000,
+        "y": 6000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "wall_1776660456735_op3hkv1xwi",
+        "type": "wall",
+        "name": "Wall21",
+        "x": 14979.38779695743,
+        "y": 9007.900060675634,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "wall_type": "W25",
+          "height": 2500,
+          "offset_start": 0,
+          "offset_end": 0,
+          "has_beam": "True",
+          "beam_section": "B20x30",
+          "material": "Beton C30/37",
+          "offsetStart": 125,
+          "offsetEnd": 125
+        }
+      },
+      {
+        "id": "node_1776660495282_b5cucggzag7",
+        "type": "window",
+        "name": "Window3",
+        "x": 3000,
+        "y": 12323.580382547261,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "window_type": "W-DBL-120x140",
+          "width": 1200,
+          "height": 1400,
+          "sill_height": 700,
+          "frame_depth": 100,
+          "offset": null,
+          "material": "PVC alb"
+        }
+      },
+      {
+        "id": "node_1776660500612_6ef4xzrmb4",
+        "type": "window",
+        "name": "Window4",
+        "x": 11025.704206313214,
+        "y": 12599.713656312064,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "window_type": "W-FIX-100x120",
+          "width": 1000,
+          "height": 1200,
+          "sill_height": 900,
+          "frame_depth": 100,
+          "offset": null,
+          "material": "PVC alb"
+        }
+      },
+      {
+        "id": "node_1776660501630_4m9uwd5kdc3",
+        "type": "window",
+        "name": "Window5",
+        "x": 5922.8873810603545,
+        "y": 12419.784212119557,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "window_type": "W-FIX-60x60",
+          "width": 600,
+          "height": 600,
+          "sill_height": 1500,
+          "frame_depth": 100,
+          "offset": null,
+          "material": "PVC alb"
+        }
+      },
+      {
+        "id": "node_1776660508925_iyl2w0qrhm",
+        "type": "door",
+        "name": "Door2",
+        "x": 4008.6989007971183,
+        "y": 2443.908274039582,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar",
+          "flip_along": true
+        }
+      },
+      {
+        "id": "node_1776660509976_uoo0u8wr1jr",
+        "type": "door",
+        "name": "Door3",
+        "x": 8553.794425017724,
+        "y": 1948.221641588779,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar"
+        }
+      },
+      {
+        "id": "node_1776660511106_jxjvg7rmfue",
+        "type": "door",
+        "name": "Door4",
+        "x": 3763.85819335433,
+        "y": 6077.259447469307,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar",
+          "flip_across": true
+        }
+      },
+      {
+        "id": "node_1776660511817_okxjk87lyi",
+        "type": "door",
+        "name": "Door5",
+        "x": 8252.060041810395,
+        "y": 5761.726604367994,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar"
+        }
+      },
+      {
+        "id": "node_1776660512848_xiewk4pa8rn",
+        "type": "door",
+        "name": "Door6",
+        "x": 5974.658858358977,
+        "y": 8157.588558346066,
+        "parentId": null,
+        "properties": {
+          "style": "default",
+          "door_type": "D-SWING-90x210",
+          "width": 900,
+          "height": 2100,
+          "sill_height": 0,
+          "frame_depth": 100,
+          "offset": null,
+          "swing": "left",
+          "material": "Lemn stejar",
+          "flip_across": true,
+          "flip_along": true
+        }
+      },
+      {
+        "id": "node_1776660703967_5xtk2hd4pvf",
+        "type": "room",
+        "name": "Room3",
+        "x": 5984.169623533458,
+        "y": 9948.654141110906,
+        "parentId": null,
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "covering_height": 2650,
+          "covering_thickness": 15
+        }
+      },
+      {
+        "id": "node_1776660779642_k7wnhfqw54",
+        "type": "room",
+        "name": "Room6",
+        "x": 11100.135306597573,
+        "y": 3017.3269250646913,
+        "parentId": null,
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "covering_height": 2650,
+          "covering_thickness": 15
+        }
+      },
+      {
+        "id": "node_1776660863982_5jub4e8y4ny",
+        "type": "room",
+        "name": "Room4",
+        "x": 3263.4006358326183,
+        "y": 8182.364818681367,
+        "parentId": null,
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "covering_height": 2650,
+          "covering_thickness": 15
+        }
+      },
+      {
+        "id": "node_1776660865220_bmq2g9t5rpr",
+        "type": "room",
+        "name": "Room5",
+        "x": 11086.787168662246,
+        "y": 7809.624618225167,
+        "parentId": null,
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "covering_height": 2650,
+          "covering_thickness": 15
+        }
+      },
+      {
+        "id": "node_1776660866587_m3637de371",
+        "type": "room",
+        "name": "Room6",
+        "x": 6004.198042366265,
+        "y": 4236.26358467689,
+        "parentId": null,
+        "properties": {
+          "name": "Room",
+          "height": 2650,
+          "covering_height": 2650,
+          "covering_thickness": 15
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_0_0",
+        "type": "ax",
+        "name": "1-A",
+        "x": 1000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 0,
+          "gridY": 0,
+          "axNodeIndex": 0
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_1_0",
+        "type": "ax",
+        "name": "2-A",
+        "x": 5000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 1,
+          "gridY": 0,
+          "axNodeIndex": 1
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_2_0",
+        "type": "ax",
+        "name": "3-A",
+        "x": 7000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 2,
+          "gridY": 0,
+          "axNodeIndex": 2
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_3_0",
+        "type": "ax",
+        "name": "4-A",
+        "x": 15000,
+        "y": 1000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 3,
+          "gridY": 0,
+          "axNodeIndex": 3
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_0_1",
+        "type": "ax",
+        "name": "1-B",
+        "x": 1000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 0,
+          "gridY": 1,
+          "axNodeIndex": 4
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_1_1",
+        "type": "ax",
+        "name": "2-B",
+        "x": 5000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 1,
+          "gridY": 1,
+          "axNodeIndex": 5
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_2_1",
+        "type": "ax",
+        "name": "3-B",
+        "x": 7000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 2,
+          "gridY": 1,
+          "axNodeIndex": 6
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_3_1",
+        "type": "ax",
+        "name": "4-B",
+        "x": 15000,
+        "y": 5000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 3,
+          "gridY": 1,
+          "axNodeIndex": 7
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_0_2",
+        "type": "ax",
+        "name": "1-C",
+        "x": 1000,
+        "y": 7000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 0,
+          "gridY": 2,
+          "axNodeIndex": 8
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_1_2",
+        "type": "ax",
+        "name": "2-C",
+        "x": 5000,
+        "y": 7000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 1,
+          "gridY": 2,
+          "axNodeIndex": 9
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_2_2",
+        "type": "ax",
+        "name": "3-C",
+        "x": 7000,
+        "y": 7000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 2,
+          "gridY": 2,
+          "axNodeIndex": 10
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_3_2",
+        "type": "ax",
+        "name": "4-C",
+        "x": 15000,
+        "y": 7000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 3,
+          "gridY": 2,
+          "axNodeIndex": 11
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_0_3",
+        "type": "ax",
+        "name": "1-D",
+        "x": 1000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 0,
+          "gridY": 3,
+          "axNodeIndex": 12
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_1_3",
+        "type": "ax",
+        "name": "2-D",
+        "x": 5000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 1,
+          "gridY": 3,
+          "axNodeIndex": 13
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_2_3",
+        "type": "ax",
+        "name": "3-D",
+        "x": 7000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 2,
+          "gridY": 3,
+          "axNodeIndex": 14
+        }
+      },
+      {
+        "id": "ax_storey_1775653294970_ou3kk3c60o_3_3",
+        "type": "ax",
+        "name": "4-D",
+        "x": 15000,
+        "y": 11000,
+        "parentId": "storey_1775653294970_ou3kk3c60o",
+        "properties": {
+          "has_column": "True",
+          "column_type": "C25x25",
+          "gridX": 3,
+          "gridY": 3,
+          "axNodeIndex": 15
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1775653303652_c3gvure4qf5_2",
+        "from": "wall_1775653303651_jomnb9gop",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_0"
+      },
+      {
+        "id": "edge_1775653303652_1lkapocungw_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_0",
+        "to": "wall_1775653303651_jomnb9gop"
+      },
+      {
+        "id": "edge_1776426968598_m00u6lz1ptg",
+        "from": "node_1776426958349_10z7k1khgo4q",
+        "to": "wall_1775653303651_jomnb9gop"
+      },
+      {
+        "id": "edge_1776427748387_qj12ys9cucm_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_0",
+        "to": "wall_1776427748386_28t4g6nv68g"
+      },
+      {
+        "id": "edge_1776427748387_dl7jo62tk3_2",
+        "from": "wall_1776427748386_28t4g6nv68g",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_0"
+      },
+      {
+        "id": "edge_1776437163773_cd7ievcdeyg",
+        "from": "node_1776437158552_noea1b9433a",
+        "to": "wall_1776427748386_28t4g6nv68g"
+      },
+      {
+        "id": "edge_1776437360183_fazx8232gv6_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_0",
+        "to": "wall_1776437360183_wgeb6ttopzr"
+      },
+      {
+        "id": "edge_1776437360183_pt3b0h68ve_2",
+        "from": "wall_1776437360183_wgeb6ttopzr",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_1"
+      },
+      {
+        "id": "edge_1776437361837_d5of7xwztyd_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_1",
+        "to": "wall_1776437361836_4xdu14eph2d"
+      },
+      {
+        "id": "edge_1776437361837_oe8m6dwkyp_2",
+        "from": "wall_1776437361836_4xdu14eph2d",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_1"
+      },
+      {
+        "id": "edge_1776437363605_jx1zrt05upj_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_1",
+        "to": "wall_1776437363605_6mljowp2hiw"
+      },
+      {
+        "id": "edge_1776437363605_opt18qr0jad_2",
+        "from": "wall_1776437363605_6mljowp2hiw",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_0"
+      },
+      {
+        "id": "edge_1776437383291_su73oafglvl",
+        "from": "node_1776437374864_67go3xw0v2",
+        "to": "wall_1775653303651_jomnb9gop"
+      },
+      {
+        "id": "edge_1776437385076_bb7ua2inqv",
+        "from": "node_1776437374864_67go3xw0v2",
+        "to": "wall_1776437363605_6mljowp2hiw"
+      },
+      {
+        "id": "edge_1776437386870_04xkbavdt0zh",
+        "from": "node_1776437374864_67go3xw0v2",
+        "to": "wall_1776437361836_4xdu14eph2d"
+      },
+      {
+        "id": "edge_1776437388506_2gh2nfsrapf",
+        "from": "node_1776437374864_67go3xw0v2",
+        "to": "wall_1776437360183_wgeb6ttopzr"
+      },
+      {
+        "id": "edge_1776488502149_y9mmydtjv5",
+        "from": "node_1776487010187_2mfk9vg13mp",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_0"
+      },
+      {
+        "id": "edge_1776488504557_a2mfxqemstq",
+        "from": "node_1776487010187_2mfk9vg13mp",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_0"
+      },
+      {
+        "id": "edge_1776488507969_6zmsqy7pkp6",
+        "from": "node_1776487010187_2mfk9vg13mp",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_3"
+      },
+      {
+        "id": "edge_1776488511199_tkp4m98satk",
+        "from": "node_1776487010187_2mfk9vg13mp",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_3"
+      },
+      {
+        "id": "edge_1776493156442_s92gvs8or7b_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_0",
+        "to": "wall_1776493156441_vl31eaog34o"
+      },
+      {
+        "id": "edge_1776493156442_c9h5hmlk56t_2",
+        "from": "wall_1776493156441_vl31eaog34o",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_0"
+      },
+      {
+        "id": "edge_1776493168177_pmrlt18t5y",
+        "from": "node_1776493161687_z1wd2gmmue",
+        "to": "wall_1776493156441_vl31eaog34o"
+      },
+      {
+        "id": "edge_1776508664162_xpg2cmfa49j",
+        "from": "node_1776508653195_dgb829n4bwl",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_1"
+      },
+      {
+        "id": "edge_1776508666296_3wdxwce7h9c",
+        "from": "node_1776508653195_dgb829n4bwl",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_1"
+      },
+      {
+        "id": "edge_1776660422248_1go0lhkkh4o_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_1",
+        "to": "wall_1776660422247_dsx9yub4pew"
+      },
+      {
+        "id": "edge_1776660422248_orhw8uugs9j_2",
+        "from": "wall_1776660422247_dsx9yub4pew",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_2"
+      },
+      {
+        "id": "edge_1776660424045_x84jhnkk50r_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_2",
+        "to": "wall_1776660424045_qv8d274rump"
+      },
+      {
+        "id": "edge_1776660424046_bbwkhwo17zt_2",
+        "from": "wall_1776660424045_qv8d274rump",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_3"
+      },
+      {
+        "id": "edge_1776660429692_74z91gr6nba_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_2",
+        "to": "wall_1776660429691_hi8y24con9u"
+      },
+      {
+        "id": "edge_1776660429692_troza1q4x9a_2",
+        "from": "wall_1776660429691_hi8y24con9u",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_2"
+      },
+      {
+        "id": "edge_1776660432383_hlfw4v2ne7e_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_0",
+        "to": "wall_1776660432382_2o87jmmocqf"
+      },
+      {
+        "id": "edge_1776660432383_wriu8kw1gsm_2",
+        "from": "wall_1776660432382_2o87jmmocqf",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_1"
+      },
+      {
+        "id": "edge_1776660433842_69fh8s38sdb_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_1",
+        "to": "wall_1776660433841_iicazbpi28p"
+      },
+      {
+        "id": "edge_1776660433842_0fkd66gkx286_2",
+        "from": "wall_1776660433841_iicazbpi28p",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_2"
+      },
+      {
+        "id": "edge_1776660435735_bmnekx09sq_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_2",
+        "to": "wall_1776660435734_9d47ia6nnv"
+      },
+      {
+        "id": "edge_1776660435735_dk5djyrua0i_2",
+        "from": "wall_1776660435734_9d47ia6nnv",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_3"
+      },
+      {
+        "id": "edge_1776660438401_liddway1gth_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_1",
+        "to": "wall_1776660438400_vdvsio0ixnd"
+      },
+      {
+        "id": "edge_1776660438401_j7ro2a2mfjr_2",
+        "from": "wall_1776660438400_vdvsio0ixnd",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_2"
+      },
+      {
+        "id": "edge_1776660439918_yvcqwipdv9_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_2",
+        "to": "wall_1776660439917_c68uq6286o"
+      },
+      {
+        "id": "edge_1776660439918_0bbmbippiwke_2",
+        "from": "wall_1776660439917_c68uq6286o",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_0_3"
+      },
+      {
+        "id": "edge_1776660441792_08cu8m21nt14_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_0_3",
+        "to": "wall_1776660441791_nxcr52vc499"
+      },
+      {
+        "id": "edge_1776660441792_mbqc4glr6y_2",
+        "from": "wall_1776660441791_nxcr52vc499",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_1_3"
+      },
+      {
+        "id": "edge_1776660443476_bvvrw95oe8b_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_1_3",
+        "to": "wall_1776660443475_uk5nu1i1f9e"
+      },
+      {
+        "id": "edge_1776660443476_cxwe7alihht_2",
+        "from": "wall_1776660443475_uk5nu1i1f9e",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_2_3"
+      },
+      {
+        "id": "edge_1776660444825_m8eo6nwf3yh_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_3",
+        "to": "wall_1776660444825_10t5079k44jr"
+      },
+      {
+        "id": "edge_1776660444825_yueoopmqd8e_2",
+        "from": "wall_1776660444825_10t5079k44jr",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_3"
+      },
+      {
+        "id": "edge_1776660449423_1fkuv8c9wie_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_2_1",
+        "to": "wall_1776660449423_15uhmsqe0vq"
+      },
+      {
+        "id": "edge_1776660449423_wxg6c5cgtno_2",
+        "from": "wall_1776660449423_15uhmsqe0vq",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_1"
+      },
+      {
+        "id": "edge_1776660451144_navfkp6woud_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_3_0",
+        "to": "wall_1776660451144_pr9mdrtk63l"
+      },
+      {
+        "id": "edge_1776660451144_xxe3592uswm_2",
+        "from": "wall_1776660451144_pr9mdrtk63l",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_1"
+      },
+      {
+        "id": "edge_1776660455247_7jnb8yw97j8_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_3_1",
+        "to": "wall_1776660455246_dk1wdphowb"
+      },
+      {
+        "id": "edge_1776660455247_37em7mecloj_2",
+        "from": "wall_1776660455246_dk1wdphowb",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_2"
+      },
+      {
+        "id": "edge_1776660456736_mcuk431r9pq_1",
+        "from": "ax_storey_1775653294970_ou3kk3c60o_3_2",
+        "to": "wall_1776660456735_op3hkv1xwi"
+      },
+      {
+        "id": "edge_1776660456736_q66mt00fwpr_2",
+        "from": "wall_1776660456735_op3hkv1xwi",
+        "to": "ax_storey_1775653294970_ou3kk3c60o_3_3"
+      },
+      {
+        "id": "edge_1776660521586_l066fnjfwd",
+        "from": "node_1776660495282_b5cucggzag7",
+        "to": "wall_1776660441791_nxcr52vc499"
+      },
+      {
+        "id": "edge_1776660523611_plhe2ytwx8m",
+        "from": "node_1776660501630_4m9uwd5kdc3",
+        "to": "wall_1776660443475_uk5nu1i1f9e"
+      },
+      {
+        "id": "edge_1776660525671_ivj9ixh57ul",
+        "from": "node_1776660500612_6ef4xzrmb4",
+        "to": "wall_1776660444825_10t5079k44jr"
+      },
+      {
+        "id": "edge_1776660530618_xvfpnqfum7m",
+        "from": "node_1776660509976_uoo0u8wr1jr",
+        "to": "wall_1776660432382_2o87jmmocqf"
+      },
+      {
+        "id": "edge_1776660532513_4lx124qidw9",
+        "from": "node_1776660508925_iyl2w0qrhm",
+        "to": "wall_1776437363605_6mljowp2hiw"
+      },
+      {
+        "id": "edge_1776660534311_5h4o094uh46",
+        "from": "node_1776660511106_jxjvg7rmfue",
+        "to": "wall_1776660422247_dsx9yub4pew"
+      },
+      {
+        "id": "edge_1776660536140_15onin0pvwj",
+        "from": "node_1776660511817_okxjk87lyi",
+        "to": "wall_1776660433841_iicazbpi28p"
+      },
+      {
+        "id": "edge_1776660537931_fw62f0vabah",
+        "from": "node_1776660512848_xiewk4pa8rn",
+        "to": "wall_1776660429691_hi8y24con9u"
+      },
+      {
+        "id": "edge_1776660761311_hb3kuokc9kr",
+        "from": "node_1776660703967_5xtk2hd4pvf",
+        "to": "wall_1776660429691_hi8y24con9u"
+      },
+      {
+        "id": "edge_1776660762533_29z2bg9qepa",
+        "from": "node_1776660703967_5xtk2hd4pvf",
+        "to": "wall_1776660435734_9d47ia6nnv"
+      },
+      {
+        "id": "edge_1776660764238_72vjopzp2p8",
+        "from": "node_1776660703967_5xtk2hd4pvf",
+        "to": "wall_1776660443475_uk5nu1i1f9e"
+      },
+      {
+        "id": "edge_1776660765585_botok9ykg8",
+        "from": "node_1776660703967_5xtk2hd4pvf",
+        "to": "wall_1776660424045_qv8d274rump"
+      },
+      {
+        "id": "edge_1776660783357_9amnj6ksoqk",
+        "from": "node_1776660779642_k7wnhfqw54",
+        "to": "wall_1776493156441_vl31eaog34o"
+      },
+      {
+        "id": "edge_1776660784943_a1w1gr21mws",
+        "from": "node_1776660779642_k7wnhfqw54",
+        "to": "wall_1776660451144_pr9mdrtk63l"
+      },
+      {
+        "id": "edge_1776660786426_05xwh4ynubvt",
+        "from": "node_1776660779642_k7wnhfqw54",
+        "to": "wall_1776660449423_15uhmsqe0vq"
+      },
+      {
+        "id": "edge_1776660787783_92f9myjbtxk",
+        "from": "node_1776660779642_k7wnhfqw54",
+        "to": "wall_1776660432382_2o87jmmocqf"
+      },
+      {
+        "id": "edge_1776660877133_ny41qz8jfi",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776437361836_4xdu14eph2d"
+      },
+      {
+        "id": "edge_1776660879207_rqqzk1x6m4",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776660422247_dsx9yub4pew"
+      },
+      {
+        "id": "edge_1776660881091_0y29qcv9dlf",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776660424045_qv8d274rump"
+      },
+      {
+        "id": "edge_1776660882891_8voz3udvm9v",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776660441791_nxcr52vc499"
+      },
+      {
+        "id": "edge_1776660884998_spt1fgng9jf",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776660439917_c68uq6286o"
+      },
+      {
+        "id": "edge_1776660886714_aswxu6wn7pl",
+        "from": "node_1776660863982_5jub4e8y4ny",
+        "to": "wall_1776660438400_vdvsio0ixnd"
+      },
+      {
+        "id": "edge_1776660891316_7a9xc9u2a4g",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660449423_15uhmsqe0vq"
+      },
+      {
+        "id": "edge_1776660893700_fhn6faros9a",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660455246_dk1wdphowb"
+      },
+      {
+        "id": "edge_1776660895202_14kxj3ha5yq",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660456735_op3hkv1xwi"
+      },
+      {
+        "id": "edge_1776660897188_oe8sd3rwnf",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660444825_10t5079k44jr"
+      },
+      {
+        "id": "edge_1776660899136_jfj9yayahfg",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660435734_9d47ia6nnv"
+      },
+      {
+        "id": "edge_1776660900915_nya2uskbiq",
+        "from": "node_1776660865220_bmq2g9t5rpr",
+        "to": "wall_1776660433841_iicazbpi28p"
+      },
+      {
+        "id": "edge_1776660904724_j37mlk8vnk",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776427748386_28t4g6nv68g"
+      },
+      {
+        "id": "edge_1776660906816_tqspmvj3x2d",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776660432382_2o87jmmocqf"
+      },
+      {
+        "id": "edge_1776660908595_11pe9eu24bpq",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776660433841_iicazbpi28p"
+      },
+      {
+        "id": "edge_1776660910318_07tw31kui3zi",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776660429691_hi8y24con9u"
+      },
+      {
+        "id": "edge_1776660911954_1u5toxnl67x",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776660422247_dsx9yub4pew"
+      },
+      {
+        "id": "edge_1776660913912_xb40ecutcyg",
+        "from": "node_1776660866587_m3637de371",
+        "to": "wall_1776437363605_6mljowp2hiw"
+      }
+    ],
+    "buildingAxes": {
+      "xValues": [
+        0,
+        4000,
+        6000,
+        14000
+      ],
+      "yValues": [
+        0,
+        4000,
+        6000,
+        10000
+      ]
+    },
+    "activeStoreyId": null
+  },
+  "viewState": {
+    "viewTabs": [
+      {
+        "id": "graph-editor",
+        "label": "My Building",
+        "type": "graph-editor",
+        "canClose": false,
+        "params": {}
+      },
+      {
+        "type": "floorplan",
+        "label": "1 — Plan",
+        "storeyId": "storey_1775653294970_ou3kk3c60o",
+        "discipline": "architectural",
+        "canClose": true,
+        "id": "tab-1776937640058-9iwy004yai8",
+        "params": {}
+      },
+      {
+        "type": "3d-model",
+        "label": "My Building — 3D",
+        "canClose": true,
+        "id": "tab-1776937643092-7kdm6s8ywga",
+        "params": {}
+      },
+      {
+        "type": "section",
+        "label": "Section A-A",
+        "canClose": true,
+        "id": "tab-1776937768045-hxfnnyzca2a",
+        "params": {}
+      },
+      {
+        "type": "section",
+        "label": "Section1",
+        "canClose": true,
+        "params": {
+          "cutY": 3000,
+          "cutDepth": 5000,
+          "startElevation": 0,
+          "endElevation": 3000,
+          "nodeId": "node_1776508653195_dgb829n4bwl",
+          "flipped": true
+        },
+        "id": "tab-1776937775461-zftjc5noft"
+      }
+    ],
+    "activeTabId": "tab-1776937643092-7kdm6s8ywga",
+    "viewer3DType": "webifc"
+  },
+  "symbolConfigs": {
+    "window": {
+      "opening:double": {
+        "showSillZone": false,
+        "showFrameSquares": true
+      },
+      "opening:none": {
+        "showSillZone": false
+      },
+      "opening:tilt-turn": {
+        "showSillZone": false
+      },
+      "opening:single": {
+        "showSillZone": false
+      }
+    },
+    "door": {}
+  }
+}

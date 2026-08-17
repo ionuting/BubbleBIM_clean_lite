@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>BubbleGraph — Board Print (A4)</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  @media print {
+    body { margin: 0; }
+    .no-print { display: none !important; }
+    .page { box-shadow: none !important; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Arial', sans-serif; background: #e0e0e0; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+  .no-print { margin-bottom: 16px; background: #fff; padding: 16px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .no-print label { font-size: 13px; font-weight: 600; }
+  .no-print input, .no-print select { padding: 4px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; width: 70px; }
+  .no-print button { padding: 6px 18px; background: #1976d2; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .no-print button:hover { background: #1565c0; }
+  .page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.2); position: relative; overflow: hidden; }
+  #board-svg { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<div class="no-print" id="controls">
+  <label>Coloane: <input type="number" id="cols" value="3" min="2" max="12"></label>
+  <label>Rânduri: <input type="number" id="rows" value="3" min="2" max="10"></label>
+  <label>Celulă (mm): <input type="number" id="cellMM" value="45" min="15" max="60"></label>
+  <label>Scara interax (mm): <input type="number" id="scaleMM" value="6000" min="1000" max="20000" step="500"></label>
+  <button onclick="generate()">Regenerează</button>
+  <button onclick="window.print()">🖨️ Printează</button>
+</div>
+
+<div class="page" id="page">
+  <svg id="board-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<script>
+/* ── QR helper ─────────────────────────────────────────── */
+function makeQRDataURL(text, cellSize) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  const size = count * cellSize;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${count} ${count}">`;
+  for (let r = 0; r < count; r++)
+    for (let c = 0; c < count; c++)
+      if (qr.isDark(r, c))
+        svg += `<rect x="${c}" y="${r}" width="1" height="1" fill="#000"/>`;
+  svg += '</svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+/* ── Main generator ────────────────────────────────────── */
+function generate() {
+  const cols    = parseInt(document.getElementById('cols').value);
+  const rows    = parseInt(document.getElementById('rows').value);
+  const cellMM  = parseInt(document.getElementById('cellMM').value);
+  const scaleMM = parseInt(document.getElementById('scaleMM').value);
+
+  // A4 dimensions in mm
+  const PW = 210, PH = 297;
+  const MARGIN_TOP = 22, MARGIN_LEFT = 22, MARGIN_RIGHT = 12, MARGIN_BOTTOM = 20;
+
+  const gridW = cols * cellMM;
+  const gridH = rows * cellMM;
+
+  // Center grid horizontally
+  const availW = PW - MARGIN_LEFT - MARGIN_RIGHT;
+  const availH = PH - MARGIN_TOP - MARGIN_BOTTOM;
+  const ox = MARGIN_LEFT + (availW - gridW) / 2;  // grid origin X (mm)
+  const oy = MARGIN_TOP + 18 + (availH - 18 - gridH) / 2; // grid origin Y (mm), +18 for title row
+
+  const QR_SIZE = 16; // mm
+  const LABEL_FONT = 3.5; // mm
+  const AXIS_FONT  = 3;
+
+  const svg = document.getElementById('board-svg');
+  svg.setAttribute('viewBox', `0 0 ${PW} ${PH}`);
+  svg.setAttribute('width', `${PW}mm`);
+  svg.setAttribute('height', `${PH}mm`);
+
+  let s = '';
+
+  // ── Title ──
+  s += `<text x="${PW/2}" y="10" text-anchor="middle" font-size="5" font-weight="bold" font-family="Arial" fill="#333">BubbleGraph — Board Game</text>`;
+  s += `<text x="${PW/2}" y="16" text-anchor="middle" font-size="2.5" font-family="Arial" fill="#666">${cols}×${rows} grid · celulă ${cellMM}mm · interax real ${scaleMM}mm (${scaleMM/1000}m)</text>`;
+
+  // ── Grid lines ──
+  // SVG row 0 = top of grid = highest CAD Y index (rows)
+  // SVG row N = bottom of grid = CAD Y index 0 (row A)
+  for (let c = 0; c <= cols; c++) {
+    const x = ox + c * cellMM;
+    s += `<line x1="${x}" y1="${oy}" x2="${x}" y2="${oy + gridH}" stroke="#bbb" stroke-width="0.3"/>`;
+  }
+  for (let r = 0; r <= rows; r++) {
+    const y = oy + r * cellMM;
+    s += `<line x1="${ox}" y1="${y}" x2="${ox + gridW}" y2="${y}" stroke="#bbb" stroke-width="0.3"/>`;
+  }
+
+  // ── Thicker border ──
+  s += `<rect x="${ox}" y="${oy}" width="${gridW}" height="${gridH}" fill="none" stroke="#888" stroke-width="0.5"/>`;
+
+  // ── Axis labels (CAD convention: A1 = bottom-left) ──
+  // X axis: 1, 2, 3... left to right (same in SVG and CAD)
+  // Labels at both top and bottom
+  for (let c = 0; c <= cols; c++) {
+    const x = ox + c * cellMM;
+    // Bottom labels (primary)
+    s += `<text x="${x}" y="${oy + gridH + 4}" text-anchor="middle" font-size="${AXIS_FONT}" font-family="Arial" fill="#444" font-weight="bold">${c + 1}</text>`;
+    // Top labels (secondary, lighter)
+    s += `<text x="${x}" y="${oy - 2}" text-anchor="middle" font-size="${AXIS_FONT}" font-family="Arial" fill="#aaa">${c + 1}</text>`;
+  }
+  // Y axis: A, B, C... bottom to top
+  // SVG row r (from top) corresponds to CAD row (rows - r)
+  // So at SVG row=rows (bottom), CAD label = A (index 0)
+  // At SVG row=0 (top), CAD label = letter at index=rows
+  for (let r = 0; r <= rows; r++) {
+    const y = oy + r * cellMM;
+    const cadIdx = rows - r; // flip: SVG top → highest CAD index, SVG bottom → 0
+    const label = String.fromCharCode(65 + cadIdx); // A=0, B=1, C=2...
+    // Left labels (primary)
+    s += `<text x="${ox - 3}" y="${y + 1}" text-anchor="middle" font-size="${AXIS_FONT}" font-family="Arial" fill="#444" font-weight="bold">${label}</text>`;
+    // Right labels (secondary, lighter)
+    s += `<text x="${ox + gridW + 3}" y="${y + 1}" text-anchor="middle" font-size="${AXIS_FONT}" font-family="Arial" fill="#aaa">${label}</text>`;
+  }
+
+  // ── Intersection dots ──
+  for (let c = 0; c <= cols; c++) {
+    for (let r = 0; r <= rows; r++) {
+      const x = ox + c * cellMM;
+      const y = oy + r * cellMM;
+      s += `<circle cx="${x}" cy="${y}" r="0.8" fill="#999"/>`;
+    }
+  }
+
+  // ── Cell center markers (light cross for token placement) ──
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const cx = ox + c * cellMM + cellMM / 2;
+      const cy = oy + r * cellMM + cellMM / 2;
+      const d = 2;
+      s += `<line x1="${cx - d}" y1="${cy}" x2="${cx + d}" y2="${cy}" stroke="#ddd" stroke-width="0.2"/>`;
+      s += `<line x1="${cx}" y1="${cy - d}" x2="${cx}" y2="${cy + d}" stroke="#ddd" stroke-width="0.2"/>`;
+    }
+  }
+
+  // ── Corner QR codes ──
+  // TL/TR/BL/BR refer to position on the PAPER (visual).
+  // The QR encodes the label so the scanner knows which corner it is.
+  const corners = [
+    { id: 'TL', gx: 0, gy: 0 },
+    { id: 'TR', gx: cols, gy: 0 },
+    { id: 'BL', gx: 0, gy: rows },
+    { id: 'BR', gx: cols, gy: rows },
+  ];
+
+  corners.forEach(corner => {
+    const data = `BB:C:${corner.id}:${cols}:${rows}:${scaleMM}`;
+    const url = makeQRDataURL(data, 4);
+    const px = ox + corner.gx * cellMM;
+    const py = oy + corner.gy * cellMM;
+
+    // Offset QR outside the grid corner
+    let qx, qy;
+    if (corner.id === 'TL') { qx = px - QR_SIZE - 1; qy = py - QR_SIZE - 1; }
+    else if (corner.id === 'TR') { qx = px + 1; qy = py - QR_SIZE - 1; }
+    else if (corner.id === 'BL') { qx = px - QR_SIZE - 1; qy = py + 1; }
+    else { qx = px + 1; qy = py + 1; }
+
+    s += `<image href="${url}" x="${qx}" y="${qy}" width="${QR_SIZE}" height="${QR_SIZE}"/>`;
+
+    // Small label under QR
+    const lx = qx + QR_SIZE / 2;
+    const ly = corner.gy === 0 ? qy - 1 : qy + QR_SIZE + 3;
+    s += `<text x="${lx}" y="${ly}" text-anchor="middle" font-size="2" font-family="monospace" fill="#999">${corner.id}</text>`;
+  });
+
+  // ── Instructions at bottom ──
+  const iy = oy + gridH + 14;
+  s += `<text x="${PW/2}" y="${iy}" text-anchor="middle" font-size="2.5" font-family="Arial" fill="#666">Plasează tokenurile QR pe celule (rooms) sau pe margini (eraser/window/door). Fotografiază board-ul și scanează cu scanner.html.</text>`;
+  s += `<text x="${PW/2}" y="${iy + 5}" text-anchor="middle" font-size="2" font-family="Arial" fill="#999">Cele 4 coduri QR din colțuri sunt markeri de calibrare — NU le acoperi.</text>`;
+
+  // ── Scale indicator ──
+  const sx = ox;
+  const sy = oy + gridH + 6;
+  s += `<line x1="${sx}" y1="${sy}" x2="${sx + cellMM}" y2="${sy}" stroke="#333" stroke-width="0.4"/>`;
+  s += `<line x1="${sx}" y1="${sy - 1}" x2="${sx}" y2="${sy + 1}" stroke="#333" stroke-width="0.3"/>`;
+  s += `<line x1="${sx + cellMM}" y1="${sy - 1}" x2="${sx + cellMM}" y2="${sy + 1}" stroke="#333" stroke-width="0.3"/>`;
+  s += `<text x="${sx + cellMM / 2}" y="${sy + 3}" text-anchor="middle" font-size="2" font-family="Arial" fill="#333">${cellMM}mm = ${scaleMM/1000}m real</text>`;
+
+  svg.innerHTML = s;
+}
+
+/* ── Read URL params ──────────────────────────────────── */
+const params = new URLSearchParams(location.search);
+['cols','rows','cellMM','scaleMM'].forEach(k => {
+  const v = params.get(k);
+  if (v) document.getElementById(k).value = v;
+});
+
+generate();
+</script>
+</body>
+</html>

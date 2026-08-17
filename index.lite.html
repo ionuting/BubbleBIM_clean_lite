@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BubbleBIM — Visual Building Graph Editor (Demo)</title>
+  <meta name="description" content="BubbleBIM is a visual parametric building graph editor. Design building layouts by connecting nodes, generate IFC geometry, and explore in 3D.">
+  <script>
+    (function() {
+      var saved = localStorage.getItem('bubble-graph-theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') document.documentElement.classList.add('dark');
+    })();
+  </script>
+</head>
+<body class="bg-background text-foreground">
+  <div id="root"></div>
+  <script type="module" src="/src/main.lite.tsx"></script>
+</body>
+</html>

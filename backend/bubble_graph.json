@@ -1,0 +1,583 @@
+{
+  "nodes": [
+    {
+      "id": "composer-ax-0",
+      "type": "ax",
+      "name": "V0",
+      "x": 4331.161473087819,
+      "y": 715.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 0,
+        "gridY": 0,
+        "axNodeIndex": 0,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 4331.161473087819,
+        "bimY": -715.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:0"
+      }
+    },
+    {
+      "id": "composer-ax-1",
+      "type": "ax",
+      "name": "V1",
+      "x": 10031.16147308782,
+      "y": 715.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 4,
+        "gridY": 0,
+        "axNodeIndex": 4,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 10031.16147308782,
+        "bimY": -715.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:1"
+      }
+    },
+    {
+      "id": "composer-ax-2",
+      "type": "ax",
+      "name": "V2",
+      "x": 10031.16147308782,
+      "y": 4015.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 4,
+        "gridY": 2,
+        "axNodeIndex": 16,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 10031.16147308782,
+        "bimY": -4015.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:2"
+      }
+    },
+    {
+      "id": "composer-ax-3",
+      "type": "ax",
+      "name": "V3",
+      "x": 8181.161473087819,
+      "y": 4015.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 2,
+        "gridY": 2,
+        "axNodeIndex": 14,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 8181.161473087819,
+        "bimY": -4015.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:3"
+      }
+    },
+    {
+      "id": "composer-ax-4",
+      "type": "ax",
+      "name": "V4",
+      "x": 8181.161473087819,
+      "y": 6315.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 2,
+        "gridY": 3,
+        "axNodeIndex": 20,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 8181.161473087819,
+        "bimY": -6315.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:4"
+      }
+    },
+    {
+      "id": "composer-ax-5",
+      "type": "ax",
+      "name": "V5",
+      "x": 6181.161473087819,
+      "y": 6315.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 1,
+        "gridY": 3,
+        "axNodeIndex": 19,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 6181.161473087819,
+        "bimY": -6315.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:5"
+      }
+    },
+    {
+      "id": "composer-ax-6",
+      "type": "ax",
+      "name": "V6",
+      "x": 6181.161473087819,
+      "y": 4015.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 1,
+        "gridY": 2,
+        "axNodeIndex": 13,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 6181.161473087819,
+        "bimY": -4015.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:6"
+      }
+    },
+    {
+      "id": "composer-ax-7",
+      "type": "ax",
+      "name": "V7",
+      "x": 4331.161473087819,
+      "y": 4015.8311345646425,
+      "parentId": null,
+      "properties": {
+        "gridX": 0,
+        "gridY": 2,
+        "axNodeIndex": 12,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 4331.161473087819,
+        "bimY": -4015.8311345646425,
+        "composerSource": "rx-1780498062810-41bm6v:7"
+      }
+    },
+    {
+      "id": "composer-ax-8",
+      "type": "ax",
+      "name": "V8",
+      "x": 12194.050991501412,
+      "y": 3997.361477572558,
+      "parentId": null,
+      "properties": {
+        "gridX": 5,
+        "gridY": 1,
+        "axNodeIndex": 11,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 12194.050991501412,
+        "bimY": -3997.361477572558,
+        "composerSource": "rx-1780498077912-lxafle:1"
+      }
+    },
+    {
+      "id": "composer-ax-9",
+      "type": "ax",
+      "name": "V9",
+      "x": 12194.050991501412,
+      "y": 7997.361477572558,
+      "parentId": null,
+      "properties": {
+        "gridX": 5,
+        "gridY": 4,
+        "axNodeIndex": 29,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 12194.050991501412,
+        "bimY": -7997.361477572558,
+        "composerSource": "rx-1780498077912-lxafle:2"
+      }
+    },
+    {
+      "id": "composer-ax-10",
+      "type": "ax",
+      "name": "V10",
+      "x": 8194.050991501414,
+      "y": 7997.361477572558,
+      "parentId": null,
+      "properties": {
+        "gridX": 3,
+        "gridY": 4,
+        "axNodeIndex": 27,
+        "has_column": "True",
+        "column_type": "C25x25",
+        "bimX": 8194.050991501414,
+        "bimY": -7997.361477572558,
+        "composerSource": "rx-1780498077912-lxafle:3"
+      }
+    },
+    {
+      "id": "composer-wall-0",
+      "type": "wall",
+      "name": "Wall 1",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-0"
+      }
+    },
+    {
+      "id": "composer-wall-1",
+      "type": "wall",
+      "name": "Wall 2",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-1"
+      }
+    },
+    {
+      "id": "composer-wall-2",
+      "type": "wall",
+      "name": "Wall 3",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "True",
+        "doors": "[{\"id\":\"inl_door_1780498185954_o5r9m37mr4r\",\"door_type\":\"D-SWING-90x210\",\"width\":900,\"height\":2100,\"wall_offset\":null,\"swing\":\"left\",\"count\":1}]",
+        "composerSource": "composer-wall-2"
+      }
+    },
+    {
+      "id": "composer-wall-3",
+      "type": "wall",
+      "name": "Wall 4",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-3"
+      }
+    },
+    {
+      "id": "composer-wall-4",
+      "type": "wall",
+      "name": "Wall 5",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "True",
+        "windows": "[{\"id\":\"inl_win_1780498172078_1x9fjxd4f7f\",\"window_type\":\"W-FIX-100x120\",\"width\":1000,\"height\":1200,\"sill_height\":900,\"wall_offset\":null,\"count\":1}]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-4"
+      }
+    },
+    {
+      "id": "composer-wall-5",
+      "type": "wall",
+      "name": "Wall 6",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-5"
+      }
+    },
+    {
+      "id": "composer-wall-6",
+      "type": "wall",
+      "name": "Wall 7",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-6"
+      }
+    },
+    {
+      "id": "composer-wall-7",
+      "type": "wall",
+      "name": "Wall 8",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-7"
+      }
+    },
+    {
+      "id": "composer-wall-9",
+      "type": "wall",
+      "name": "Wall 10",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-9"
+      }
+    },
+    {
+      "id": "composer-wall-10",
+      "type": "wall",
+      "name": "Wall 11",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "True",
+        "doors": "[{\"id\":\"inl_door_1780498177500_p3f4am0go7c\",\"door_type\":\"D-SWING-90x210\",\"width\":900,\"height\":2100,\"wall_offset\":null,\"swing\":\"left\",\"count\":1}]",
+        "composerSource": "composer-wall-10"
+      }
+    },
+    {
+      "id": "composer-wall-11",
+      "type": "wall",
+      "name": "Wall 12",
+      "x": 0.0,
+      "y": 0.0,
+      "parentId": null,
+      "properties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "material": "concrete",
+        "offset_start": 0,
+        "offset_end": 0,
+        "has_beam": "True",
+        "beam_section": "B30x60",
+        "beam_material": "concrete",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]",
+        "composerSource": "composer-wall-11"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "composer-edge-0",
+      "from": "composer-wall-0",
+      "to": "composer-ax-0"
+    },
+    {
+      "id": "composer-edge-1",
+      "from": "composer-wall-0",
+      "to": "composer-ax-1"
+    },
+    {
+      "id": "composer-edge-2",
+      "from": "composer-wall-1",
+      "to": "composer-ax-1"
+    },
+    {
+      "id": "composer-edge-3",
+      "from": "composer-wall-1",
+      "to": "composer-ax-2"
+    },
+    {
+      "id": "composer-edge-4",
+      "from": "composer-wall-2",
+      "to": "composer-ax-2"
+    },
+    {
+      "id": "composer-edge-5",
+      "from": "composer-wall-2",
+      "to": "composer-ax-3"
+    },
+    {
+      "id": "composer-edge-6",
+      "from": "composer-wall-3",
+      "to": "composer-ax-3"
+    },
+    {
+      "id": "composer-edge-7",
+      "from": "composer-wall-3",
+      "to": "composer-ax-4"
+    },
+    {
+      "id": "composer-edge-8",
+      "from": "composer-wall-4",
+      "to": "composer-ax-4"
+    },
+    {
+      "id": "composer-edge-9",
+      "from": "composer-wall-4",
+      "to": "composer-ax-5"
+    },
+    {
+      "id": "composer-edge-10",
+      "from": "composer-wall-5",
+      "to": "composer-ax-5"
+    },
+    {
+      "id": "composer-edge-11",
+      "from": "composer-wall-5",
+      "to": "composer-ax-6"
+    },
+    {
+      "id": "composer-edge-12",
+      "from": "composer-wall-6",
+      "to": "composer-ax-6"
+    },
+    {
+      "id": "composer-edge-13",
+      "from": "composer-wall-6",
+      "to": "composer-ax-7"
+    },
+    {
+      "id": "composer-edge-14",
+      "from": "composer-wall-7",
+      "to": "composer-ax-7"
+    },
+    {
+      "id": "composer-edge-15",
+      "from": "composer-wall-7",
+      "to": "composer-ax-0"
+    },
+    {
+      "id": "composer-edge-18",
+      "from": "composer-wall-9",
+      "to": "composer-ax-8"
+    },
+    {
+      "id": "composer-edge-19",
+      "from": "composer-wall-9",
+      "to": "composer-ax-9"
+    },
+    {
+      "id": "composer-edge-20",
+      "from": "composer-wall-10",
+      "to": "composer-ax-9"
+    },
+    {
+      "id": "composer-edge-21",
+      "from": "composer-wall-10",
+      "to": "composer-ax-10"
+    },
+    {
+      "id": "composer-edge-22",
+      "from": "composer-wall-11",
+      "to": "composer-ax-10"
+    },
+    {
+      "id": "composer-edge-23",
+      "from": "composer-wall-11",
+      "to": "composer-ax-3"
+    }
+  ],
+  "buildingAxes": {
+    "xValues": [],
+    "yValues": []
+  },
+  "projectName": "My Building",
+  "activeStoreyId": null,
+  "worldLocation": {
+    "lat": 47.162442,
+    "lng": 27.583882,
+    "alt": 62.0,
+    "offsetE": 0.0,
+    "offsetN": 0.0,
+    "offsetZ": 0.0,
+    "rotation": 0.0
+  },
+  "globeInstances": []
+}

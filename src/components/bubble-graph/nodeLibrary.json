@@ -1,0 +1,428 @@
+{
+  "categories": [
+    {
+      "id": "structure",
+      "label": "Structure",
+      "description": "Structural elements",
+      "icon": "■",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "opening",
+      "label": "Openings",
+      "description": "Windows and doors",
+      "icon": "◻",
+      "color": "#0ea5e9"
+    },
+    {
+      "id": "space",
+      "label": "Spaces",
+      "description": "Rooms and areas",
+      "icon": "▢",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "envelope",
+      "label": "Envelope",
+      "description": "Building envelope",
+      "icon": "◆",
+      "color": "#a855f7"
+    },
+    {
+      "id": "hierarchy",
+      "label": "Hierarchy",
+      "description": "Building hierarchy",
+      "icon": "📋",
+      "color": "#6c5ce7"
+    },
+    {
+      "id": "views",
+      "label": "Views",
+      "description": "Section cuts and elevation views",
+      "icon": "✂",
+      "color": "#e11d48"
+    },
+    {
+      "id": "operations",
+      "label": "Operations",
+      "description": "Boolean operations (voids, cuts)",
+      "icon": "⊘",
+      "color": "#f97316"
+    },
+    {
+      "id": "library",
+      "label": "Library Objects",
+      "description": "Furniture, fixtures and equipment from the 3D library",
+      "icon": "📦",
+      "color": "#8b5cf6"
+    }
+  ],
+  "nodeTypes": [
+    {
+      "id": "ax",
+      "label": "Ax",
+      "category": "structure",
+      "color": "#64748b",
+      "description": "Grid axis",
+      "defaultProperties": {
+        "has_column": "True",
+        "column_type": "C25x25"
+      }
+    },
+    {
+      "id": "column",
+      "label": "Column",
+      "category": "structure",
+      "color": "#3b82f6",
+      "description": "Structural column",
+      "defaultProperties": {
+        "column_type": "C30x30",
+        "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "beam",
+      "label": "Beam",
+      "category": "structure",
+      "color": "#10b981",
+      "description": "Structural beam",
+      "defaultProperties": {
+        "beam_section": "B30x60",
+        "offset_start": 0,
+        "offset_end": 0,
+        "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "wall",
+      "label": "Wall",
+      "category": "structure",
+      "color": "#f59e0b",
+      "description": "Wall element",
+      "defaultProperties": {
+        "wall_type": "W20",
+        "height": 3000,
+        "offset_start": 0,
+        "offset_end": 0,
+        "wall_join_start": "auto",
+        "wall_join_end": "auto",
+        "has_beam": "True",
+        "beam_section": "B20x30",
+        "material": "Beton C30/37",
+        "has_windows": "False",
+        "windows": "[]",
+        "has_doors": "False",
+        "doors": "[]"
+      }
+    },
+    {
+      "id": "slab",
+      "label": "Slab",
+      "category": "structure",
+      "color": "#8b5cf6",
+      "description": "Floor slab",
+      "defaultProperties": {
+        "slab_type": "SLAB15",
+        "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "foundation",
+      "label": "Foundation",
+      "category": "structure",
+      "color": "#ef4444",
+      "description": "Foundation element",
+      "defaultProperties": {
+        "material": "Beton C30/37",
+        "tip": "Izolata"
+      }
+    },
+    {
+      "id": "window",
+      "label": "Window",
+      "category": "opening",
+      "color": "#0ea5e9",
+      "description": "Window opening",
+      "defaultProperties": {
+        "style": "default",
+        "window_type": "W-FIX-100x120",
+        "width": 1000,
+        "height": 1200,
+        "sill_height": 900,
+        "frame_depth": 100,
+        "offset": null,
+        "material": "PVC alb"
+      }
+    },
+    {
+      "id": "door",
+      "label": "Door",
+      "category": "opening",
+      "color": "#f97316",
+      "description": "Door opening",
+      "defaultProperties": {
+        "style": "default",
+        "door_type": "D-SWING-90x210",
+        "width": 900,
+        "height": 2100,
+        "sill_height": 0,
+        "frame_depth": 100,
+        "offset": null,
+        "swing": "left",
+        "material": "Lemn stejar"
+      }
+    },
+    {
+      "id": "room",
+      "label": "Room",
+      "category": "space",
+      "color": "#14b8a6",
+      "description": "Room space",
+      "defaultProperties": {
+        "name": "Room",
+        "height": 2800,
+        "has_covering": "True",
+        "covering_height": 2800,
+        "covering_thickness": 15,
+        "covering_offset": "-125",
+        "covering_layers": "[{\"from_mm\":0,\"to_mm\":2800,\"thickness_mm\":15,\"material\":\"\"}]",
+        "color": "",
+        "room_load_category": "residential"
+      }
+    },
+    {
+      "id": "void",
+      "label": "Void",
+      "category": "operations",
+      "color": "#f97316",
+      "description": "Boolean void — subtracts its geometry from all connected structural nodes",
+      "defaultProperties": {
+        "void_shape": "box",
+        "width": 500,
+        "height": 500,
+        "depth": 500,
+        "radius": 250,
+        "radial_segments": 16,
+        "offset_x": 0,
+        "offset_y": 0,
+        "offset_z": 0
+      }
+    },
+    {
+      "id": "shell",
+      "label": "Shell",
+      "category": "envelope",
+      "color": "#a855f7",
+      "description": "Shell structure",
+      "defaultProperties": {
+        "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "roof",
+      "label": "Roof",
+      "category": "envelope",
+      "color": "#c2410c",
+      "description": "Parametric roof (envelope → skeleton → framing)",
+      "defaultProperties": {
+        "roof_type": "gable",
+        "pitch_deg": 30,
+        "overhang_mm": 400,
+        "ridge_direction": "auto",
+        "generate_level": "framing",
+        "rafter_spacing_mm": 600,
+        "rafter_section": "T8x16",
+        "ridge_section": "T10x20",
+        "post_section": "T10x10",
+        "covering_material": "Tigla ceramica",
+        "covering_thickness_mm": 40,
+        "thickness": 200,
+        "material": "Lemn rasinos"
+      }
+    },
+    {
+      "id": "roof_ridge",
+      "label": "Roof Ridge",
+      "category": "envelope",
+      "color": "#9a3412",
+      "description": "Generated ridge line",
+      "defaultProperties": {
+        "generated": true
+      }
+    },
+    {
+      "id": "roof_hip",
+      "label": "Roof Hip",
+      "category": "envelope",
+      "color": "#9a3412",
+      "description": "Generated hip line",
+      "defaultProperties": { "generated": true }
+    },
+    {
+      "id": "roof_eave",
+      "label": "Roof Eave",
+      "category": "envelope",
+      "color": "#ea580c",
+      "description": "Generated eave line",
+      "defaultProperties": { "generated": true }
+    },
+    {
+      "id": "rafter",
+      "label": "Rafter",
+      "category": "envelope",
+      "color": "#d97706",
+      "description": "Generated rafter (căprior)",
+      "defaultProperties": { "generated": true, "section": "T8x16" }
+    },
+    {
+      "id": "hip_rafter",
+      "label": "Hip rafter",
+      "category": "envelope",
+      "color": "#b45309",
+      "description": "Generated hip rafter",
+      "defaultProperties": { "generated": true, "section": "T8x16" }
+    },
+    {
+      "id": "ridge_beam",
+      "label": "Ridge beam",
+      "category": "envelope",
+      "color": "#92400e",
+      "description": "Generated ridge beam (coamă)",
+      "defaultProperties": { "generated": true, "section": "T10x20" }
+    },
+    {
+      "id": "wall_plate",
+      "label": "Wall plate",
+      "category": "envelope",
+      "color": "#a16207",
+      "description": "Generated wall plate (cosoroabă)",
+      "defaultProperties": { "generated": true, "section": "T10x20" }
+    },
+    {
+      "id": "post",
+      "label": "Post",
+      "category": "envelope",
+      "color": "#78350f",
+      "description": "Generated roof post (pop)",
+      "defaultProperties": { "generated": true, "section": "T10x10" }
+    },
+    {
+      "id": "covering",
+      "label": "Covering",
+      "category": "envelope",
+      "color": "#f43f5e",
+      "description": "Roof covering",
+      "defaultProperties": {
+        "material": "Tigla ceramica"
+      }
+    },
+    {
+      "id": "skylight",
+      "label": "Skylight",
+      "category": "opening",
+      "color": "#38bdf8",
+      "description": "Roof window — cuts a flat hole in a single roof slope face",
+      "defaultProperties": {
+        "width_mm": 780,
+        "length_mm": 1180,
+        "curb_height_mm": 120,
+        "material": "PVC alb"
+      }
+    },
+    {
+      "id": "dormer",
+      "label": "Dormer",
+      "category": "opening",
+      "color": "#f59e0b",
+      "description": "Dormer window — notches the roof and adds its own small wall + roof volume",
+      "defaultProperties": {
+        "width_mm": 1200,
+        "depth_mm": 900,
+        "wall_height_mm": 1200,
+        "roof_type": "gable",
+        "pitch_deg": 25,
+        "overhang_mm": 200,
+        "material": "Lemn rasinos"
+      }
+    },
+    { "id": "membrane", "label": "Membrane", "category": "envelope", "color": "#4b5563", "description": "Roof underlay membrane (generated)", "defaultProperties": { "generated": true, "material": "Folie anticondens" } },
+    { "id": "sheathing", "label": "Sheathing", "category": "envelope", "color": "#b78b52", "description": "Roof sheathing / deck (generated)", "defaultProperties": { "generated": true, "material": "Astereala lemn" } },
+    { "id": "insulation", "label": "Insulation", "category": "envelope", "color": "#fbd966", "description": "Roof thermal insulation (generated)", "defaultProperties": { "generated": true, "material": "Vata minerala" } },
+    { "id": "counter_batten", "label": "Counter batten", "category": "envelope", "color": "#bd8438", "description": "Generated counter-batten (contrașipcă)", "defaultProperties": { "generated": true, "section": "T4x6" } },
+    { "id": "batten", "label": "Batten", "category": "envelope", "color": "#d19947", "description": "Generated batten (șipcă)", "defaultProperties": { "generated": true, "section": "T3x5" } },
+    { "id": "fascia", "label": "Fascia", "category": "envelope", "color": "#996b3d", "description": "Generated fascia board (bordură streașină)", "defaultProperties": { "generated": true } },
+    { "id": "barge_board", "label": "Barge board", "category": "envelope", "color": "#946638", "description": "Generated barge board (bordură fronton)", "defaultProperties": { "generated": true } },
+    { "id": "soffit", "label": "Soffit", "category": "envelope", "color": "#ccb899", "description": "Generated soffit (căptușeală streașină)", "defaultProperties": { "generated": true } },
+    { "id": "ridge_cap", "label": "Ridge cap", "category": "envelope", "color": "#b34733", "description": "Generated ridge cap (coamă)", "defaultProperties": { "generated": true } },
+    { "id": "hip_cap", "label": "Hip cap", "category": "envelope", "color": "#a8422e", "description": "Generated hip cap", "defaultProperties": { "generated": true } },
+    { "id": "valley_flashing", "label": "Valley flashing", "category": "envelope", "color": "#9ea9b8", "description": "Generated valley flashing (șorț dolie)", "defaultProperties": { "generated": true } },
+    { "id": "gutter", "label": "Gutter", "category": "envelope", "color": "#9ea9b8", "description": "Generated gutter (jgheab)", "defaultProperties": { "generated": true } },
+    { "id": "downpipe", "label": "Downpipe", "category": "envelope", "color": "#949eae", "description": "Generated downpipe (burlan)", "defaultProperties": { "generated": true } },
+    { "id": "snow_guard", "label": "Snow guard", "category": "envelope", "color": "#808a99", "description": "Generated snow guard (parazăpezi)", "defaultProperties": { "generated": true } },
+    {
+      "id": "storey",
+      "label": "Storey",
+      "category": "hierarchy",
+      "color": "#6c5ce7",
+      "description": "Building storey/level container",
+      "defaultProperties": {
+        "bottomElevation": 0,
+        "topElevation": 3000,
+        "axesX": [],
+        "axesY": [],
+        "width": 0,
+        "height": 0
+      }
+    },
+    {
+      "id": "section",
+      "label": "Section",
+      "category": "views",
+      "color": "#e11d48",
+      "description": "Section cut plane — connect to 2 ax nodes",
+      "defaultProperties": {
+        "cut_depth_mm": 6000,
+        "cut_height_mm": 3000,
+        "cut_plane_offset_mm": -1000,
+        "start_elevation_mm": 0,
+        "offset_left_mm": 0,
+        "offset_right_mm": 0,
+        "flipped": false,
+        "show_in_plan": true
+      }
+    },
+    {
+      "id": "view",
+      "label": "View",
+      "category": "views",
+      "color": "#f97316",
+      "description": "Elevation view plane — connect to 2 ax nodes",
+      "defaultProperties": {
+        "cut_depth_mm": 6000,
+        "cut_height_mm": 3000,
+        "cut_plane_offset_mm": -1000,
+        "start_elevation_mm": 0,
+        "offset_left_mm": 0,
+        "offset_right_mm": 0,
+        "flipped": false,
+        "show_in_plan": true
+      }
+    },
+    {
+      "id": "object",
+      "label": "Library Object",
+      "category": "library",
+      "color": "#8b5cf6",
+      "description": "Placed 3D library object (furniture, fixture, equipment)",
+      "defaultProperties": {
+        "glb_ref": "",
+        "glb_scale": 1.0,
+        "label": "",
+        "width_mm": 600,
+        "depth_mm": 600,
+        "height_mm": 900,
+        "z_offset_mm": 0
+      }
+    }
+  ]
+}

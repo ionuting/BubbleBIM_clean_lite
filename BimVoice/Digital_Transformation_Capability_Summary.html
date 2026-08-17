@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Open BIM Capability Summary — Single Page</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    :root {
+      --text: #1a2332;
+      --muted: #4a5568;
+      --accent: #0c5c4c;
+      --accent2: #1e4d8c;
+      --border: #cdd5df;
+      --live: #0d7a4a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 8.8pt;
+      line-height: 1.35;
+      color: var(--text);
+      background: #e8ecf0;
+    }
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 10px auto;
+      background: #fff;
+      padding: 11mm 13mm;
+      box-shadow: 0 2px 10px rgba(0,0,0,.1);
+    }
+    @media print {
+      body { background: #fff; }
+      .sheet { margin: 0; box-shadow: none; }
+    }
+    header {
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 7px;
+      margin-bottom: 9px;
+    }
+    header h1 {
+      font-size: 13pt;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+    header .sub { font-size: 8.5pt; color: var(--muted); margin-top: 3px; }
+    header .meta { font-size: 7.5pt; color: #94a3b8; margin-top: 5px; }
+    .cols { display: grid; grid-template-columns: 1.12fr 0.88fr; gap: 10px; }
+    h2 {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin: 7px 0 4px;
+      padding-bottom: 2px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    h2.azure { color: var(--accent2); }
+    h2.other { color: #64748b; }
+    p { color: var(--muted); margin-bottom: 4px; font-size: 8.3pt; }
+    table { width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 5px; }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 3px 5px;
+      vertical-align: top;
+    }
+    th {
+      background: #f0faf7;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 7.2pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    th.blue { background: #e8f0fa; color: var(--accent2); }
+    ul { margin: 2px 0 4px 13px; color: var(--muted); font-size: 8.2pt; }
+    li { margin-bottom: 2px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+    .pill {
+      font-size: 7pt;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: #f0faf7;
+      border: 1px solid #b8ddd4;
+      color: var(--accent);
+    }
+    .focus-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 8px;
+      margin: 4px 0 6px;
+      font-size: 8.1pt;
+    }
+    .focus-item {
+      display: flex;
+      gap: 5px;
+      align-items: flex-start;
+      color: var(--text);
+      padding: 3px 0;
+    }
+    .focus-num {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 7pt;
+      font-weight: 700;
+      text-align: center;
+      line-height: 14px;
+    }
+    .focus-item strong { display: block; font-size: 8pt; color: var(--text); }
+    .focus-item span { color: var(--muted); font-size: 7.8pt; line-height: 1.25; }
+    .bubble-box {
+      background: #f0faf7;
+      border: 1px solid #b8ddd4;
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 6px 8px;
+      margin: 4px 0 6px;
+      font-size: 8.2pt;
+      color: var(--text);
+    }
+    .bubble-box strong { color: var(--accent); }
+    .highlight-box {
+      background: #e8f0fa;
+      border: 1px solid #c5d9ef;
+      border-radius: 4px;
+      padding: 6px 8px;
+      margin: 4px 0 6px;
+      font-size: 8.2pt;
+      color: var(--text);
+    }
+    .highlight-box strong { color: var(--accent2); }
+    .flow {
+      font-family: ui-monospace, monospace;
+      font-size: 6.7pt;
+      line-height: 1.42;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 5px 7px;
+      color: var(--muted);
+      white-space: pre;
+      margin: 4px 0 5px;
+    }
+    .region-tag {
+      display: inline-block;
+      font-size: 7pt;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #e6f5f1;
+      color: var(--accent);
+      margin-right: 3px;
+    }
+    footer {
+      margin-top: 6px;
+      padding-top: 5px;
+      border-top: 1px solid var(--border);
+      font-size: 7pt;
+      color: #94a3b8;
+      text-align: center;
+    }
+    .live { color: var(--live); font-weight: 700; font-size: 7pt; }
+  </style>
+</head>
+<body>
+<div class="sheet">
+
+  <header>
+    <h1>Open BIM — Technical Capability Summary</h1>
+    <p class="sub">
+      <span class="region-tag">AT · DE · CH</span> Open BIM / IFC client work — visualization, modeling, geometry remodeling, data mining, topology, parameter enrichment.
+      <span class="region-tag">DK</span> M365 field-operations platform only (see Others).
+      Stack: IfcOpenShell · web-ifc · That Open · IFC Lite · relational graph — plus Azure AD · Graph · SharePoint.
+    </p>
+    <div class="meta">Request for Digital Transformation · June 2026 · Confidential · One-page summary</div>
+  </header>
+
+  <div class="cols">
+
+    <div>
+
+      <h2>What We Deliver — DACH Client Focus</h2>
+      <p>Services already delivered in <strong>Austria, Germany, and Switzerland</strong> — centered on intelligent use of IFC, not generic file exchange:</p>
+      <div class="focus-grid">
+        <div class="focus-item">
+          <span class="focus-num">1</span>
+          <div><strong>Visualization</strong><span>Browser 3D (web-ifc, That Open), IFC Lite tiles, plans &amp; sections from model data</span></div>
+        </div>
+        <div class="focus-item">
+          <span class="focus-num">2</span>
+          <div><strong>IFC modeling</strong><span>Author and extend building elements aligned with IFC4 / IFC4.3 types and relationships</span></div>
+        </div>
+        <div class="focus-item">
+          <span class="focus-num">3</span>
+          <div><strong>Geometry remodeling</strong><span>IFC Rig — live deformation of imported BREP against grid axes without full re-import</span></div>
+        </div>
+        <div class="focus-item">
+          <span class="focus-num">4</span>
+          <div><strong>Data mining</strong><span>Extract properties, quantities, classifications, and patterns from large IFC corpora</span></div>
+        </div>
+        <div class="focus-item">
+          <span class="focus-num">5</span>
+          <div><strong>Topology</strong><span>Spatial graph — adjacency, containment, storey/space hierarchy, element relationships</span></div>
+        </div>
+        <div class="focus-item">
+          <span class="focus-num">6</span>
+          <div><strong>Parameter enrichment</strong><span>Attach norm catalogs, custom Psets, QS data, and derived attributes back onto IFC elements</span></div>
+        </div>
+      </div>
+
+      <div class="bubble-box">
+        <strong>BubbleBIM — demonstrator for relational IFC modeling.</strong>
+        Working reference implementation: IFC models are ingested into an <strong>IFC-aligned relational graph</strong> (IfcWall, IfcColumn, IfcSpace…). The database becomes the authoring layer — parametric edits, catalog lookups, and business rules drive <strong>modeling and enrichment</strong> of IFC geometry and properties. Outputs: updated 3D, 2D drawings, BOQ/F3 CSV, and enriched metadata ready for coordination or re-export.
+      </div>
+
+      <h2>Technical Capabilities</h2>
+      <div class="pills">
+        <span class="pill">IFC4 / IFC4.3</span>
+        <span class="pill">IfcOpenShell</span>
+        <span class="pill">web-ifc</span>
+        <span class="pill">That Open Components</span>
+        <span class="pill">IFC Lite</span>
+        <span class="pill">Relational graph</span>
+      </div>
+      <table>
+        <tr><th>Area</th><th>How it works</th></tr>
+        <tr><td><strong>Import &amp; parse</strong></td><td>IfcOpenShell + server STEP parser → graph commit; storey, wall, slab, opening, space, grid extraction</td></tr>
+        <tr><td><strong>View &amp; review</strong></td><td>web-ifc WASM + That Open — selection, sectioning, tile streaming; IFC Lite for low-bandwidth review</td></tr>
+        <tr><td><strong>Remodel geometry</strong></td><td>IFC Rig binds imported mesh to project axes; design moves propagate in-browser</td></tr>
+        <tr><td><strong>Mine &amp; analyze</strong></td><td>Query graph + IFC properties → takeoff rules, norm mapping, anomaly detection, NL-assisted queries</td></tr>
+        <tr><td><strong>Topology layer</strong></td><td>Relational edges mirror IFC relationships — containment, spatial structure, opening-host links</td></tr>
+        <tr><td><strong>Enrich from DB</strong></td><td>Catalogs, norms, QS tables → element parameters (Psets, quantities, classifications) via graph writes</td></tr>
+      </table>
+
+      <div class="flow">Relational IFC pipeline (BubbleBIM)
+──────────────────────────────────────────
+  .ifc import  →  relational graph (authoritative)
+       │              │  catalogs · norms · rules
+       │              ▼
+       │         model · enrich · remodel
+       │              │
+       └──────────────┴──► 3D · plans · BOQ · enriched IFC metadata</div>
+
+      <h2 class="azure">Azure · Microsoft Graph · SharePoint</h2>
+      <div class="highlight-box">
+        <strong>Secure IFC viewers on SharePoint.</strong> .ifc files in SharePoint libraries open in web viewers. <strong>Azure AD (MSAL)</strong> + SharePoint ACLs control who sees geometry, properties, and BOQ — no separate credential store.
+      </div>
+      <table>
+        <tr><th class="blue">Integration</th><th class="blue">Role</th></tr>
+        <tr><td><strong>Azure AD</strong></td><td>SSO; app roles (viewer, BIM coord, QS, admin) → SharePoint group mapping</td></tr>
+        <tr><td><strong>Microsoft Graph</strong></td><td>Calendar, mail alerts, user directory; file access for viewer workflows</td></tr>
+        <tr><td><strong>SharePoint</strong></td><td>IFC repositories per project; folder RBAC; BOQ &amp; drawing exports; tenant provisioning</td></tr>
+        <tr><td><strong>Viewer flow</strong></td><td>Open .ifc from library → token → permission check → load model → role-scoped properties &amp; quantities</td></tr>
+      </table>
+
+    </div>
+
+    <div>
+
+      <h2>Delivery &amp; Evidence</h2>
+      <table>
+        <tr><th>Region</th><th>Scope</th></tr>
+        <tr>
+          <td><strong>AT · DE · CH</strong></td>
+          <td>Open BIM: visualization, IFC modeling, geometry remodeling, IFC data mining, topology analysis, parameter enrichment — client projects in DACH</td>
+        </tr>
+        <tr>
+          <td><strong>DK</strong></td>
+          <td>Field-operations M365 platform only (Others) — not an Open BIM client engagement</td>
+        </tr>
+        <tr>
+          <td><strong>Demo</strong></td>
+          <td>BubbleBIM — live proof of relational-database-driven IFC modeling and enrichment</td>
+        </tr>
+      </table>
+      <p style="margin-top:3px">Engagement model: Discovery → Pilot → Scale → Operate.</p>
+
+      <h2>Invitation Requirements — Coverage</h2>
+      <table>
+        <tr><th>Area</th><th>Response</th></tr>
+        <tr><td>Digital strategy</td><td>Open BIM; IFC as contract; DACH-proven IFC intelligence; DK field ops separate track</td></tr>
+        <tr><td>Portfolio &amp; KPIs</td><td>Model review cycle, enrichment throughput, BOQ hours saved, audit compliance</td></tr>
+        <tr><td>Change &amp; adoption</td><td>IFC Lite demos; BubbleBIM as reference; role-based SharePoint viewers</td></tr>
+        <tr><td>Architecture &amp; AI</td><td>IFC → relational graph → enriched outputs; Graph + SharePoint; LLM-assisted IFC→graph</td></tr>
+        <tr><td>Project-near</td><td>Visualization, remodeling, mining, enrichment on live models; field ops in DK</td></tr>
+      </table>
+
+      <h2 class="other">Others — Field &amp; Operations <span class="live">(Live · Denmark)</span></h2>
+      <p>M365-native platform — production in Denmark; separate from DACH Open BIM work:</p>
+      <table>
+        <tr><th>Module</th><th>Capabilities</th></tr>
+        <tr><td><strong>Assets</strong></td><td>QR/barcode tracking; offline sync; service tasks; ISO inspection PDFs</td></tr>
+        <tr><td><strong>Fleet</strong></td><td>Live GPS; trips, alerts; fuel &amp; CO₂ KPIs</td></tr>
+        <tr><td><strong>Planning</strong></td><td>Geo crew orders; qualification matching; weather map</td></tr>
+        <tr><td><strong>Workplace &amp; HR</strong></td><td>Task canvas; Outlook via Graph; qualifications matrix; payroll CSV</td></tr>
+        <tr><td><strong>Deploy</strong></td><td>Web, Electron, Capacitor mobile; SharePoint tenant provisioning</td></tr>
+      </table>
+
+      <h2>Roadmap (non-blocking)</h2>
+      <ul>
+        <li>Full IFC STEP export from authored relational graph</li>
+        <li>Real-time multi-user graph editing</li>
+        <li>SharePoint IFC metadata ↔ field asset IDs</li>
+        <li>Automated warehouse ETL</li>
+      </ul>
+
+      <h2>Why This Approach</h2>
+      <ul>
+        <li>IFC = open exchange format; relational DB = place to model &amp; enrich</li>
+        <li>Topology + mining turn static files into queryable project intelligence</li>
+        <li>SharePoint + Azure AD = secure delivery without duplicate auth</li>
+        <li>BubbleBIM proves the pipeline end-to-end — not slideware</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <footer>
+    Open BIM · AT / DE / CH · visualization · modeling · remodeling · mining · topology · enrichment · BubbleBIM · Azure · SharePoint · June 2026
+  </footer>
+
+</div>
+</body>
+</html>

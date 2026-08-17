@@ -1,0 +1,26 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('BubbleGraph BIM Library — French Door-Window 120×220 cm'),'2;1');
+FILE_NAME('french_door-window_120×220_cm.step','2026-01-01T00:00:00',('BubbleGraph'),(''),'BubbleGraph 1.0','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+/* ── Coordinate system ───────────────────────────────────────────────
+   Origin at bottom-left-front corner of bounding box.
+   X → width (1200.0 mm), Y → depth (200.0 mm), Z → height (2200.0 mm).
+   Object: French Door-Window 120×220 cm
+   The solid named 'MAIN_BODY' represents the full frame + glass assembly.
+   The solid named 'VOID' represents the wall-opening to be subtracted.
+── */
+#1 = CARTESIAN_POINT('',(0.0,0.0,0.0));
+#2 = DIRECTION('X',(1.0,0.0,0.0));
+#3 = DIRECTION('Y',(0.0,1.0,0.0));
+#4 = DIRECTION('Z',(0.0,0.0,1.0));
+#5 = AXIS2_PLACEMENT_3D('',#1,#4,#2);
+/* Main body — replace with real BREP geometry */
+#10 = BLOCK('MAIN_BODY',#5,1200.0,200.0,2200.0);
+/* Void solid — replace with real BREP void geometry */
+#11 = BLOCK('VOID',#5,1200.0,200.0,2200.0);
+/* TODO: Replace #10 and #11 with proper ADVANCED_BREP_SHAPE_REPRESENTATION */
+ENDSEC;
+END-ISO-10303-21;

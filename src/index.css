@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BUBBLE BIM — Modern Minimalist Design System
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Brand palette */
+  --bb-blue:    #3b82f6;
+  --bb-blue-d:  #1d4ed8;
+  --bb-teal:    #14b8a6;
+  --bb-green:   #22c55e;
+  --bb-amber:   #f59e0b;
+  --bb-red:     #ef4444;
+  --bb-purple:  #8b5cf6;
+
+  /* shadcn/ui CSS variables — light mode */
+  --background: 210 20% 98%;
+  --foreground: 220 20% 10%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 92%;
+  --secondary-foreground: 220 20% 20%;
+  --muted: 220 14% 93%;
+  --muted-foreground: 220 10% 46%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 13% 86%;
+  --input: 220 13% 91%;
+  --ring: 217 91% 60%;
+  --radius: 0.375rem;
+  --bb-props-bg: #ffffff;
+}
+
+.dark {
+  /* Slate-black base — deep, neutral, modern */
+  --background: 222 24% 9%;
+  --foreground: 210 16% 90%;
+
+  /* Electric blue primary */
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 24% 9%;
+
+  /* Slightly elevated surface */
+  --secondary: 220 18% 14%;
+  --secondary-foreground: 210 16% 90%;
+
+  /* Muted backgrounds */
+  --muted: 220 16% 18%;
+  --muted-foreground: 218 12% 55%;
+
+  /* Accent matches primary */
+  --accent: 217 91% 60%;
+  --accent-foreground: 222 24% 9%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 220 16% 22%;
+  --input: 220 18% 14%;
+  --ring: 217 91% 60%;
+  --bb-props-bg: #1a1f2e;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+button {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input, textarea, select {
+  background-color: hsl(var(--input));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+/* ─── Scrollbars ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+/* ─── BubbleBIM Shell ────────────────────────────────────────── */
+
+/* Header bar */
+.bb-header {
+  height: 44px;
+  background: hsl(var(--secondary));
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Sidebar */
+.bb-sidebar {
+  width: 220px;
+  background: hsl(var(--secondary));
+  border-right: 1px solid hsl(var(--border));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+.bb-sidebar.collapsed {
+  width: 44px;
+}
+
+/* Sidebar section header */
+.bb-section-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  transition: background 0.12s, color 0.12s;
+}
+
+.bb-section-btn:hover {
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--foreground));
+}
+
+.bb-section-btn .chevron {
+  margin-left: auto;
+  opacity: 0.5;
+  transition: transform 0.18s ease;
+}
+
+.bb-section-btn.open .chevron { transform: rotate(90deg); }
+
+/* Sidebar row item */
+.bb-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 14px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  border-radius: 0;
+}
+
+.bb-row:hover { background: hsl(var(--muted) / 0.5); color: hsl(var(--foreground)); }
+.bb-row.active { background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); font-weight: 500; }
+
+/* ─── Floating Tab Bar ───────────────────────────────────────── */
+.bb-tabbar {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 8px;
+  gap: 2px;
+  background: hsl(var(--secondary));
+  border-bottom: 1px solid hsl(var(--border));
+  min-height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.bb-tabbar::-webkit-scrollbar { display: none; }
+
+.bb-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  height: 30px;
+  margin-bottom: 0;
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  white-space: nowrap;
+  position: relative;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+  max-width: 180px;
+}
+
+.bb-tab:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.4);
+}
+
+.bb-tab.active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--background));
+  font-weight: 500;
+  box-shadow: 0 -2px 0 0 hsl(var(--primary)) inset;
+}
+
+.bb-tab .tab-icon { opacity: 0.5; font-size: 11px; flex-shrink: 0; }
+.bb-tab.active .tab-icon { opacity: 0.9; }
+
+.bb-tab .tab-close {
+  opacity: 0;
+  margin-left: 2px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.bb-tab:hover .tab-close { opacity: 0.6; }
+.bb-tab .tab-close:hover { opacity: 1 !important; background: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); }
+
+/* ─── Tools strip ────────────────────────────────────────────── */
+.bb-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: hsl(var(--secondary) / 0.6);
+  border-bottom: 1px solid hsl(var(--border));
+  flex-shrink: 0;
+  min-height: 34px;
+}
+
+/* ─── Toolbar button ─────────────────────────────────────────── */
+.bb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  height: 26px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+
+.bb-btn:hover { background: hsl(var(--muted)); }
+.bb-btn.primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+.bb-btn.primary:hover { background: hsl(217 91% 52%); }
+.bb-btn.ghost { border-color: transparent; background: transparent; }
+.bb-btn.ghost:hover { background: hsl(var(--muted) / 0.5); }
+.bb-btn.active {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.3);
+}
+
+/* Status dot */
+.bb-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.bb-dot.blue   { background: hsl(var(--primary)); }
+.bb-dot.green  { background: #22c55e; }
+.bb-dot.amber  { background: #f59e0b; }
+
+/* Divider in toolbar */
+.bb-sep { width: 1px; height: 16px; background: hsl(var(--border)); margin: 0 4px; flex-shrink: 0; }

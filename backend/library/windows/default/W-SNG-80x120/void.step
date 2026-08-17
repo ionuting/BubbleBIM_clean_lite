@@ -1,0 +1,19 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('BubbleGraph BIM Library — Window Single 80×120 cm VOID'),'2;1');
+FILE_NAME('window_single_80×120_cm_void.step','2026-01-01T00:00:00',('BubbleGraph'),(''),'BubbleGraph 1.0','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+/* Wall-opening void for: Window Single 80×120 cm
+   Dimensions: 800.0 mm wide × 200.0 mm deep × 1200.0 mm tall.
+   Used for boolean subtraction from the host wall solid.
+*/
+#1 = CARTESIAN_POINT('',(0.0,0.0,0.0));
+#2 = DIRECTION('X',(1.0,0.0,0.0));
+#3 = DIRECTION('Z',(0.0,0.0,1.0));
+#5 = AXIS2_PLACEMENT_3D('',#1,#3,#2);
+#10 = BLOCK('VOID',#5,800.0,200.0,1200.0);
+/* TODO: Replace with proper ADVANCED_BREP_SHAPE_REPRESENTATION */
+ENDSEC;
+END-ISO-10303-21;

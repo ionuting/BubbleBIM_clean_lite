@@ -1,0 +1,10 @@
+{
+  "id": "french",
+  "label": "French",
+  "description": "Tall floor-to-ceiling glazed windows and balcony doors derived from French classical architecture",
+  "era": "classical / neoclassical",
+  "material_palette": ["Lemn vopsit alb", "Lemn vopsit gri", "Fier forjat"],
+  "frame_depth_mm": 200,
+  "standards": ["EN 14351-1"],
+  "note": "Ferestrele franceze ajung până la podea sau au glaf la 0 mm — tipice perioadei 1700–1920"
+}

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Plan de afaceri — Platformă digitală construcții &amp; infrastructură</title>
+  <style>
+    @page { size: A4; margin: 14mm 16mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 9.2pt;
+      line-height: 1.32;
+      color: #1a2332;
+      background: #e8ecf0;
+    }
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 12px auto;
+      background: #fff;
+      padding: 14mm 16mm;
+      box-shadow: 0 2px 12px rgba(0,0,0,.12);
+    }
+    @media print {
+      body { background: #fff; }
+      .sheet { margin: 0; box-shadow: none; page-break-after: always; }
+      .sheet:last-child { page-break-after: auto; }
+    }
+    h1 {
+      font-size: 14pt;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin-bottom: 2px;
+    }
+    .subtitle {
+      font-size: 9pt;
+      color: #5a6578;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #1e4d8c;
+      padding-bottom: 6px;
+    }
+    h2 {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #1e4d8c;
+      margin: 9px 0 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    p { margin-bottom: 5px; text-align: justify; }
+    .cols { display: flex; gap: 14px; }
+    .col { flex: 1; min-width: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.2pt;
+      margin: 4px 0 6px;
+    }
+    th, td {
+      border: 1px solid #cdd5df;
+      padding: 3px 5px;
+      vertical-align: top;
+    }
+    th {
+      background: #e8f0fa;
+      color: #1e4d8c;
+      font-weight: 600;
+      text-align: left;
+    }
+    ul { margin: 2px 0 5px 14px; }
+    li { margin-bottom: 1px; }
+    .highlight { font-weight: 600; color: #1a2332; }
+    .meta { font-size: 7.5pt; color: #64748b; margin-top: 8px; }
+    .page-num { text-align: right; font-size: 7.5pt; color: #94a3b8; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<!-- ========== PAGINA 1 ========== -->
+<div class="sheet">
+  <h1>Plan de afaceri</h1>
+  <div class="subtitle">Platformă digitală integrată pentru constructori și infrastructură · Model relațional BIM + operațiuni de teren pe Microsoft 365 · Iunie 2026</div>
+
+  <h2>1. Rezumat executiv</h2>
+  <p>Oferim un <span class="highlight">portofoliu software dual-layer</span> pentru firme de construcții și infrastructură cu complexitate operațională ridicată: (A) un motor BIM bazat pe <strong>graf relațional</strong> — model unic din care derivă 3D, planuri, secțiuni, foi de desen și cantități deviz; (B) o platformă de <strong>operațiuni de teren</strong> nativă SharePoint — urmărire active QR, flotă GPS, planificare echipe, HR și workplace digital. Nu înlocuim Microsoft 365, data warehouse-ul sau PM-ul clientului; le completăm cu date structurate din proiect și de pe șantier. Software funcțional livrat azi, nu doar consultanță.</p>
+
+  <div class="cols">
+    <div class="col">
+      <h2>2. Problema &amp; oportunitatea</h2>
+      <p>Constructorii proiect-intensivi pierd productivitate prin: modele și devize duplicate, lipsă de trasabilitate a uneltelor/plantelor, planificare manuală a echipelor, date izolate între birou și teren. Piața cere digitalizare cu <strong>efect măsurabil</strong>, integrare M365 și adoptare incrementală — fără „piloturi în groapă". Cererea de dialog strategic (RFI/RFP digital transformation) confirmă nevoia de parteneri cu capacitate de implementare, nu doar strategie.</p>
+    </div>
+    <div class="col">
+      <h2>3. Propunerea de valoare</h2>
+      <ul>
+        <li><strong>O singură sursă de adevăr</strong> pentru geometrie + metadate + BOQ</li>
+        <li><strong>Teren conectat</strong>: QR, offline, audit complet hand-out/hand-in</li>
+        <li><strong>M365 first</strong>: Azure AD, SharePoint lists, Outlook, Graph API</li>
+        <li><strong>Deschis</strong>: IFC, JSON, CSV — fără lock-in</li>
+        <li><strong>AI practic</strong>: LLM local (import IFC, query model, asistent inventar)</li>
+        <li><strong>ROI măsurabil</strong>: timp deviz, audit active, km/combustibil flotă</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>4. Produs &amp; tehnologie</h2>
+  <table>
+    <tr>
+      <th style="width:22%">Strat</th>
+      <th style="width:48%">Capabilități cheie (livrate)</th>
+      <th style="width:30%">Tehnologie</th>
+    </tr>
+    <tr>
+      <td><strong>Design &amp; model</strong></td>
+      <td>Editor graf noduri-muchii; multi-viewer 3D/2D; import IFC; takeoff automat → export F3/deviz; simboluri 2D parametrice; foi de desen; pachet proiect portabil</td>
+      <td>React/TS, FastAPI, graf JSON/LadyBugDB, WebIFC, Ollama</td>
+    </tr>
+    <tr>
+      <td><strong>Operațiuni teren</strong></td>
+      <td>Active QR + offline; service workshop/câmp; flotă GPS (km, combustibil, CO₂); comenzi săptămânale geo-localizate; planificator mecanici; task canvas + Outlook; matrice calificări HR; PDF inspecții ISO</td>
+      <td>SharePoint Online, MSAL, Graph API, Capacitor mobile, Dexie offline</td>
+    </tr>
+  </table>
+
+  <h2>5. Piață țintă &amp; clienți</h2>
+  <div class="cols">
+    <div class="col">
+      <p><strong>Segment primar:</strong> constructori generali și specializați în infrastructură (cale ferată, drumuri, utilități) cu &gt;50 angajați pe teren, M365 deja implementat, data warehouse pentru BI.</p>
+      <p><strong>Segment secundar:</strong> dezvoltatori rezidențiali/comerciali cu deviz propriu (catalog norme RO); birouri BIM regionale.</p>
+      <p><strong>Buyer personas:</strong> Director digital / IT, PMO, șef șantier, QS/devizier, manager flotă/HR, coordonator BIM.</p>
+    </div>
+    <div class="col">
+      <p><strong>Geografie inițială:</strong> România + Nordics/EU — piețe cu norme locale de deviz și maturitate M365.</p>
+      <p><strong>Trigger de cumpărare:</strong> tender cu BOQ accelerat; audit pierderi unelte; conformitate calificări; proiect pilot finanțat din buget digital; dialog strategic cu contractor tier-1.</p>
+    </div>
+  </div>
+
+  <h2>6. Model de venituri</h2>
+  <table>
+    <tr><th>Flux</th><th>Descriere</th><th>Indicativ</th></tr>
+    <tr><td><strong>Licență platformă</strong></td><td>Abonament anual per organizație (strat design + strat teren, tier-uri după nr. utilizatori/proiecte active)</td><td>€15–45k/an (SMB) · €60–150k/an (enterprise)</td></tr>
+    <tr><td><strong>Implementare &amp; integrare</strong></td><td>Discovery, pilot, provisioning SharePoint, mapare norme deviz, ETL warehouse, training</td><td>€25–80k one-time per client</td></tr>
+    <tr><td><strong>Suport &amp; evoluție</strong></td><td>SLA, actualizări catalog norme, mentenanță integrări, roadmap partajat</td><td>15–20% din licență/an</td></tr>
+    <tr><td><strong>Customizare</strong></td><td>Catalog deviz nou, simboluri, rapoarte, conectori ERP/PM</td><td>T&amp;M sau fixed-price</td></tr>
+  </table>
+
+  <div class="page-num">Pagina 1 / 2</div>
+</div>
+
+<!-- ========== PAGINA 2 ========== -->
+<div class="sheet">
+  <h2>7. Strategie go-to-market</h2>
+  <div class="cols">
+    <div class="col">
+      <p><strong>Faza 1 (0–12 luni):</strong> Conversie dialoguri strategice (RFI/RFP) în pilot plătit pe 1 proiect. Demo lite + proof pe cantități F3 și QR tracking. Referințe case study (zidărie confinată, urmărire active).</p>
+      <p><strong>Faza 2 (12–24 luni):</strong> Scale la 3–5 clienți enterprise; parteneriate cu integratori M365; listare pe Azure Marketplace / AppSource (field layer).</p>
+      <p><strong>Faza 3 (24+ luni):</strong> Expansiune catalog norme (EU); legătură deep design↔teren; analytics cross-proiect; canal reseller regional.</p>
+    </div>
+    <div class="col">
+      <p><strong>Canale:</strong> vânzare directă enterprise; parteneri digitali M365; conferințe construcții/infrastructură; content tehnic (BOQ automat, offline QR).</p>
+      <p><strong>Adoptare client:</strong> Discovery 4–6 săpt. → Pilot 8–12 săpt. → Scale 3–6 luni → Operate (SLA). KPI măsurați de la baseline: ore deviz, audit active, compliance calificări.</p>
+    </div>
+  </div>
+
+  <h2>8. Avantaj competitiv</h2>
+  <table>
+    <tr><th vs.</th><th>Diferențiatorul nostru</th></tr>
+    <tr><td>Revit/ArchiCAD</td><td>Model relațional deschis + deviz RO nativ + cost total ownership mai mic; complementar, nu substitut total</td></tr>
+    <tr><td>Procore / PlanGrid</td><td>Focus BOQ + graf BIM + M365 nativ (nu SaaS izolat); date în tenantul clientului</td></tr>
+    <tr><td>Soluții QR/fleet generice</td><td>Domain-aware: roluri echipă infrastructură, calificări, module, formulare ISO digitale</td></tr>
+    <tr><td>Consultancy pură</td><td>Software live + implementare — recomandare → modul funcțional → KPI</td></tr>
+  </table>
+
+  <h2>9. Echipă &amp; operațiuni</h2>
+  <p>Echipă nucleu: architect produs (graf + integrări), specialist BIM (norme, workflow), full-stack (viewere, API), inginer date (ETL warehouse), change manager (training, adopție). Livrare în model hybrid: produs standard + servicii de implementare. Guvernanță: scheme versionate Git, backup proiecte, politică AI local-first, RBAC Azure AD.</p>
+
+  <h2>10. Proiecții financiare (orientative, ani 1–3)</h2>
+  <table>
+    <tr><th>An</th><th>Clienți plătitori</th><th>Venit recurent (ARR)</th><th>Servicii one-time</th><th>Total venit</th><th>Observații</th></tr>
+    <tr><td>An 1</td><td>2 pilot + 1 enterprise</td><td>€40k</td><td>€120k</td><td>~€160k</td><td>Focus conversie dialog strategic; 2 case studies</td></tr>
+    <tr><td>An 2</td><td>5 enterprise + 3 SMB</td><td>€280k</td><td>€180k</td><td>~€460k</td><td>ETL warehouse live; partener M365</td></tr>
+    <tr><td>An 3</td><td>10 enterprise + 8 SMB</td><td>€620k</td><td>€150k</td><td>~€770k</td><td>Marjă servicii scade; ARR dominant</td></tr>
+  </table>
+  <p>Cheltuieli principale: dezvoltare produs (40%), implementare (25%), vânzări/marketing (15%), infra cloud (5%), admin (15%). Break-even estimat la sfârșitul anului 2 cu profil de cost controlat și echipă &lt;12 FTE.</p>
+
+  <h2>11. Riscuri &amp; mitigare</h2>
+  <div class="cols">
+    <div class="col">
+      <ul>
+        <li><strong>Ciclu vânzare lung</strong> → pilot plătit, ROI documentat</li>
+        <li><strong>Rezistență la schimbare</strong> → lite demo, offline, M365 familiar</li>
+        <li><strong>Gap produs</strong> (IFC export, co-editare) → roadmap transparent</li>
+      </ul>
+    </div>
+    <div class="col">
+      <ul>
+        <li><strong>Concurență incumbent</strong> → nișă deviz RO + teren + graf deschis</li>
+        <li><strong>Dependență M365</strong> → API deschis, export JSON/CSV mereu</li>
+        <li><strong>Concentrare client</strong> → diversificare SMB + parteneri</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>12. Concluzie &amp; următorii pași</h2>
+  <p>Combinația <span class="highlight">model relațional BIM + operațiuni SharePoint</span> acoperă arc-ul complet invitat în dialogul strategic: insight în model, execuție pe teren, date în warehouse. Următorii pași imediați: (1) închidere pilot cu contractor din dialogul de piață; (2) formalizare tier-uri licență; (3) conector ETL pilot spre Power BI; (4) 2 case studies cu KPI măsurați. Obiectiv: partener digital de implementare, nu doar furnizor de slide-uri.</p>
+
+  <p class="meta">Document derivat din analiza strategică de digitalizare (iunie 2026). Cifrele financiare sunt orientative și necesită validare cu costuri reale și pipeline comercial.</p>
+  <div class="page-num">Pagina 2 / 2</div>
+</div>
+
+</body>
+</html>

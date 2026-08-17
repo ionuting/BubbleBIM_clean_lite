@@ -1,0 +1,231 @@
+family: objects
+description: Placeable 3D library objects (furniture, equipment, fixtures)
+version: "1.0"
+
+categories:
+  - id: furniture
+    label: Furniture
+    icon: "🪑"
+  - id: fixtures
+    label: Fixtures & Fittings
+    icon: "🚿"
+  - id: equipment
+    label: Equipment
+    icon: "⚙"
+  - id: landscape
+    label: Landscape
+    icon: "🌿"
+
+entries:
+  # ── Furniture ──────────────────────────────────────────────────────────────
+  - id: chair_office
+    label: Office Chair
+    category: furniture
+    glb: objects/furniture/chair_office/model.glb
+    top_svg: objects/furniture/chair_office/top.svg
+    width_mm: 600
+    depth_mm: 600
+    height_mm: 900
+    description: Standard office swivel chair (Ø60 cm)
+    tags: [office, seating]
+
+  - id: desk_rect
+    label: Rectangular Desk
+    category: furniture
+    glb: objects/furniture/desk_rect/model.glb
+    top_svg: objects/furniture/desk_rect/top.svg
+    width_mm: 1400
+    depth_mm: 700
+    height_mm: 750
+    description: Standard office desk 140×70 cm
+    tags: [office, work]
+
+  - id: desk_L
+    label: L-Shaped Desk
+    category: furniture
+    glb: objects/furniture/desk_L/model.glb
+    top_svg: objects/furniture/desk_L/top.svg
+    width_mm: 2000
+    depth_mm: 1600
+    height_mm: 750
+    description: L-shaped corner desk
+    tags: [office, work]
+
+  - id: table_dining_4
+    label: Dining Table (4-seat)
+    category: furniture
+    glb: objects/furniture/table_dining_4/model.glb
+    top_svg: objects/furniture/table_dining_4/top.svg
+    width_mm: 1200
+    depth_mm: 800
+    height_mm: 750
+    description: Dining table with 4 chairs
+    tags: [dining, living]
+
+  - id: bed_single
+    label: Single Bed
+    category: furniture
+    glb: objects/furniture/bed_single/model.glb
+    top_svg: objects/furniture/bed_single/top.svg
+    width_mm: 900
+    depth_mm: 2000
+    height_mm: 500
+    description: Single bed 90×200 cm
+    tags: [bedroom, sleeping]
+
+  - id: bed_double
+    label: Double Bed
+    category: furniture
+    glb: objects/furniture/bed_double/model.glb
+    top_svg: objects/furniture/bed_double/top.svg
+    width_mm: 1600
+    depth_mm: 2000
+    height_mm: 500
+    description: Double bed 160×200 cm
+    tags: [bedroom, sleeping]
+
+  - id: sofa_2seat
+    label: 2-Seat Sofa
+    category: furniture
+    glb: objects/furniture/sofa_2seat/model.glb
+    top_svg: objects/furniture/sofa_2seat/top.svg
+    width_mm: 1600
+    depth_mm: 800
+    height_mm: 800
+    description: Two-seat sofa
+    tags: [living, seating]
+
+  - id: sofa_3seat
+    label: 3-Seat Sofa
+    category: furniture
+    glb: objects/furniture/sofa_3seat/model.glb
+    top_svg: objects/furniture/sofa_3seat/top.svg
+    width_mm: 2200
+    depth_mm: 900
+    height_mm: 800
+    description: Three-seat sofa
+    tags: [living, seating]
+
+  - id: wardrobe_2door
+    label: Wardrobe 2-Door
+    category: furniture
+    glb: objects/furniture/wardrobe_2door/model.glb
+    top_svg: objects/furniture/wardrobe_2door/top.svg
+    width_mm: 1200
+    depth_mm: 600
+    height_mm: 2200
+    description: Standard 2-door wardrobe
+    tags: [bedroom, storage]
+
+  # ── Fixtures ───────────────────────────────────────────────────────────────
+  - id: sink_kitchen
+    label: Kitchen Sink (Single)
+    category: fixtures
+    glb: objects/fixtures/sink_kitchen/model.glb
+    top_svg: objects/fixtures/sink_kitchen/top.svg
+    width_mm: 600
+    depth_mm: 500
+    height_mm: 200
+    description: Single-basin kitchen sink
+    tags: [kitchen, plumbing]
+
+  - id: sink_bathroom
+    label: Bathroom Basin
+    category: fixtures
+    glb: objects/fixtures/sink_bathroom/model.glb
+    top_svg: objects/fixtures/sink_bathroom/top.svg
+    width_mm: 500
+    depth_mm: 420
+    height_mm: 180
+    description: Bathroom pedestal basin
+    tags: [bathroom, plumbing]
+
+  - id: toilet_standard
+    label: WC Toilet
+    category: fixtures
+    glb: objects/fixtures/toilet_standard/model.glb
+    top_svg: objects/fixtures/toilet_standard/top.svg
+    width_mm: 380
+    depth_mm: 650
+    height_mm: 800
+    description: Standard close-coupled toilet
+    tags: [bathroom, plumbing]
+
+  - id: bathtub_standard
+    label: Bathtub
+    category: fixtures
+    glb: objects/fixtures/bathtub_standard/model.glb
+    top_svg: objects/fixtures/bathtub_standard/top.svg
+    width_mm: 700
+    depth_mm: 1700
+    height_mm: 600
+    description: Standard bathtub 70×170 cm
+    tags: [bathroom, plumbing]
+
+  - id: shower_cabin
+    label: Shower Cabin
+    category: fixtures
+    glb: objects/fixtures/shower_cabin/model.glb
+    top_svg: objects/fixtures/shower_cabin/top.svg
+    width_mm: 900
+    depth_mm: 900
+    height_mm: 2000
+    description: Square shower cabin 90×90 cm
+    tags: [bathroom, plumbing]
+
+  # ── Equipment ──────────────────────────────────────────────────────────────
+  - id: kitchen_refrigerator
+    label: Refrigerator
+    category: equipment
+    glb: objects/equipment/kitchen_refrigerator/model.glb
+    top_svg: objects/equipment/kitchen_refrigerator/top.svg
+    width_mm: 600
+    depth_mm: 650
+    height_mm: 1800
+    description: Standard upright refrigerator
+    tags: [kitchen, appliance]
+
+  - id: kitchen_oven
+    label: Built-in Oven
+    category: equipment
+    glb: objects/equipment/kitchen_oven/model.glb
+    top_svg: objects/equipment/kitchen_oven/top.svg
+    width_mm: 600
+    depth_mm: 600
+    height_mm: 600
+    description: Built-in electric oven
+    tags: [kitchen, appliance]
+
+  - id: washing_machine
+    label: Washing Machine
+    category: equipment
+    glb: objects/equipment/washing_machine/model.glb
+    top_svg: objects/equipment/washing_machine/top.svg
+    width_mm: 600
+    depth_mm: 600
+    height_mm: 850
+    description: Front-loading washing machine
+    tags: [laundry, appliance]
+
+  # ── Landscape ──────────────────────────────────────────────────────────────
+  - id: tree_deciduous
+    label: Deciduous Tree
+    category: landscape
+    glb: objects/landscape/tree_deciduous/model.glb
+    top_svg: objects/landscape/tree_deciduous/top.svg
+    width_mm: 6000
+    depth_mm: 6000
+    height_mm: 8000
+    description: Generic deciduous tree (Ø6 m canopy)
+    tags: [planting, outdoor]
+
+  - id: car_standard
+    label: Parked Car
+    category: landscape
+    glb: objects/landscape/car_standard/model.glb
+    top_svg: objects/landscape/car_standard/top.svg
+    width_mm: 2000
+    depth_mm: 4500
+    height_mm: 1500
+    description: Standard-size car for site plans
+    tags: [vehicle, site]

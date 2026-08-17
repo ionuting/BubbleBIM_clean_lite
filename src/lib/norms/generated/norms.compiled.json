@@ -1,0 +1,1533 @@
+{
+  "id": "zidarie-confinata",
+  "version": "deviz-zidarie-confinata-1",
+  "currency": "lei",
+  "articles": [
+    {
+      "id": "0003_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Centuri"
+    },
+    {
+      "id": "0003_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Centuri"
+    },
+    {
+      "id": "0003_CC01A1_02",
+      "symbol": "CC01A1 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 6 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Centuri"
+    },
+    {
+      "id": "0003_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Centuri"
+    },
+    {
+      "id": "0015_CK26A_02",
+      "symbol": "CK26A 02",
+      "denumire": "GLAFURI MONTATE LA FERESTRE DIN MASE PLASTICE",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Diverse"
+    },
+    {
+      "id": "0006_CE08A_02",
+      "symbol": "CE08A 02",
+      "denumire": "COAME PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_CE07A_02",
+      "symbol": "CE07A 02",
+      "denumire": "INVELITORI DIN TABLA ONDULATA TIP LINDAB - TABLA C UTATA (TIGLE MATALICE)",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_CE08B_02",
+      "symbol": "CE08B 02",
+      "denumire": "DOLII PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_CE08C_02",
+      "symbol": "CE08C 02",
+      "denumire": "PAZII PT INVELITORI DIN TABLA ONDULATA SI PROFILA TA TIP LINDAB",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_CE08D_02",
+      "symbol": "CE08D 02",
+      "denumire": "STREASINI PT INVELITORI DIN TABLA ONDULATA SI PRO FILATA TIP LINDAB",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_CE08E_02",
+      "symbol": "CE08E 02",
+      "denumire": "SORTURI PT INVELITORI DIN TABLA ONDULATA SI PROFI LATA TIP LINDAB",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0004_RPCH05A_91",
+      "symbol": "RPCH05A 91",
+      "denumire": "PLANSEU DE LEMN CU DECHID.PINA LA 4 M EXEC.DIN GRI NZI LEMN DE RASIN.SAU FOIOASE 24MM PE SIPCI24X48MM",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Planseu lemn"
+    },
+    {
+      "id": "0004_RPCE19C_09",
+      "symbol": "RPCE19C 09",
+      "denumire": "ST.TERMOIZOL,PROD.VATA MIN,TERASE-ACOP-PLANS-PER:S ALTELE VATA MINERALA,PODURI NECIRC,S.ORIZ-INCL<20%",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Planseu lemn"
+    },
+    {
+      "id": "0007_CG01F1_82",
+      "symbol": "CG01F1 82",
+      "denumire": "SAPA SUPORT DIN IPSOS AUTONIVELATOARE SUB PARDOSEL I DE 3CM GROSIME",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Sapa egalizare"
+    },
+    {
+      "id": "0005_CE28A_02",
+      "symbol": "CE28A 02",
+      "denumire": "SARPANTA PE SCAUNE LEMN ECARISAT,CONTUR REGULAT 1. ..4 PANTE PT INCERCARI CLIMATICE NORMALE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Sarpanta"
+    },
+    {
+      "id": "0016_RPCE26A_09",
+      "symbol": "RPCE26A 09",
+      "denumire": "HIDROIZOLATIE DIN EMULSIE BITUMINOASA APLICATA LA RECE: 1 STRAT DE AMORSA + 1 STRAT DE EMULSIE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Soclu"
+    },
+    {
+      "id": "0016_CD03A_02",
+      "symbol": "CD03A 02",
+      "denumire": "ZID DIN CARAMIDA PLINA PRESATA ARSA 240X115X63 MM CU M25Z PROT HIDROIZ SUBSOL TENC 0,5-1CM ZID 7,5CM",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Soclu"
+    },
+    {
+      "id": "0016_00301E_02",
+      "symbol": "00301E 02",
+      "denumire": "TENCUIALA PENTRU SOCLU BAUMIT - 3 CM",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Soclu"
+    },
+    {
+      "id": "0002_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Stalpisori"
+    },
+    {
+      "id": "0002_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Stalpisori"
+    },
+    {
+      "id": "0002_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Stalpisori"
+    },
+    {
+      "id": "0002_CC01A1_02",
+      "symbol": "CC01A1 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 6 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Stalpisori"
+    },
+    {
+      "id": "0011_CF24A_02",
+      "symbol": "CF24A 02",
+      "denumire": "TENCUIELI INTERIOARE DIN IPSOS DE 1 CM GROSIME, AP LICATE MANUAL",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Tencuiala"
+    },
+    {
+      "id": "0011_CF06B1_82",
+      "symbol": "CF06B1 82",
+      "denumire": "TENCUIELI EXTERIOARE OBISNUITE,DRISCUITE PE ZIDURI ,IN GROSIME MEDIE DE 2,5CM",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Tencuiala"
+    },
+    {
+      "id": "0012_00107A011_02",
+      "symbol": "00107A011 02",
+      "denumire": "TERMOIZOLARE FATADE - DEKO THERM CU POLISTIREN EXP ANDAT CU ADEZIV \"DEKOMAX\"",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Termoizolatie"
+    },
+    {
+      "id": "0013_CN05A_02",
+      "symbol": "CN05A 02",
+      "denumire": "VOPSITORII INTERIOARE CU VOPSELE LAVABILE ACRILICE APLICATE PE SUPORT DE GLET DE IPSOS",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Vopsitorii"
+    },
+    {
+      "id": "0013_CN11A_02",
+      "symbol": "CN11A 02",
+      "denumire": "VOPSITORII EXTERIOARE CU VOPSELE LAVABILE ACRILICE APLICATE PE TENCUIALA DRISCUITA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Vopsitorii"
+    },
+    {
+      "id": "0001_00201A01_02",
+      "symbol": "00201A01 02",
+      "denumire": "ZIDARIE LA PERETI STRUCTURALI DIN BLOCURI CERAMICE POROTHERM 38 (250X380X238) CU LOCAS DE MORTAR",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Zidarie"
+    },
+    {
+      "id": "0001_RPCE26A_09",
+      "symbol": "RPCE26A 09",
+      "denumire": "HIDROIZOLATIE DIN EMULSIE BITUMINOASA APLICATA LA RECE: 1 STRAT DE AMORSA + 1 STRAT DE EMULSIE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Zidarie"
+    }
+  ],
+  "categories": [
+    "Centuri",
+    "Diverse",
+    "Invelitoare",
+    "Planseu lemn",
+    "Sapa egalizare",
+    "Sarpanta",
+    "Soclu",
+    "Stalpisori",
+    "Tencuiala",
+    "Termoizolatie",
+    "Vopsitorii",
+    "Zidarie"
+  ],
+  "mapping": [
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B20x30",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B25x40",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B30x50",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B30x60",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B40x60",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B40x80",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B50x80",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "B50x100",
+      "outputs": [
+        {
+          "normId": "0003_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0003_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0003_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0003_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "window",
+      "elementTypeId": "*",
+      "outputs": [
+        {
+          "normId": "0015_CK26A_02",
+          "measure": "formula",
+          "formula": "width_m * 2 + height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "foundation",
+      "elementTypeId": "F60x60x40",
+      "outputs": [
+        {
+          "normId": "0016_RPCE26A_09",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        },
+        {
+          "normId": "0016_CD03A_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0016_00301E_02",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "foundation",
+      "elementTypeId": "F80x80x50",
+      "outputs": [
+        {
+          "normId": "0016_RPCE26A_09",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        },
+        {
+          "normId": "0016_CD03A_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0016_00301E_02",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "foundation",
+      "elementTypeId": "F100x100x60",
+      "outputs": [
+        {
+          "normId": "0016_RPCE26A_09",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        },
+        {
+          "normId": "0016_CD03A_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0016_00301E_02",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "foundation",
+      "elementTypeId": "F120x120x60",
+      "outputs": [
+        {
+          "normId": "0016_RPCE26A_09",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        },
+        {
+          "normId": "0016_CD03A_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0016_00301E_02",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "foundation",
+      "elementTypeId": "F150x150x70",
+      "outputs": [
+        {
+          "normId": "0016_RPCE26A_09",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        },
+        {
+          "normId": "0016_CD03A_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0016_00301E_02",
+          "measure": "formula",
+          "formula": "2 * (width_m + depth_m) * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C20x20",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C25x25",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C30x30",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C30x50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C40x40",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C45x45",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C50x50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "C60x60",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR20",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR25",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR30",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR40",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "CR60",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C20x20",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C25x25",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C30x30",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C30x50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C40x40",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C45x45",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C50x50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "C60x60",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR20",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR25",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR30",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR40",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR50",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "CR60",
+      "outputs": [
+        {
+          "normId": "0002_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0002_CB01C_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0002_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        },
+        {
+          "normId": "0002_CC01A1_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 30.8"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "outputs": [
+        {
+          "normId": "0011_CF24A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0011_CF06B1_82",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0012_00107A011_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0013_CN05A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0013_CN11A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W15",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W20",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W25",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W30",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W35",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W40",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    }
+  ],
+  "prices": {
+    "0003_CA01D_02": {
+      "material": 450,
+      "manopera": 110,
+      "utilaj": 55,
+      "transport": 45
+    },
+    "0003_CC01A4_02": {
+      "material": 5.2,
+      "manopera": 1.8,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0003_CC01A1_02": {
+      "material": 5.4,
+      "manopera": 2.4,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0003_CB01C_02": {
+      "material": 45,
+      "manopera": 55,
+      "utilaj": 4,
+      "transport": 6
+    },
+    "0015_CK26A_02": {
+      "material": 34,
+      "manopera": 22,
+      "utilaj": 1,
+      "transport": 3
+    },
+    "0006_CE08A_02": {
+      "material": 32,
+      "manopera": 18,
+      "utilaj": 1,
+      "transport": 3
+    },
+    "0006_CE07A_02": {
+      "material": 75,
+      "manopera": 45,
+      "utilaj": 3,
+      "transport": 6
+    },
+    "0006_CE08B_02": {
+      "material": 38,
+      "manopera": 20,
+      "utilaj": 1,
+      "transport": 3
+    },
+    "0006_CE08C_02": {
+      "material": 28,
+      "manopera": 16,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0006_CE08D_02": {
+      "material": 30,
+      "manopera": 18,
+      "utilaj": 1,
+      "transport": 3
+    },
+    "0006_CE08E_02": {
+      "material": 26,
+      "manopera": 15,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0004_RPCH05A_91": {
+      "material": 190,
+      "manopera": 90,
+      "utilaj": 8,
+      "transport": 12
+    },
+    "0004_RPCE19C_09": {
+      "material": 42,
+      "manopera": 22,
+      "utilaj": 1,
+      "transport": 4
+    },
+    "0007_CG01F1_82": {
+      "material": 34,
+      "manopera": 22,
+      "utilaj": 2,
+      "transport": 4
+    },
+    "0005_CE28A_02": {
+      "material": 130,
+      "manopera": 75,
+      "utilaj": 6,
+      "transport": 10
+    },
+    "0016_RPCE26A_09": {
+      "material": 14,
+      "manopera": 12,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0016_CD03A_02": {
+      "material": 520,
+      "manopera": 300,
+      "utilaj": 25,
+      "transport": 45
+    },
+    "0016_00301E_02": {
+      "material": 38,
+      "manopera": 34,
+      "utilaj": 2,
+      "transport": 4
+    },
+    "0002_CA01D_02": {
+      "material": 450,
+      "manopera": 110,
+      "utilaj": 55,
+      "transport": 45
+    },
+    "0002_CB01C_02": {
+      "material": 45,
+      "manopera": 55,
+      "utilaj": 4,
+      "transport": 6
+    },
+    "0002_CC01A4_02": {
+      "material": 5.2,
+      "manopera": 1.8,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0002_CC01A1_02": {
+      "material": 5.4,
+      "manopera": 2.4,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0011_CF24A_02": {
+      "material": 20,
+      "manopera": 28,
+      "utilaj": 2,
+      "transport": 3
+    },
+    "0011_CF06B1_82": {
+      "material": 24,
+      "manopera": 36,
+      "utilaj": 3,
+      "transport": 4
+    },
+    "0012_00107A011_02": {
+      "material": 70,
+      "manopera": 48,
+      "utilaj": 3,
+      "transport": 6
+    },
+    "0013_CN05A_02": {
+      "material": 11,
+      "manopera": 16,
+      "utilaj": 1,
+      "transport": 1
+    },
+    "0013_CN11A_02": {
+      "material": 17,
+      "manopera": 20,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0001_00201A01_02": {
+      "material": 420,
+      "manopera": 240,
+      "utilaj": 25,
+      "transport": 40
+    },
+    "0001_RPCE26A_09": {
+      "material": 14,
+      "manopera": 12,
+      "utilaj": 1,
+      "transport": 2
+    }
+  }
+}
