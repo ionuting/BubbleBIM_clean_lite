@@ -26,6 +26,7 @@ import { NODE_COLOR } from '@/lib/bimGeometry';
 import { ensureBooleanEngine } from '@/lib/brep';
 import { buildBrepModel, modelVolumesByType, type BrepModel } from '@/lib/brep/scene';
 import { toBufferGeometry, toEdgesGeometry } from '@/lib/brep/three';
+import { createPointerZoom } from '@/lib/orbitPointerZoom';
 
 type CompareMode = 'brep' | 'og' | 'overlay';
 
@@ -135,9 +136,18 @@ export function BrepViewer({
       mouse.current.x = e.clientX; mouse.current.y = e.clientY;
       place();
     };
+    const pointerZoom = createPointerZoom({
+      dom: renderer.domElement,
+      camera,
+      scene,
+      state: cameraState.current,
+      target: cameraTarget.current,
+      minRadius: 0.5,
+      maxRadius: 2000,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraState.current.radius = Math.max(0.5, Math.min(2000, cameraState.current.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
+      pointerZoom(e);
       place();
     };
     const onClick = (e: MouseEvent) => {

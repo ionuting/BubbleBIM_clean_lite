@@ -33,6 +33,7 @@ import {
 import { type MaterialConfig, resolveVisuals, applyNodeColorOverrides, resolveWindowGlazing } from '@/lib/materialConfig';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { expandArrayNodes } from '@/lib/formulaUtils';
+import { createPointerZoom } from '@/lib/orbitPointerZoom';
 
 
 // ─── Add BIM-aware axes gizmo (X=East/red, Y=Up/blue, Z=North/green) ────────
@@ -781,9 +782,18 @@ export function Ara3DViewer({ nodes, edges, buildingAxes: _buildingAxes, classNa
       }
       cb(null); // clicked empty space — deselect
     };
+    const pointerZoom = createPointerZoom({
+      dom: renderer.domElement,
+      camera,
+      scene,
+      state: cameraStateRef.current,
+      target: cameraTargetRef.current,
+      minRadius: 1,
+      maxRadius: 1000,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraStateRef.current.radius = Math.max(1, Math.min(1000, cameraStateRef.current.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
+      pointerZoom(e);
       updateCamera();
     };
     const onResize = () => {

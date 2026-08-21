@@ -17,6 +17,7 @@ import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { buildFemModel, type FemModel, type FemModelOptions, type ElementKind } from '@/lib/fem/buildFemModel';
 import { getPositionsAndForces } from '@awatif/components/analysis/l-solver/getPositionsAndForces';
 import { getFullReactions, type FemReactions } from '@/lib/fem/getFullReactions';
+import { createPointerZoom } from '@/lib/orbitPointerZoom';
 
 interface FemViewerProps {
   nodes: BubbleGraphNode[];
@@ -187,9 +188,18 @@ export function FemViewer({ nodes, edges, storeyId, options, className }: FemVie
       mouse.current.x = e.clientX; mouse.current.y = e.clientY;
       place();
     };
+    const pointerZoom = createPointerZoom({
+      dom: renderer.domElement,
+      camera,
+      scene,
+      state: cameraState.current,
+      target: cameraTarget.current,
+      minRadius: 0.5,
+      maxRadius: 2000,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraState.current.radius = Math.max(0.5, Math.min(2000, cameraState.current.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
+      pointerZoom(e);
       place();
     };
     const onResize = () => {

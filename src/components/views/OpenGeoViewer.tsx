@@ -17,6 +17,7 @@ import { expandArrayNodes } from '@/lib/formulaUtils';
 import { ensureOpenGeoReady } from '@/lib/openGeoInit';
 import { buildOGScene } from '@/lib/ogBimMapper';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
+import { createPointerZoom } from '@/lib/orbitPointerZoom';
 
 function addBimAxes(scene: THREE.Scene, length = 1): void {
   const mkLine = (end: [number, number, number], color: number) => {
@@ -218,9 +219,18 @@ export function OpenGeoViewer({
       }
       cb(null);
     };
+    const pointerZoom = createPointerZoom({
+      dom: renderer.domElement,
+      camera,
+      scene,
+      state: cameraStateRef.current,
+      target: cameraTargetRef.current,
+      minRadius: 1,
+      maxRadius: 1000,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraStateRef.current.radius = Math.max(1, Math.min(1000, cameraStateRef.current.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
+      pointerZoom(e);
       updateCamera();
     };
     const onResize = () => {
