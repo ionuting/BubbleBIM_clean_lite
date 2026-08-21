@@ -116,6 +116,14 @@ The World/Terrain viewers can place stylized trees, served by the backend from a
 [Quaternius](https://quaternius.com/)** (~450 MB) and is not redistributed here — download it
 separately if you want the vegetation. Everything else works without it.
 
+## Demo videos
+
+Some demo videos where I started to explain the workflow:
+
+- https://youtu.be/VvgzbuDBcOE
+- https://youtu.be/S7u0QBVyrKw
+- https://youtu.be/SAVfjlPjIwc
+
 ## Community
 
 - **Substack:** https://substack.com/@ionutbimstudio
