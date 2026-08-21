@@ -10,6 +10,8 @@ Redundant engines and duplicate 2D paths are stubbed out of the bundle.
 
 **Stack:** React 18 + TypeScript + Vite + Tailwind CSS · FastAPI + SQLite
 
+**Live demo:** https://bbim.ciuntucbimstudio.ro
+
 ---
 
 ## Quick start
