@@ -116,6 +116,12 @@ The World/Terrain viewers can place stylized trees, served by the backend from a
 [Quaternius](https://quaternius.com/)** (~450 MB) and is not redistributed here — download it
 separately if you want the vegetation. Everything else works without it.
 
+## Community
+
+- **Substack:** https://substack.com/@ionutbimstudio
+- **Skool:** https://www.skool.com/bubblebim-club-1376/about
+- **Discord:** https://discord.gg/RFDnwt7bdq
+
 ## License
 
 [MPL-2.0](LICENSE). Third-party dependencies keep their own licenses.
