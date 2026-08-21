@@ -9,9 +9,9 @@
 
 ## Auth
 
-| Rol | Default |
+| Rol | Sursă |
 |---|---|
-| Admin | `admin` / `admin123` (schimbă în `deploy/.env`) |
+| Admin | setat prin `ADMIN_USERNAME`/`ADMIN_PASSWORD` în `deploy/.env` (obligatoriu — vezi `deploy/.env.example`) |
 | User | Register din UI sau creat de admin |
 
 Flux: **Login → Projects (doar ale tale) → Clean editor**

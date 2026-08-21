@@ -1,8 +1,8 @@
 # BubbleBIM Clean Lite
 
-Curated app shell with **BubbleBIM Professional** UI — one OpenGeometry 3D viewer plus drawings, sheets, and site views. Redundant engines and duplicate 2D paths are stubbed out of the bundle.
+Curated app shell with **BubbleBIM Professional** UI — one OpenGeometry 3D viewer plus drawings, sheets, and site views.
 
-**Locale: English** — UI chrome, element library, and material catalogue are English-first. Romanian domain modules (quantities / norms / armare) are excluded from this build.
+**Locale: English** — UI chrome, element library, and material catalogue are English-first.
 
 ## UI / UX (BubbleBIM Professional)
 
@@ -27,14 +27,6 @@ Curated app shell with **BubbleBIM Professional** UI — one OpenGeometry 3D vie
 | World + Terrain | Cesium `WorldViewer` / Babylon `TerrainViewer` |
 | Materials | Builtin EN catalogue (`useMaterialConfig.lite` + localStorage) |
 | Element library | English descriptions / material names |
-
-## Excluded
-
-- Ara3D / Three.js 3D, WebIfc / That Open, IFC Tiles, IFC Plan
-- OG 2D Views (duplicate of SVG plans/sections/elevations)
-- Composer, 3D engine switcher
-- **Armare 2D** (rebar configurator / `@armare/nucleu`)
-- **Quantities** — takeoff, calculation memo, schedules, cost panel
 
 ## Commands
 

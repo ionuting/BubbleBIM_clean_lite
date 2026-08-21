@@ -26,8 +26,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 VITE_API_URL=http://localhost:8000/api pnpm dev:clean   # → http://localhost:3103
 ```
 
-Sign in with the seeded admin account (`ADMIN_USERNAME` / `ADMIN_PASSWORD`, default
-`admin` / `admin123` — **change these before deploying**), create a project, and start modelling.
+Sign in with the seeded admin account (set via `ADMIN_USERNAME` / `ADMIN_PASSWORD` in
+`backend/.env` — see `.env.example`), create a project, and start modelling.
 
 ```bash
 pnpm build:clean     # → dist-clean-lite/
@@ -50,12 +50,6 @@ pnpm preview:clean
 | World + Terrain | Cesium `WorldViewer` / Babylon `TerrainViewer` |
 | Versioning | Undo/redo + a git-like per-project commit history |
 | Persistence | FastAPI + JWT accounts, per-user projects |
-
-**Not** in this profile: Ara3D/Three.js 3D, WebIfc / That Open, IFC Tiles, IFC Plan, OG 2D views,
-Composer, Armare 2D (rebar configurator), and the Romanian quantities/norms modules — all stubbed
-via aliases in `apps/clean-lite/vite.config.ts`.
-
----
 
 ## Structural (FEM)
 
