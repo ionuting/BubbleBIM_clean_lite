@@ -81,7 +81,10 @@ describe('cross-gable with real valleys (L-shape)', () => {
     expect(res.skeleton.filter((s) => s.role === 'ridge')).toHaveLength(2);
     const valleys = res.skeleton.filter((s) => s.role === 'valley');
     expect(valleys.length).toBeGreaterThanOrEqual(1);
-    expect(res.faces).toHaveLength(4); // two slopes per wing
+    expect(res.faces.filter((f) => f.role === 'slope')).toHaveLength(4); // two slopes per wing
+    // Frontons only on the FREE wing ends — the end that opens into the other
+    // wing must stay open (3 free ends on an L, not 4).
+    expect(res.faces.filter((f) => f.role === 'gable_end')).toHaveLength(3);
 
     // Equal spans (2.5 m half-span each) → equal ridge height at 30°.
     const zR = 3000 + 2500 * Math.tan((30 * Math.PI) / 180);

@@ -364,5 +364,6 @@ export function resolveRoofContour(
     axIds,
     baseZ,
     storeyId,
+    overhangMm: Math.max(0, overhangMm),
   };
 }

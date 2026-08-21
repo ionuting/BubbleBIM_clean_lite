@@ -78,7 +78,9 @@ describe('gable envelope 30° on 10×8 m', () => {
     const { skeleton, faces } = buildGableEnvelope(contour, 30, 'auto', 0, 'roof1', diags);
     expect(diags.filter((d) => d.severity === 'error')).toHaveLength(0);
     expect(skeleton.length).toBe(1);
-    expect(faces.length).toBe(2);
+    expect(faces.filter((f) => f.role === 'slope')).toHaveLength(2);
+    // Both ridge ends get a vertical fronton (overhang 0 here → flush with the eave).
+    expect(faces.filter((f) => f.role === 'gable_end')).toHaveLength(2);
     // Long axis is X → ridge along X at mid Y=4000
     expect(skeleton[0].a.y).toBeCloseTo(4000, 0);
     expect(skeleton[0].b.y).toBeCloseTo(4000, 0);

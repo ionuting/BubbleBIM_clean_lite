@@ -124,13 +124,27 @@ describe('non-rectangular gable no longer overshoots via bbox', () => {
     expect(diags.some((d) => d.code === 'GABLE_TO_SKELETON')).toBe(false);
   });
 
-  it('concave gable (L) routes through the straight skeleton, not the fragile cross-gable', () => {
+  it('concave gable (L) stays gabled per wing — it must NOT be hipped by the skeleton', () => {
     const L = [{ x: 0, y: 0 }, { x: 9000, y: 0 }, { x: 9000, y: 9000 }, { x: 6000, y: 9000 }, { x: 6000, y: 3000 }, { x: 0, y: 3000 }];
     const diags: RoofDiagnostic[] = [];
-    const { faces } = buildRoofEnvelope(C(L), 'gable', 30, 'auto', 0, 'r', diags);
-    expect(faces).toHaveLength(6); // one face per edge — exact skeleton tiling
-    expect(diags.some((d) => d.code === 'GABLE_TO_SKELETON')).toBe(true);
-    expect(diags.some((d) => d.code === 'CROSS_GABLE')).toBe(false);
+    const { faces, skeleton } = buildRoofEnvelope(C(L), 'gable', 30, 'auto', 0, 'r', diags);
+    // Gabled arms own concave gables now: the straight skeleton hips EVERY
+    // edge, which silently turns a requested two-slope roof into a multi-hip one.
+    expect(diags.some((d) => d.code === 'GABLED_ARMS')).toBe(true);
+    expect(diags.some((d) => d.code === 'GABLE_TO_SKELETON')).toBe(false);
+    expect(skeleton.some((s) => s.role === 'hip')).toBe(false);
+    expect(skeleton.some((s) => s.role === 'valley')).toBe(true);
+    expect(faces.filter((f) => f.role === 'gable_end').length).toBeGreaterThan(0);
+  });
+
+  it('a plan too irregular for gabled wings falls back to the skeleton WITH a warning', () => {
+    // Non-rectilinear concave plan — no rectangle decomposition is possible.
+    const poly = [{ x: 0, y: 0 }, { x: 9000, y: 0 }, { x: 9000, y: 9000 }, { x: 4500, y: 5000 }, { x: 0, y: 9000 }];
+    const diags: RoofDiagnostic[] = [];
+    const { faces } = buildRoofEnvelope(C(poly), 'gable', 30, 'auto', 0, 'r', diags);
+    expect(faces.length).toBeGreaterThan(0);
+    const warn = diags.find((d) => d.code === 'GABLE_TO_SKELETON');
+    expect(warn?.severity).toBe('warning'); // silent info hid this downgrade before
   });
 });
 

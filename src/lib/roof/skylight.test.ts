@@ -26,7 +26,8 @@ function hipFaces() {
 
 describe('face basis', () => {
   it('u is horizontal, v points up-slope, n is unit and roughly upward', () => {
-    const faces = gableFaces();
+    // Only slopes — gable-end frontons are vertical, so "up-slope" is undefined there.
+    const faces = gableFaces().filter((f) => f.role === 'slope');
     for (const f of faces) {
       const basis = computeFaceBasis(f)!;
       expect(basis).not.toBeNull();

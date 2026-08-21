@@ -109,6 +109,12 @@ export interface RoofContour {
   /** Elevation of eaves / wall plate (BIM Z mm, absolute). */
   baseZ: number;
   storeyId: string | null;
+  /**
+   * Eave overhang already applied to `points` (mm, ≥0). Envelope builders use
+   * it to place gable-end (fronton) faces back at the exterior wall face —
+   * i.e. inset from the roof edge by exactly this amount.
+   */
+  overhangMm?: number;
 }
 
 export type SkeletonRole = 'ridge' | 'hip' | 'valley' | 'eave' | 'break';

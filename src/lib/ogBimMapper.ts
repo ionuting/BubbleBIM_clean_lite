@@ -954,8 +954,10 @@ export function buildOGScene(
       }
       if (!faceMesh) faceMesh = pitchedFaceMesh(face);
       if (faceMesh) {
-        applyMat(faceMesh, 'roof', n, matConfig);
-        tag(faceMesh, 'roof', n.id, resolveStoreyId(n, nodeMap));
+        // A gable end (fronton) is masonry closing off the attic, not covering.
+        const kind = face.role === 'gable_end' ? 'wall' : 'roof';
+        applyMat(faceMesh, kind, kind === 'wall' ? null : n, matConfig);
+        tag(faceMesh, kind, n.id, resolveStoreyId(n, nodeMap));
         scene.add(faceMesh);
       }
 
