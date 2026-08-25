@@ -152,6 +152,14 @@ export const BUILTIN_ELEMENT_DEFAULTS: Record<string, MaterialVisuals> = {
                 view_line_color: '#FDBA74', view_line_weight: 0.25, view_line_style: 'dashed' },
   roof_ridge: { color_3d: '#9A3412', opacity_3d: 1.0, color_2d: '#9A3412', opacity_2d: 1.0, line_weight: 0.5, hatch: 'none',
                 view_line_color: '#9A3412', view_line_weight: 0.4, view_line_style: 'solid' },
+  // Roof glazing and dormers used to fall through to FALLBACK_VISUALS (flat
+  // grey), which is why a skylight read as a hole rather than a window.
+  skylight:   { color_3d: '#38BDF8', opacity_3d: 0.45, color_2d: '#BAE6FD', opacity_2d: 0.7, line_weight: 0.25, hatch: 'none',
+                section_line_color: '#38BDF8', section_line_weight: 0.3, section_line_style: 'solid', section_fill_color: '#E0F2FE', section_fill_opacity: 0.5,
+                view_line_color: '#BAE6FD', view_line_weight: 0.2, view_line_style: 'solid' },
+  dormer:     { color_3d: '#C2410C', opacity_3d: 1.0, color_2d: '#FB923C', opacity_2d: 0.85, line_weight: 0.4, hatch: 'diagonal',
+                section_line_color: '#9A3412', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#FDBA74', section_fill_opacity: 0.9,
+                view_line_color: '#FDBA74', view_line_weight: 0.25, view_line_style: 'dashed' },
   ax:         { color_3d: '#94A3B8', opacity_3d: 1.0, color_2d: '#94A3B8', opacity_2d: 0.8, line_weight: 0.2, hatch: 'none',
                 view_line_color: '#CBD5E1', view_line_weight: 0.15, view_line_style: 'dotted' },
 };
@@ -213,6 +221,18 @@ export const BUILTIN_MATERIALS: Record<string, NamedMaterial> = {
     label: 'Structural timber',
     color_3d: '#A0522D', opacity_3d: 1, color_2d: '#D2B48C', opacity_2d: 1, line_weight: 0.4, hatch: 'diagonal',
   },
+  roof_tile: {
+    label: 'Roof tile (țiglă)',
+    color_3d: '#B04A2A', opacity_3d: 1, color_2d: '#D98166', opacity_2d: 1, line_weight: 0.35, hatch: 'wave',
+  },
+  metal_sheet: {
+    label: 'Metal roof sheet (tablă)',
+    color_3d: '#7A8896', opacity_3d: 1, color_2d: '#AEB8C2', opacity_2d: 1, line_weight: 0.3, hatch: 'diagonal',
+  },
+  bitumen_shingle: {
+    label: 'Bitumen shingle',
+    color_3d: '#4A4A4A', opacity_3d: 1, color_2d: '#8A8A8A', opacity_2d: 1, line_weight: 0.3, hatch: 'solid',
+  },
   ceramic_tile: {
     label: 'Ceramic tile',
     color_3d: '#E8E8E8', opacity_3d: 1, color_2d: '#F0F0F0', opacity_2d: 1, line_weight: 0.3, hatch: 'grid',
@@ -242,6 +262,71 @@ export function resolveWindowGlazing(config: MaterialConfig | null): WindowGlazi
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Casefold and strip diacritics so "Țiglă ceramică" and "Tigla ceramica" match. */
+function normalizeMaterialName(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/**
+ * Human names used as `material` values across the app — chiefly the roof
+ * system, which labels its generated members in Romanian ("Lemn rasinos",
+ * "Tigla ceramica") — mapped onto real material ids.
+ *
+ * Without this the names match no key, resolution falls through to the element
+ * default, and the material settings appear to have no effect at all. Renaming
+ * them at the source would touch the roof solver, its detail generator and
+ * their fixtures; aliasing keeps those names meaningful AND makes them follow
+ * the material settings.
+ */
+const MATERIAL_ALIASES: Record<string, string> = {
+  'lemn rasinos': 'timber_structural',
+  'lemn': 'wood',
+  'lemn masiv': 'timber_structural',
+  'tigla ceramica': 'roof_tile',
+  'tigla': 'roof_tile',
+  'tigla metalica': 'metal_sheet',
+  'tabla': 'metal_sheet',
+  'tabla faltuita': 'metal_sheet',
+  'sindrila bituminoasa': 'bitumen_shingle',
+  'beton': 'concrete',
+  'beton armat': 'concrete_reinforced',
+  'caramida': 'brick',
+  'otel': 'steel',
+  'sticla': 'glass',
+  'piatra': 'stone',
+  'aluminiu': 'aluminium',
+  'bca': 'aac_block',
+  'gips carton': 'gypsum',
+  'rigips': 'gypsum',
+  'tencuiala': 'plaster',
+  'termoizolatie': 'insulation',
+  'vata minerala': 'insulation',
+};
+
+/**
+ * Find the material entry a `material` property refers to: by exact id first,
+ * then by normalized id, display label, or a known alias.
+ */
+export function lookupMaterial(
+  materialId: string,
+  config: MaterialConfig | null,
+): MaterialVisuals | undefined {
+  const materials = config?.materials;
+  if (!materials) return undefined;
+  if (materials[materialId]) return materials[materialId];
+
+  const wanted = normalizeMaterialName(materialId);
+  if (!wanted) return undefined;
+
+  for (const [id, vis] of Object.entries(materials)) {
+    if (normalizeMaterialName(id) === wanted) return vis;
+    if (vis.label && normalizeMaterialName(vis.label) === wanted) return vis;
+  }
+
+  const alias = MATERIAL_ALIASES[wanted];
+  return alias ? materials[alias] : undefined;
+}
+
 /**
  * Resolve the MaterialVisuals for a node.
  * @param nodeType  node.type
@@ -255,7 +340,7 @@ export function resolveVisuals(
 ): MaterialVisuals {
   // 1. Named material override
   if (materialId) {
-    const named = config?.materials?.[materialId];
+    const named = lookupMaterial(materialId, config);
     if (named) return named;
   }
   // 2. Element-type default from config

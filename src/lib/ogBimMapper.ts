@@ -142,6 +142,24 @@ function extrudePolygon(
   }
 }
 
+/**
+ * The node a roof FACE should be styled from.
+ *
+ * A roof carries two materials: `material` is the framing (timber), while
+ * `covering_material` is what you actually see from outside — tiles, sheet,
+ * membrane. The visible surface must follow the covering, so it wins here and
+ * `material` only stands in when no covering is named.
+ *
+ * Returning a synthetic node rather than a bare material id keeps the per-node
+ * `color_3d` / `color_2d` overrides working, since applyMat reads them off the
+ * node it is given.
+ */
+function roofSurfaceNode(n: BubbleGraphNode): BubbleGraphNode {
+  const covering = String(n.properties.covering_material ?? '').trim();
+  if (!covering) return n;
+  return { ...n, properties: { ...n.properties, material: covering } };
+}
+
 /** Pitched roof face from BIM mm 3D vertices (fan triangulation). */
 function pitchedFaceMesh(face: RoofFace3D): THREE.Mesh | null {
   const verts = face.vertices;
@@ -954,9 +972,10 @@ export function buildOGScene(
       }
       if (!faceMesh) faceMesh = pitchedFaceMesh(face);
       if (faceMesh) {
-        // A gable end (fronton) is masonry closing off the attic, not covering.
+        // A gable end (fronton) is masonry closing off the attic, not covering,
+        // so it keeps the wall default rather than the roof's covering colour.
         const kind = face.role === 'gable_end' ? 'wall' : 'roof';
-        applyMat(faceMesh, kind, kind === 'wall' ? null : n, matConfig);
+        applyMat(faceMesh, kind, kind === 'wall' ? null : roofSurfaceNode(n), matConfig);
         tag(faceMesh, kind, n.id, resolveStoreyId(n, nodeMap));
         scene.add(faceMesh);
       }
@@ -1003,7 +1022,7 @@ export function buildOGScene(
         for (const rf of h.placement.ownRoofFaces) {
           const roofMesh = pitchedFaceMesh(rf);
           if (!roofMesh) continue;
-          applyMat(roofMesh, 'roof', h.node, matConfig);
+          applyMat(roofMesh, 'roof', roofSurfaceNode(h.node), matConfig);
           tag(roofMesh, 'dormer', h.node.id, resolveStoreyId(h.node, nodeMap));
           scene.add(roofMesh);
         }

@@ -36,18 +36,32 @@ const OFFLINE_CONFIG: MaterialConfig = {
   materials: {},
 };
 
-const HATCH_OPTIONS: HatchPattern[] = ['none', 'solid', 'diagonal', 'crosshatch', 'wave', 'brick', 'stone', 'concrete'];
+/**
+ * Every element type the app can style: the built-ins plus anything extra the
+ * saved config carries, in a stable order (built-ins first, then extras).
+ */
+function editableElementTypes(config: MaterialConfig): string[] {
+  const builtin = Object.keys(BUILTIN_ELEMENT_DEFAULTS);
+  const extra = Object.keys(config.element_defaults ?? {}).filter((t) => !builtin.includes(t));
+  return [...builtin, ...extra];
+}
+
+const HATCH_OPTIONS: HatchPattern[] =['none', 'solid', 'diagonal', 'crosshatch', 'wave', 'brick', 'stone', 'concrete'];
 const LINE_STYLE_OPTIONS: LineStyle[] = ['solid', 'dashed', 'dotted', 'dash-dot'];
 const LINE_STYLE_LABELS: Record<LineStyle, string> = { solid: '── solid', dashed: '╌─ dashed', dotted: '··· dotted', 'dash-dot': '─·─ dash-dot' };
 
+// `shell` used to be labelled "Shell / Roof", which sent anyone looking for roof
+// colours to the wrong row: pitched roofs render as `roof`, not `shell`.
 const ELEMENT_TYPE_LABELS: Record<string, string> = {
   column: 'Column', beam: 'Beam', wall: 'Wall', slab: 'Slab', foundation: 'Foundation',
-  window: 'Window', door: 'Door', room: 'Room', shell: 'Shell / Roof', covering: 'Covering', ax: 'Grid Axis',
+  window: 'Window', door: 'Door', room: 'Room', shell: 'Shell', covering: 'Covering', ax: 'Grid Axis',
+  roof: 'Roof', roof_ridge: 'Roof Ridge', skylight: 'Skylight', dormer: 'Dormer', void: 'Void',
 };
 
 const ELEMENT_ICONS: Record<string, string> = {
   column: '⬛', beam: '━', wall: '▬', slab: '▭', foundation: '⊞',
   window: '⊡', door: '⊟', room: '□', shell: '◬', covering: '⌒', ax: '✛',
+  roof: '⌂', roof_ridge: '△', skylight: '☀', dormer: '⌗', void: '⊘',
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────
@@ -327,13 +341,17 @@ export function MaterialConfigEditor({ onClose }: MaterialConfigEditorProps) {
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {tab === 'elements' && (
-            Object.entries(working.element_defaults).map(([type, vis]) => (
+            // Union with the built-ins, not just what the saved YAML happens to
+            // hold: a config written before an element type existed would
+            // otherwise make that type permanently uneditable. That is exactly
+            // how roofs ended up stuck on their built-in colour.
+            editableElementTypes(working).map((type) => (
               <VisualsRow
                 key={type}
                 label={ELEMENT_TYPE_LABELS[type] ?? type}
                 sublabel={type}
                 icon={ELEMENT_ICONS[type]}
-                visuals={vis}
+                visuals={working.element_defaults[type] ?? BUILTIN_ELEMENT_DEFAULTS[type]}
                 onChange={(updated) => updateElementDefault(type, updated)}
               />
             ))

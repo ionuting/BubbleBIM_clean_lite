@@ -18,12 +18,30 @@ function notifyListeners() {
   _listeners.forEach((fn) => fn());
 }
 
+/**
+ * Fold in built-in entries the stored config predates, without touching
+ * anything the user has customised — their values always win.
+ *
+ * Clean Lite persists the whole catalogue to localStorage on first run, so a
+ * browser that saw an older build would otherwise be frozen with that build's
+ * element types and materials for good: new ones (roof, skylight, roof tile…)
+ * would never appear, and any node referring to them would silently fall back.
+ */
+function withNewBuiltins(stored: MaterialConfig): MaterialConfig {
+  return {
+    ...stored,
+    element_defaults: { ...BUILTIN_MATERIAL_CONFIG.element_defaults, ...stored.element_defaults },
+    materials: { ...BUILTIN_MATERIAL_CONFIG.materials, ...stored.materials },
+    window_glazing: stored.window_glazing ?? BUILTIN_MATERIAL_CONFIG.window_glazing,
+  };
+}
+
 function loadFromStorage(): MaterialConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as MaterialConfig;
-      if (parsed?.materials && parsed?.element_defaults) return parsed;
+      if (parsed?.materials && parsed?.element_defaults) return withNewBuiltins(parsed);
     }
   } catch {
     /* ignore corrupt storage */

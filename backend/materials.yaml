@@ -81,6 +81,37 @@ element_defaults:
     section_fill_opacity: 0.1
     view_line_color: '#a2a0a0'
     section_line_color: '#afacac'
+  roof:
+    color_3d: '#B04A2A'
+    opacity_3d: 1
+    color_2d: '#FB923C'
+    opacity_2d: 0.85
+    line_weight: 0.4
+    hatch: diagonal
+    section_line_color: '#9A3412'
+    section_fill_color: '#FDBA74'
+    view_line_color: '#FDBA74'
+  roof_ridge:
+    color_3d: '#9A3412'
+    opacity_3d: 1
+    color_2d: '#9A3412'
+    opacity_2d: 1
+    line_weight: 0.5
+    hatch: none
+  skylight:
+    color_3d: '#38BDF8'
+    opacity_3d: 0.45
+    color_2d: '#BAE6FD'
+    opacity_2d: 0.7
+    line_weight: 0.25
+    hatch: none
+  dormer:
+    color_3d: '#B04A2A'
+    opacity_3d: 1
+    color_2d: '#FB923C'
+    opacity_2d: 0.85
+    line_weight: 0.4
+    hatch: diagonal
   ax:
     color_3d: '#94A3B8'
     opacity_3d: 1
@@ -186,6 +217,30 @@ materials:
     opacity_2d: 1
     line_weight: 0.4
     hatch: diagonal
+  roof_tile:
+    label: Roof tile (țiglă)
+    color_3d: '#B04A2A'
+    opacity_3d: 1
+    color_2d: '#D98166'
+    opacity_2d: 1
+    line_weight: 0.35
+    hatch: wave
+  metal_sheet:
+    label: Metal roof sheet (tablă)
+    color_3d: '#7A8896'
+    opacity_3d: 1
+    color_2d: '#AEB8C2'
+    opacity_2d: 1
+    line_weight: 0.3
+    hatch: diagonal
+  bitumen_shingle:
+    label: Bitumen shingle
+    color_3d: '#4A4A4A'
+    opacity_3d: 1
+    color_2d: '#8A8A8A'
+    opacity_2d: 1
+    line_weight: 0.3
+    hatch: solid
 window_glazing:
   frame_color: '#ffffff'
   frame_metalness: 0.5

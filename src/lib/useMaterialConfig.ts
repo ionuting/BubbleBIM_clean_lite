@@ -27,10 +27,18 @@ async function fetchConfig(): Promise<MaterialConfig | null> {
       return r.json() as Promise<MaterialConfig>;
     })
     .then((data) => {
-      _cache = data;
+      // The YAML on a long-lived server predates newer element types and
+      // materials (it is user-writable and excluded from deploys), so fold the
+      // built-ins in underneath. Anything the file defines still wins.
+      _cache = {
+        ...data,
+        element_defaults: { ...BUILTIN_MATERIAL_CONFIG.element_defaults, ...data.element_defaults },
+        materials: { ...BUILTIN_MATERIAL_CONFIG.materials, ...data.materials },
+        window_glazing: data.window_glazing ?? BUILTIN_MATERIAL_CONFIG.window_glazing,
+      };
       _promise = null;
       notifyListeners();
-      return data;
+      return _cache;
     })
     .catch((err) => {
       console.warn('[useMaterialConfig] Could not load material config from backend:', err);

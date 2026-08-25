@@ -2404,6 +2404,39 @@ function PropertiesPanel({
               onChange={(e) => onUpdateProp('post_section', e.target.value)}
             />
 
+            {/* Appearance. The covering is what you SEE — the roof surface takes
+                its colour from here, while `material` stays the framing timber. */}
+            <span className="text-muted-foreground" title="Materialul învelitorii — dă culoarea feței de acoperiș. Se ia din setările de materiale.">Covering mat.</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('covering_material') ?? '')}
+              onChange={(e) => onUpdateProp('covering_material', e.target.value || undefined)}
+            >
+              <option value="">— roof default —</option>
+              {Object.entries(matConfig?.materials ?? {}).map(([id, m]) => (
+                <option key={id} value={id}>{(m as { label?: string }).label ?? id}</option>
+              ))}
+              {/* A value typed elsewhere (or a legacy name) must stay visible
+                  rather than silently reading as "roof default". */}
+              {Boolean(propVal('covering_material'))
+                && !matConfig?.materials?.[String(propVal('covering_material'))] && (
+                <option value={String(propVal('covering_material'))}>
+                  {String(propVal('covering_material'))} (unknown)
+                </option>
+              )}
+            </select>
+            <span className="text-muted-foreground" title="Suprascrie culoarea 3D doar pentru acest acoperiș.">Color 3D</span>
+            <div className="flex items-center gap-1">
+              <input type="color"
+                className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent"
+                value={String(propVal('color_3d') || matConfig?.element_defaults?.roof?.color_3d || '#c2410c')}
+                onChange={(e) => onUpdateProp('color_3d', e.target.value)} />
+              {Boolean(propVal('color_3d')) && (
+                <button className="text-[10px] text-muted-foreground hover:text-red-400"
+                  title="Clear override" onClick={() => onUpdateProp('color_3d', undefined)}>✕</button>
+              )}
+            </div>
+
             {/* Two-pitch mansard params */}
             {String(propVal('roof_type') ?? 'gable') === 'mansard' && (
               <>
