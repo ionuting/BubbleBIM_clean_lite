@@ -279,48 +279,88 @@ export function buildRoofFraming(
 
   // Rafters perpendicular to each eave, up the slope plane — works for any face
   // orientation (arbitrary straight-skeleton hips), not just axis-aligned ones.
+  /**
+   * Rafters for one slope face, keyed off the face's own PLANE rather than off
+   * an edge of it.
+   *
+   * Framing used to start from the face's eave edge and walk inward. That works
+   * for the common faces but assumes every face has a level bottom edge to
+   * measure from, and on a re-entrant corner (an L- or T-shaped plan) the
+   * skeleton produces a small face wedged between two valleys whose edges ALL
+   * slope. Such a face got no rafters at all, silently — the hole visible in
+   * the middle of an L-shaped roof.
+   *
+   * Working from the plane removes the assumption entirely: rafters run along
+   * the line of steepest ascent and are spaced across it, which is the actual
+   * carpentry rule and is defined for any face shape. For a face that does have
+   * a level eave this gives exactly the previous layout, since steepest ascent
+   * is perpendicular to a horizontal eave.
+   */
   const genFaceRafters = (f: RoofFace3D) => {
     const V = f.vertices;
-    const m = V.length;
-    let ei = -1;
-    for (let i = 0; i < m; i++) {
-      if (Math.abs(V[i].z - baseZ) < 1 && Math.abs(V[(i + 1) % m].z - baseZ) < 1) { ei = i; break; }
+    if (V.length < 3) return;
+
+    // Plane normal from the first non-degenerate vertex triple.
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 1; i + 1 < V.length; i++) {
+      const ux = V[i].x - V[0].x, uy = V[i].y - V[0].y, uz = V[i].z - V[0].z;
+      const vx = V[i + 1].x - V[0].x, vy = V[i + 1].y - V[0].y, vz = V[i + 1].z - V[0].z;
+      const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+      if (Math.hypot(cx, cy, cz) > 1e-6) { nx = cx; ny = cy; nz = cz; break; }
     }
-    // Not every slope face reaches the eave. On an irregular plan the skeleton
-    // can leave a face bounded entirely by ridges, hips and valleys — it sits
-    // above the eave line and has no edge at baseZ at all. Bailing out there
-    // left that face completely unframed, and silently so. Fall back to the
-    // face's LOWEST edge and rafter up-slope from it, which is what a carpenter
-    // does: the jacks start from whatever the face's bottom edge happens to be.
-    if (ei < 0) {
-      let lowest = Infinity;
-      for (let i = 0; i < m; i++) {
-        const zMid = (V[i].z + V[(i + 1) % m].z) / 2;
-        // A near-level edge only; a sloping one is a hip or valley, not a base.
-        if (Math.abs(V[i].z - V[(i + 1) % m].z) > 1) continue;
-        if (zMid < lowest) { lowest = zMid; ei = i; }
-      }
-    }
-    if (ei < 0) return;
-    const A = V[ei], B = V[(ei + 1) % m];
-    const startZ = (A.z + B.z) / 2;
-    const dx = B.x - A.x, dy = B.y - A.y;
-    const L = Math.hypot(dx, dy);
-    if (L < 1) return;
-    const nrm = { x: -dy / L, y: dx / L }; // left normal → face interior (CCW faces)
-    const steps = Math.max(1, Math.round(L / spacing));
+    if (Math.abs(nz) < 1e-9) return; // vertical face — not a slope
+
+    // z = z0 + g·(p − p0); steepest ascent is along g.
+    const gx = -nx / nz, gy = -ny / nz;
+    const gLen = Math.hypot(gx, gy);
+    if (gLen < 1e-6) return; // dead level, nothing to rafter
+    const up = { x: gx / gLen, y: gy / gLen };        // uphill, in plan
+    const across = { x: -up.y, y: up.x };             // along the eave
+    const zAt = (x: number, y: number) => V[0].z + gx * (x - V[0].x) + gy * (y - V[0].y);
+
+    // Spread of the face across the slope, then evenly divided courses.
+    const ss = V.map((p) => p.x * across.x + p.y * across.y);
+    const sMin = Math.min(...ss), sMax = Math.max(...ss);
+    const width = sMax - sMin;
+    if (width < 1) return;
+    const steps = Math.max(1, Math.round(width / spacing));
+
+    // Nudge the outermost courses inwards: a course exactly on the face's
+    // extreme grazes a single vertex and yields nothing useful.
+    const EPS = 1e-3;
     for (let k = 0; k <= steps; k++) {
-      const t = k / steps;
-      const s: Pt3 = { x: A.x + dx * t, y: A.y + dy * t, z: startZ };
-      let best = Infinity;
-      for (let j = 0; j < m; j++) {
-        if (j === ei) continue;
-        const tt = raySegT(s, nrm, V[j], V[(j + 1) % m]);
-        if (tt !== null && tt < best) best = tt;
+      const s = Math.min(sMax - EPS, Math.max(sMin + EPS, sMin + (width * k) / steps));
+
+      // Every crossing of this course with the outline, as a distance along
+      // `up`. The half-open test counts a shared vertex once, so the sorted
+      // crossings pair up into spans that lie INSIDE the face — which is what
+      // keeps a concave face (a valley notch) from being bridged straight
+      // across its own opening.
+      const hits: number[] = [];
+      for (let j = 0; j < V.length; j++) {
+        const a = V[j], b = V[(j + 1) % V.length];
+        const sa = a.x * across.x + a.y * across.y;
+        const sb = b.x * across.x + b.y * across.y;
+        if ((sa <= s && sb > s) || (sb <= s && sa > s)) {
+          const r = (s - sa) / (sb - sa);
+          const px = a.x + (b.x - a.x) * r, py = a.y + (b.y - a.y) * r;
+          hits.push(px * up.x + py * up.y);
+        }
       }
-      if (!isFinite(best)) continue;
-      const top: Pt3 = { x: s.x + nrm.x * best, y: s.y + nrm.y * best, z: startZ + best * tanP };
-      nodes.push(memberNode('rafter', 'Rafter', s, top, roofId, parentId, intent.rafterSection, intent.material));
+      hits.sort((p, q) => p - q);
+
+      for (let h = 0; h + 1 < hits.length; h += 2) {
+        const tLo = hits[h], tHi = hits[h + 1];
+        if (tHi - tLo < 50) continue; // sliver at a corner
+        const low = { x: up.x * tLo + across.x * s, y: up.y * tLo + across.y * s };
+        const high = { x: up.x * tHi + across.x * s, y: up.y * tHi + across.y * s };
+        nodes.push(memberNode(
+          'rafter', 'Rafter',
+          { x: low.x, y: low.y, z: zAt(low.x, low.y) },
+          { x: high.x, y: high.y, z: zAt(high.x, high.y) },
+          roofId, parentId, intent.rafterSection, intent.material,
+        ));
+      }
     }
   };
 
