@@ -13,6 +13,7 @@ import {
   FALLBACK_VISUALS,
   lookupMaterial,
   resolveVisuals,
+  withBuiltinDefaults,
   type MaterialConfig,
 } from './materialConfig';
 
@@ -84,5 +85,34 @@ describe('lookupMaterial', () => {
 
   it('is safe when the config has no materials at all', () => {
     expect(lookupMaterial('Tigla ceramica', null)).toBeUndefined();
+  });
+});
+
+describe('withBuiltinDefaults', () => {
+  it('adds element types and materials the stored config never had', () => {
+    const merged = withBuiltinDefaults(LEGACY_CONFIG);
+    expect(merged.element_defaults.roof).toBeDefined();
+    expect(merged.element_defaults.skylight).toBeDefined();
+    expect(merged.materials.roof_tile).toBeDefined();
+  });
+
+  it('never overwrites what the stored config already defines', () => {
+    const stored: MaterialConfig = {
+      version: 1,
+      element_defaults: { roof: { ...FALLBACK_VISUALS, color_3d: '#abcdef' } },
+      materials: { roof_tile: { label: 'Mine', ...FALLBACK_VISUALS, color_3d: '#fedcba' } },
+    };
+    const merged = withBuiltinDefaults(stored);
+    expect(merged.element_defaults.roof.color_3d).toBe('#abcdef');
+    expect(merged.materials.roof_tile.color_3d).toBe('#fedcba');
+    // …while still gaining the types it lacked.
+    expect(merged.element_defaults.wall).toBeDefined();
+  });
+
+  it('is what makes a roof colourable against a config that predates roofs', () => {
+    // The deployed backend YAML is exactly this shape: no roof anywhere.
+    expect(LEGACY_CONFIG.element_defaults.roof).toBeUndefined();
+    expect(resolveVisuals('roof', 'Tigla ceramica', withBuiltinDefaults(LEGACY_CONFIG)).color_3d)
+      .toBe(BUILTIN_MATERIAL_CONFIG.materials.roof_tile.color_3d);
   });
 });

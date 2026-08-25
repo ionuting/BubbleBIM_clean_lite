@@ -255,6 +255,26 @@ export const BUILTIN_MATERIAL_CONFIG: MaterialConfig = {
   window_glazing: BUILTIN_WINDOW_GLAZING,
 };
 
+/**
+ * Fold built-in entries the stored config predates in underneath it, without
+ * touching anything the user has customised — their values always win.
+ *
+ * Both config sources persist the whole catalogue and are then left alone: the
+ * backend YAML is user-writable and excluded from deploys, and Clean Lite keeps
+ * its copy in localStorage. Without this, either would keep serving the element
+ * types and materials of the build that first wrote it, so a newly added type
+ * (roof, skylight…) could never appear and nodes referring to it would silently
+ * fall back.
+ */
+export function withBuiltinDefaults(stored: MaterialConfig): MaterialConfig {
+  return {
+    ...stored,
+    element_defaults: { ...BUILTIN_ELEMENT_DEFAULTS, ...stored.element_defaults },
+    materials: { ...BUILTIN_MATERIALS, ...stored.materials },
+    window_glazing: stored.window_glazing ?? BUILTIN_WINDOW_GLAZING,
+  };
+}
+
 /** Resolve the window glazing config. */
 export function resolveWindowGlazing(config: MaterialConfig | null): WindowGlazingConfig {
   return config?.window_glazing ?? BUILTIN_WINDOW_GLAZING;

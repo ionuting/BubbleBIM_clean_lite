@@ -4,7 +4,7 @@
  * cache so all viewers share one copy.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { BUILTIN_MATERIAL_CONFIG, type MaterialConfig } from './materialConfig';
+import { BUILTIN_MATERIAL_CONFIG, withBuiltinDefaults, type MaterialConfig } from './materialConfig';
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL as string || 'http://localhost:8000/api').replace(/\/api$/, '');
 const ENDPOINT = `${BACKEND_URL}/api/material-config`;
@@ -27,15 +27,7 @@ async function fetchConfig(): Promise<MaterialConfig | null> {
       return r.json() as Promise<MaterialConfig>;
     })
     .then((data) => {
-      // The YAML on a long-lived server predates newer element types and
-      // materials (it is user-writable and excluded from deploys), so fold the
-      // built-ins in underneath. Anything the file defines still wins.
-      _cache = {
-        ...data,
-        element_defaults: { ...BUILTIN_MATERIAL_CONFIG.element_defaults, ...data.element_defaults },
-        materials: { ...BUILTIN_MATERIAL_CONFIG.materials, ...data.materials },
-        window_glazing: data.window_glazing ?? BUILTIN_MATERIAL_CONFIG.window_glazing,
-      };
+      _cache = withBuiltinDefaults(data);
       _promise = null;
       notifyListeners();
       return _cache;
