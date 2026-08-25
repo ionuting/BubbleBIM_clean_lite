@@ -18,6 +18,8 @@ import { ensureOpenGeoReady } from '@/lib/openGeoInit';
 import { buildOGScene } from '@/lib/ogBimMapper';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { createPointerZoom } from '@/lib/orbitPointerZoom';
+import { pickNodeId } from '@/lib/pickSelection';
+import { applySelectionHighlight, setHighlight } from '@/lib/selectionHighlight';
 
 function addBimAxes(scene: THREE.Scene, length = 1): void {
   const mkLine = (end: [number, number, number], color: number) => {
@@ -115,24 +117,7 @@ export function OpenGeoViewer({
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      const mat = obj.material as THREE.MeshStandardMaterial;
-      if (!mat || Array.isArray(mat)) return;
-      if (obj.userData.nodeId === selectedNodeId) {
-        if (!obj.userData.originalEmissive) {
-          obj.userData.originalEmissive = mat.emissive?.clone?.() ?? new THREE.Color(0);
-          obj.userData.originalEmissiveIntensity = mat.emissiveIntensity ?? 0;
-        }
-        mat.emissive?.set?.(0xffd700);
-        mat.emissiveIntensity = 0.6;
-      } else if (obj.userData.originalEmissive) {
-        mat.emissive?.copy?.(obj.userData.originalEmissive);
-        mat.emissiveIntensity = obj.userData.originalEmissiveIntensity ?? 0;
-        delete obj.userData.originalEmissive;
-        delete obj.userData.originalEmissiveIntensity;
-      }
-    });
+    applySelectionHighlight(scene, selectedNodeId);
   }, [selectedNodeId]);
 
   // ── Scene initialization ─────────────────────────────────────────────────
@@ -200,24 +185,7 @@ export function OpenGeoViewer({
       const ndcY  = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
       const rc = new THREE.Raycaster();
       rc.setFromCamera(new THREE.Vector2(ndcX, ndcY), cameraRef.current);
-      const hits = rc.intersectObjects(sceneRef.current.children, true);
-      for (const hit of hits) {
-        // Skip invisible objects
-        let checkNode: THREE.Object3D | null = hit.object;
-        let invisible = false;
-        while (checkNode) {
-          if (!checkNode.visible) { invisible = true; break; }
-          checkNode = checkNode.parent;
-        }
-        if (invisible) continue;
-
-        let obj: THREE.Object3D | null = hit.object;
-        while (obj) {
-          if (obj.userData.nodeId) { cb(obj.userData.nodeId as string); return; }
-          obj = obj.parent;
-        }
-      }
-      cb(null);
+      cb(pickNodeId(rc, sceneRef.current));
     };
     const pointerZoom = createPointerZoom({
       dom: renderer.domElement,
@@ -311,17 +279,14 @@ export function OpenGeoViewer({
           obj.visible = true;
         });
 
-        // Re-apply selection highlight
+        // Re-apply selection highlight. Must go through setHighlight so the
+        // original emissive is recorded: highlighting these freshly rebuilt
+        // meshes without it left nothing to restore, and deselecting could
+        // never clear the gold — the element stayed highlighted for good.
         const selId = selectedNodeIdRef.current;
         if (selId) {
           scene.traverse((obj) => {
-            if (obj instanceof THREE.Mesh && obj.userData.nodeId === selId) {
-              const mat = obj.material as THREE.MeshStandardMaterial;
-              if (mat && !Array.isArray(mat)) {
-                mat.emissive?.set?.(0xffd700);
-                mat.emissiveIntensity = 0.6;
-              }
-            }
+            if (obj instanceof THREE.Mesh && obj.userData.nodeId === selId) setHighlight(obj, true);
           });
         }
 

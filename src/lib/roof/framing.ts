@@ -286,8 +286,24 @@ export function buildRoofFraming(
     for (let i = 0; i < m; i++) {
       if (Math.abs(V[i].z - baseZ) < 1 && Math.abs(V[(i + 1) % m].z - baseZ) < 1) { ei = i; break; }
     }
+    // Not every slope face reaches the eave. On an irregular plan the skeleton
+    // can leave a face bounded entirely by ridges, hips and valleys — it sits
+    // above the eave line and has no edge at baseZ at all. Bailing out there
+    // left that face completely unframed, and silently so. Fall back to the
+    // face's LOWEST edge and rafter up-slope from it, which is what a carpenter
+    // does: the jacks start from whatever the face's bottom edge happens to be.
+    if (ei < 0) {
+      let lowest = Infinity;
+      for (let i = 0; i < m; i++) {
+        const zMid = (V[i].z + V[(i + 1) % m].z) / 2;
+        // A near-level edge only; a sloping one is a hip or valley, not a base.
+        if (Math.abs(V[i].z - V[(i + 1) % m].z) > 1) continue;
+        if (zMid < lowest) { lowest = zMid; ei = i; }
+      }
+    }
     if (ei < 0) return;
     const A = V[ei], B = V[(ei + 1) % m];
+    const startZ = (A.z + B.z) / 2;
     const dx = B.x - A.x, dy = B.y - A.y;
     const L = Math.hypot(dx, dy);
     if (L < 1) return;
@@ -295,7 +311,7 @@ export function buildRoofFraming(
     const steps = Math.max(1, Math.round(L / spacing));
     for (let k = 0; k <= steps; k++) {
       const t = k / steps;
-      const s: Pt3 = { x: A.x + dx * t, y: A.y + dy * t, z: baseZ };
+      const s: Pt3 = { x: A.x + dx * t, y: A.y + dy * t, z: startZ };
       let best = Infinity;
       for (let j = 0; j < m; j++) {
         if (j === ei) continue;
@@ -303,7 +319,7 @@ export function buildRoofFraming(
         if (tt !== null && tt < best) best = tt;
       }
       if (!isFinite(best)) continue;
-      const top: Pt3 = { x: s.x + nrm.x * best, y: s.y + nrm.y * best, z: baseZ + best * tanP };
+      const top: Pt3 = { x: s.x + nrm.x * best, y: s.y + nrm.y * best, z: startZ + best * tanP };
       nodes.push(memberNode('rafter', 'Rafter', s, top, roofId, parentId, intent.rafterSection, intent.material));
     }
   };

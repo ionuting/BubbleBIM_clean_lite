@@ -34,6 +34,8 @@ import { type MaterialConfig, resolveVisuals, applyNodeColorOverrides, resolveWi
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { expandArrayNodes } from '@/lib/formulaUtils';
 import { createPointerZoom } from '@/lib/orbitPointerZoom';
+import { pickNodeId } from '@/lib/pickSelection';
+import { applySelectionHighlight, setHighlight } from '@/lib/selectionHighlight';
 
 
 // ─── Add BIM-aware axes gizmo (X=East/red, Y=Up/blue, Z=North/green) ────────
@@ -681,24 +683,7 @@ export function Ara3DViewer({ nodes, edges, buildingAxes: _buildingAxes, classNa
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      const mat = obj.material as THREE.MeshStandardMaterial;
-      if (!mat || Array.isArray(mat)) return;
-      if (obj.userData.nodeId && obj.userData.nodeId === selectedNodeId) {
-        if (!obj.userData.originalEmissive) {
-          obj.userData.originalEmissive = mat.emissive.clone();
-          obj.userData.originalEmissiveIntensity = mat.emissiveIntensity;
-        }
-        mat.emissive.set(0xffd700);
-        mat.emissiveIntensity = 0.6;
-      } else if (obj.userData.originalEmissive) {
-        mat.emissive.copy(obj.userData.originalEmissive);
-        mat.emissiveIntensity = obj.userData.originalEmissiveIntensity ?? 0;
-        delete obj.userData.originalEmissive;
-        delete obj.userData.originalEmissiveIntensity;
-      }
-    });
+    applySelectionHighlight(scene, selectedNodeId);
   }, [selectedNodeId]);
 
   // ── Scene initialization ──────────────────────────────────────────────────
@@ -763,24 +748,7 @@ export function Ara3DViewer({ nodes, edges, buildingAxes: _buildingAxes, classNa
       const ndcY = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cameraRef.current);
-      const hits = raycaster.intersectObjects(sceneRef.current.children, true);
-      for (const hit of hits) {
-        // Skip objects that are invisible (check full ancestor chain)
-        let checkNode: THREE.Object3D | null = hit.object;
-        let invisible = false;
-        while (checkNode) {
-          if (!checkNode.visible) { invisible = true; break; }
-          checkNode = checkNode.parent;
-        }
-        if (invisible) continue;
-
-        let obj: THREE.Object3D | null = hit.object;
-        while (obj) {
-          if (obj.userData.nodeId) { cb(obj.userData.nodeId as string); return; }
-          obj = obj.parent;
-        }
-      }
-      cb(null); // clicked empty space — deselect
+      cb(pickNodeId(raycaster, sceneRef.current)); // null → clicked empty space, deselect
     };
     const pointerZoom = createPointerZoom({
       dom: renderer.domElement,
@@ -866,17 +834,13 @@ export function Ara3DViewer({ nodes, edges, buildingAxes: _buildingAxes, classNa
         obj.visible = true;
       });
 
-      // Re-apply selection highlight after geometry rebuild
+      // Re-apply selection highlight after geometry rebuild. Goes through the
+      // shared helper so the rebuilt meshes record their original emissive —
+      // without it, deselecting could never clear the tint.
       const selId = selectedNodeIdRef.current;
       if (selId) {
         scene.traverse((obj) => {
-          if (obj instanceof THREE.Mesh && obj.userData.nodeId === selId) {
-            const mat = obj.material as THREE.MeshStandardMaterial;
-            if (mat && !Array.isArray(mat)) {
-              mat.emissive.set(0xffd700);
-              mat.emissiveIntensity = 0.6;
-            }
-          }
+          if (obj instanceof THREE.Mesh && obj.userData.nodeId === selId) setHighlight(obj, true);
         });
       }
 
