@@ -41,11 +41,13 @@ import { WINDOW_TYPE_MAP } from '@/lib/elementLibrary';
 import {
   commitPlanCut,
   cutFromAxisLine,
+  sideOfLine,
+  type PlanCut,
   findNearestAxisLine,
   orthoConstrainCut,
-  parsePlanCut,
 } from '@/lib/sectionFromPlan';
 import { clientToSvgUserPoint } from '@/lib/svgCoordinates';
+import { SectionMarkerLayer } from './SectionMarkerLayer';
 import { useWindowSymbolConfig } from '@/hooks/useWindowSymbolConfig';
 import { useDoorSymbolConfig } from '@/hooks/useDoorSymbolConfig';
 import { resolveWindowPlan2DConfig } from '@/lib/windowSymbolLibrary';
@@ -256,6 +258,9 @@ export function FloorPlan2DViewer({
   const drawSectionMode = planTool === 'draw-section';
   const sectionOnAxisMode = planTool === 'section-on-axis';
   const [sectionStart, setSectionStart] = useState<{ x: number; y: number } | null>(null);
+  /** After the 2nd click: the line is fixed, the 3rd click picks the viewed side. */
+  const [sectionLine, setSectionLine] = useState<PlanCut | null>(null);
+  const [hoverAlt, setHoverAlt] = useState(false);
   const [axisHover, setAxisHover] = useState<{ dir: 'X' | 'Y'; value: number } | null>(null);
 
   // ── Cut-plane & visibility filter state ─────────────────────────────────────
@@ -493,21 +498,21 @@ export function FloorPlan2DViewer({
     setBubbleGraph([...rawNodes, ...newNodes], [...rawEdges, ...newEdges]);
   }, [storeyId, storeyNodes, rawNodes, rawEdges, setBubbleGraph]);
 
-  const commitSectionLine = useCallback((ptA: { x: number; y: number }, ptB: { x: number; y: number }) => {
+  const commitSectionLine = useCallback((cut: PlanCut, lookSide: 'left' | 'right') => {
     if (!storeyId) return;
-    const { cut, kind, viewDirection } = orthoConstrainCut(ptA, ptB);
     if (Math.hypot(cut.x2 - cut.x1, cut.y2 - cut.y1) < 100) return;
     const result = commitPlanCut({
       nodes: rawNodes,
       edges: rawEdges,
       storeyId,
       cut,
-      kind,
-      viewDirection,
+      kind: 'section',
+      lookSide,
     });
     setBubbleGraph(result.nodes, result.edges);
     setPendingOpenSectionId(result.sectionId);
     setSectionStart(null);
+    setSectionLine(null);
     setPlanTool(null);
   }, [storeyId, rawNodes, rawEdges, setBubbleGraph, setPendingOpenSectionId, setPlanTool]);
 
@@ -515,20 +520,34 @@ export function FloorPlan2DViewer({
     if (!storeyId) return;
     const hit = findNearestAxisLine(pt, axisXVals, axisYVals, 1000);
     if (!hit) return;
-    const { cut, kind, viewDirection } = cutFromAxisLine(hit.dir, hit.value, { minX, maxX, minY, maxY });
+    const { cut, kind } = cutFromAxisLine(hit.dir, hit.value, { minX, maxX, minY, maxY });
+    // The side of the grid line you clicked on is the side you look at.
     const result = commitPlanCut({
       nodes: rawNodes,
       edges: rawEdges,
       storeyId,
       cut,
       kind,
-      viewDirection,
+      lookSide: sideOfLine(cut, pt),
     });
     setBubbleGraph(result.nodes, result.edges);
     setPendingOpenSectionId(result.sectionId);
     setAxisHover(null);
     setPlanTool(null);
   }, [storeyId, axisXVals, axisYVals, minX, maxX, minY, maxY, rawNodes, rawEdges, setBubbleGraph, setPendingOpenSectionId, setPlanTool]);
+
+  /** Marker edits from the plan (drag endpoints / depth / flip) → node properties. */
+  const updateSectionProps = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    const next = rawNodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const props = { ...n.properties };
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) delete props[k]; else props[k] = v;
+      }
+      return { ...n, properties: props };
+    });
+    setBubbleGraph(next, rawEdges);
+  }, [rawNodes, rawEdges, setBubbleGraph]);
 
   // ----- pan / zoom handlers
   // Use native non-passive listener so preventDefault() works (React 17+ registers onWheel as passive)
@@ -555,6 +574,7 @@ export function FloorPlan2DViewer({
       }
       if (drawSectionMode || sectionOnAxisMode) {
         setSectionStart(null);
+        setSectionLine(null);
         setHoverSnap(null);
         setHoverRaw(null);
         setAxisHover(null);
@@ -577,13 +597,18 @@ export function FloorPlan2DViewer({
   }, [planTool]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // Draw section: 2-click cut line (ortho-constrained on commit)
+    // Draw section, ArchiCAD style: click A, click B (ortho unless Alt),
+    // then click on the side you want to look at.
     if (drawSectionMode && e.button === 0 && !e.shiftKey) {
-      const snap = findSnap(fromClientPos(e.clientX, e.clientY));
+      const raw = fromClientPos(e.clientX, e.clientY);
+      const snap = findSnap(raw);
       if (!sectionStart) {
         setSectionStart(snap);
+      } else if (!sectionLine) {
+        const { cut } = orthoConstrainCut(sectionStart, snap, e.altKey);
+        if (Math.hypot(cut.x2 - cut.x1, cut.y2 - cut.y1) >= 100) setSectionLine(cut);
       } else {
-        commitSectionLine(sectionStart, snap);
+        commitSectionLine(sectionLine, sideOfLine(sectionLine, raw));
       }
       return;
     }
@@ -608,13 +633,14 @@ export function FloorPlan2DViewer({
       setDragging(true);
       lastPos.current = { x: e.clientX, y: e.clientY };
     }
-  }, [drawWallMode, wallStart, findSnap, fromClientPos, commitWall, drawSectionMode, sectionOnAxisMode, sectionStart, commitSectionLine, commitSectionOnAxis]);
+  }, [drawWallMode, wallStart, findSnap, fromClientPos, commitWall, drawSectionMode, sectionOnAxisMode, sectionStart, sectionLine, commitSectionLine, commitSectionOnAxis]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (drawSectionMode) {
       const raw = fromClientPos(e.clientX, e.clientY);
       setHoverRaw(raw);
       setHoverSnap(findSnap(raw));
+      setHoverAlt(e.altKey);
     } else if (sectionOnAxisMode) {
       setHoverRaw(null);
       const raw = fromClientPos(e.clientX, e.clientY);
@@ -1465,123 +1491,17 @@ export function FloorPlan2DViewer({
           })
         }
 
-        {/* ── Section / View line symbols — global (shown on ALL floor plans) ── */}
-        {nodes
-          .filter((n) => (n.type === 'section' || n.type === 'view') && n.properties.show_in_plan !== false)
-          .map((n) => {
-            const planCut = parsePlanCut(n.properties.plan_cut);
-            let lmmA: { x: number; y: number } | null = null;
-            let lmmB: { x: number; y: number } | null = null;
-
-            if (planCut) {
-              lmmA = { x: planCut.x1, y: planCut.y1 };
-              lmmB = { x: planCut.x2, y: planCut.y2 };
-            } else {
-              // Look up ax anchor positions using each anchor's own parent storey axes
-              const connEdges = edges.filter((e) => e.from === n.id || e.to === n.id);
-              const axAnchors = connEdges
-                .map((e) => nodeMap.get(e.from === n.id ? e.to : e.from))
-                .filter((sn): sn is BubbleGraphNode => !!sn && sn.type === 'ax');
-              if (axAnchors.length < 2) return null;
-
-              const getAxMmPosGlobal = (axNode: BubbleGraphNode): { x: number; y: number } => {
-                const axStorey = axNode.parentId ? nodeMap.get(axNode.parentId) : undefined;
-                const aX = parseAxes(axStorey?.properties?.axesX ?? buildingAxes.xValues).slice().sort((a, b) => a - b);
-                const aY = parseAxes(axStorey?.properties?.axesY ?? buildingAxes.yValues).slice().sort((a, b) => a - b);
-                return {
-                  x: aX[Number(axNode.properties.gridX ?? 0)] ?? 0,
-                  y: aY[Number(axNode.properties.gridY ?? 0)] ?? 0,
-                };
-              };
-
-              const mmA = getAxMmPosGlobal(axAnchors[0]);
-              const mmB = getAxMmPosGlobal(axAnchors[1]);
-              const offLmm = Number(n.properties.offset_left_mm ?? 0);
-              const offRmm = Number(n.properties.offset_right_mm ?? 0);
-              const len = Math.max(1, Math.hypot(mmB.x - mmA.x, mmB.y - mmA.y));
-              lmmA = {
-                x: mmA.x - (mmB.x - mmA.x) / len * offLmm,
-                y: mmA.y - (mmB.y - mmA.y) / len * offLmm,
-              };
-              lmmB = {
-                x: mmB.x + (mmB.x - mmA.x) / len * offRmm,
-                y: mmB.y + (mmB.y - mmA.y) / len * offRmm,
-              };
-            }
-
-            if (!lmmA || !lmmB) return null;
-
-            const sA = toSvg(lmmA.x, lmmA.y);
-            const sB = toSvg(lmmB.x, lmmB.y);
-            const svgLen = Math.hypot(sB.x - sA.x, sB.y - sA.y);
-            if (svgLen < 0.1) return null;
-            const svgUx = (sB.x - sA.x) / svgLen;
-            const svgUy = (sB.y - sA.y) / svgLen;
-            // BIM look-left in SVG: (svgUy, -svgUx)
-            const flipped = n.properties.flipped === true || n.properties.flipped === 'true';
-            const svgNx = flipped ? -svgUy :  svgUy;
-            const svgNy = flipped ?  svgUx : -svgUx;
-
-            const cutDepthSvg = Number(n.properties.cut_depth_mm ?? 6000) * SCALE;
-            const color = n.type === 'section' ? '#e11d48' : '#f97316';
-            const circleR = 9;
-            const arrowLen = 11;
-
-            const midSvg = { x: (sA.x + sB.x) / 2, y: (sA.y + sB.y) / 2 };
-
-            return (
-              <g
-                key={n.id}
-                style={{ cursor: 'pointer' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPendingOpenSectionId(n.id);
-                }}
-              >
-                {/* Depth band */}
-                <polygon
-                  points={`${sA.x},${sA.y} ${sA.x + svgNx * cutDepthSvg},${sA.y + svgNy * cutDepthSvg} ${sB.x + svgNx * cutDepthSvg},${sB.y + svgNy * cutDepthSvg} ${sB.x},${sB.y}`}
-                  fill={color + '18'}
-                  stroke={color + '55'}
-                  strokeWidth="0.7"
-                  strokeDasharray="4 3"
-                />
-                {/* Main cut line */}
-                <line x1={sA.x} y1={sA.y} x2={sB.x} y2={sB.y} stroke={color} strokeWidth="2" strokeLinecap="square" />
-                {/* Endpoint circles + arrows */}
-                {[sA, sB].map((pt, i) => (
-                  <g key={i}>
-                    <circle cx={pt.x} cy={pt.y} r={circleR} fill={color} />
-                    {/* Arrow pointing in look direction */}
-                    <line
-                      x1={pt.x + svgNx * circleR}
-                      y1={pt.y + svgNy * circleR}
-                      x2={pt.x + svgNx * (circleR + arrowLen)}
-                      y2={pt.y + svgNy * (circleR + arrowLen)}
-                      stroke={color} strokeWidth="1.5"
-                    />
-                    <polygon
-                      points={`${pt.x + svgNx * (circleR + arrowLen)},${pt.y + svgNy * (circleR + arrowLen)} ${pt.x + svgNx * circleR - svgUx * 4},${pt.y + svgNy * circleR - svgUy * 4} ${pt.x + svgNx * circleR + svgUx * 4},${pt.y + svgNy * circleR + svgUy * 4}`}
-                      fill={color}
-                    />
-                  </g>
-                ))}
-                {/* Label */}
-                <text
-                  x={midSvg.x + svgNx * (circleR + arrowLen + 5)}
-                  y={midSvg.y + svgNy * (circleR + arrowLen + 5)}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="7"
-                  fill={color}
-                  fontWeight="bold"
-                >
-                  {n.name}
-                </text>
-              </g>
-            );
-          })
-        }
+        {/* ── Section / View markers — global (shown on ALL floor plans), edited in place ── */}
+        <SectionMarkerLayer
+          nodes={expandedNodes}
+          edges={edges}
+          toSvg={toSvg}
+          scale={SCALE}
+          clientToBim={clientToBim}
+          onOpen={setPendingOpenSectionId}
+          onUpdateProps={updateSectionProps}
+          interactive={canPickBim}
+        />
 
         {/* ── Nodes ── */}
         {storeyNodes.map((node) => {
@@ -1819,13 +1739,15 @@ export function FloorPlan2DViewer({
           );
         })()}
 
-        {/* ── Draw Section overlay ── */}
+        {/* ── Draw Section overlay: A, B, then the viewed side ── */}
         {drawSectionMode && hoverRaw && (() => {
-          const preview = sectionStart && hoverSnap
-            ? orthoConstrainCut(sectionStart, hoverSnap)
-            : null;
-          // 1st click: crosshair follows raw mouse; 2nd click: ortho-constrained end
-          const displayPt = preview
+          const color = '#e11d48';
+          const preview = sectionLine
+            ? { cut: sectionLine }
+            : sectionStart && hoverSnap
+              ? orthoConstrainCut(sectionStart, hoverSnap, hoverAlt)
+              : null;
+          const displayPt = preview && !sectionLine
             ? { x: preview.cut.x2, y: preview.cut.y2 }
             : hoverRaw;
           const hs = toSvg(displayPt.x, displayPt.y);
@@ -1834,23 +1756,28 @@ export function FloorPlan2DViewer({
             : 0;
           const showSnap = !sectionStart && hoverSnap && snapDist > 1;
           const snapSvg = showSnap ? toSvg(hoverSnap.x, hoverSnap.y) : null;
-          const color = preview?.kind === 'view' ? '#f97316' : '#e11d48';
           return (
             <g key="draw-section-hover" style={{ pointerEvents: 'none' }}>
-              <line x1={hs.x - 12} y1={hs.y} x2={hs.x + 12} y2={hs.y} stroke={color} strokeWidth="1.2" />
-              <line x1={hs.x} y1={hs.y - 12} x2={hs.x} y2={hs.y + 12} stroke={color} strokeWidth="1.2" />
-              <circle cx={hs.x} cy={hs.y} r={5} fill={color} fillOpacity="0.35" stroke={color} strokeWidth="1" />
+              {!sectionLine && (
+                <>
+                  <line x1={hs.x - 12} y1={hs.y} x2={hs.x + 12} y2={hs.y} stroke={color} strokeWidth="1.2" />
+                  <line x1={hs.x} y1={hs.y - 12} x2={hs.x} y2={hs.y + 12} stroke={color} strokeWidth="1.2" />
+                  <circle cx={hs.x} cy={hs.y} r={5} fill={color} fillOpacity="0.35" stroke={color} strokeWidth="1" />
+                </>
+              )}
               {showSnap && snapSvg && (
                 <circle cx={snapSvg.x} cy={snapSvg.y} r={7} fill="none" stroke={color} strokeWidth="1.2" strokeDasharray="3 2" />
               )}
-              {sectionStart && preview && (() => {
+              {preview && (() => {
                 const ss = toSvg(preview.cut.x1, preview.cut.y1);
                 const ee = toSvg(preview.cut.x2, preview.cut.y2);
                 const len = Math.hypot(ee.x - ss.x, ee.y - ss.y) || 1;
                 const ux = (ee.x - ss.x) / len;
                 const uy = (ee.y - ss.y) / len;
-                const nx = uy;
-                const ny = -ux;
+                // Band on the side the cursor is on (BIM left = SVG (uy, -ux)).
+                const side = sectionLine ? sideOfLine(preview.cut, hoverRaw) : 'left';
+                const nx = side === 'left' ? uy : -uy;
+                const ny = side === 'left' ? -ux : ux;
                 const depth = 40;
                 return (
                   <>
@@ -1863,8 +1790,9 @@ export function FloorPlan2DViewer({
                     />
                     <line x1={ss.x} y1={ss.y} x2={ee.x} y2={ee.y} stroke={color} strokeWidth="2" />
                     <circle cx={ss.x} cy={ss.y} r={5} fill={color} fillOpacity="0.8" />
-                    <text x={(ss.x + ee.x) / 2} y={(ss.y + ee.y) / 2 - 8} textAnchor="middle" fontSize="8" fill={color} fontWeight="bold">
-                      {preview.kind === 'section' ? 'Section' : 'Elevation'}
+                    {sectionLine && <circle cx={ee.x} cy={ee.y} r={5} fill={color} fillOpacity="0.8" />}
+                    <text x={(ss.x + ee.x) / 2 - nx * 10} y={(ss.y + ee.y) / 2 - ny * 10} textAnchor="middle" fontSize="8" fill={color} fontWeight="bold">
+                      {sectionLine ? 'Clic pe partea privită' : hoverAlt ? 'Secțiune (liber)' : 'Secțiune'}
                     </text>
                   </>
                 );
@@ -1875,7 +1803,7 @@ export function FloorPlan2DViewer({
 
         {/* ── Section-on-axis hover highlight ── */}
         {sectionOnAxisMode && axisHover && (() => {
-          const color = axisHover.dir === 'Y' ? '#e11d48' : '#f97316';
+          const color = '#e11d48';
           if (axisHover.dir === 'Y') {
             const a = toSvg(minX - 500, axisHover.value);
             const b = toSvg(maxX + 500, axisHover.value);
@@ -1883,7 +1811,7 @@ export function FloorPlan2DViewer({
               <g key="axis-section-hover" style={{ pointerEvents: 'none' }}>
                 <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth="2.5" strokeDasharray="8 4" opacity={0.85} />
                 <text x={(a.x + b.x) / 2} y={a.y - 10} textAnchor="middle" fontSize="9" fill={color} fontWeight="bold">
-                  Section along Y={Math.round(axisHover.value)}
+                  Secțiune pe Y={Math.round(axisHover.value)} — clic pe partea privită
                 </text>
               </g>
             );
@@ -1894,7 +1822,7 @@ export function FloorPlan2DViewer({
             <g key="axis-section-hover" style={{ pointerEvents: 'none' }}>
               <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth="2.5" strokeDasharray="8 4" opacity={0.85} />
               <text x={a.x + 10} y={(a.y + b.y) / 2} textAnchor="start" fontSize="9" fill={color} fontWeight="bold">
-                Elevation along X={Math.round(axisHover.value)}
+                Secțiune pe X={Math.round(axisHover.value)} — clic pe partea privită
               </text>
             </g>
           );
@@ -1953,10 +1881,11 @@ export function FloorPlan2DViewer({
           )}
         >▭</button>
         <button
-          title={drawSectionMode ? 'Draw Section — click two points (ESC to cancel)' : 'Draw Section — two clicks; ortho cut (H=section, V=elevation)'}
+          title={drawSectionMode ? 'Secțiune — clic A, clic B, apoi clic pe partea privită (Alt = unghi liber, ESC anulează)' : 'Secțiune — clic A, clic B, apoi clic pe partea privită'}
           onClick={() => {
             setPlanTool(drawSectionMode ? null : 'draw-section');
             setSectionStart(null);
+            setSectionLine(null);
             setHoverSnap(null);
             setHoverRaw(null);
             setDrawWallMode(false);
@@ -1970,7 +1899,7 @@ export function FloorPlan2DViewer({
           )}
         >✂</button>
         <button
-          title={sectionOnAxisMode ? 'Section on axis — click a grid line (ESC to cancel)' : 'Section on axis — click a grid line (Y→section, X→elevation)'}
+          title={sectionOnAxisMode ? 'Secțiune pe ax — clic lângă un ax, pe partea privită (ESC anulează)' : 'Secțiune pe ax — clic lângă un ax, pe partea privită'}
           onClick={() => {
             setPlanTool(sectionOnAxisMode ? null : 'section-on-axis');
             setAxisHover(null);

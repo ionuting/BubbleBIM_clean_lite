@@ -330,7 +330,8 @@ export function SectionOrthoViewer({
   const cutDepth = sectionNode
     ? Number(sectionNode.properties.cut_depth_mm ?? cutDepthProp)
     : cutDepthProp;
-  const cutHeight = sectionNode ? Number(sectionNode.properties.cut_height_mm ?? 3000) : undefined;
+  const cutHeightRaw = sectionNode ? Number(sectionNode.properties.cut_height_mm ?? 0) : 0;
+  const cutHeight = cutHeightRaw > 0 ? cutHeightRaw : undefined;   // 0 = all storeys
   const startElevation = sectionNode
     ? Number(sectionNode.properties.start_elevation_mm ?? startElevProp ?? 0)
     : startElevProp;

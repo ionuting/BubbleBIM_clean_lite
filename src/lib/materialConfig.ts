@@ -124,6 +124,9 @@ export const BUILTIN_ELEMENT_DEFAULTS: Record<string, MaterialVisuals> = {
   beam:       { color_3d: '#10B981', opacity_3d: 1.0, color_2d: '#475569', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
                 section_line_color: '#475569', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#94A3B8', section_fill_opacity: 0.8,
                 view_line_color: '#64748B', view_line_weight: 0.3, view_line_style: 'dashed' },
+  sweep:      { color_3d: '#14B8A6', opacity_3d: 1.0, color_2d: '#0F766E', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
+                section_line_color: '#0F766E', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#5EEAD4', section_fill_opacity: 0.8,
+                view_line_color: '#14B8A6', view_line_weight: 0.3, view_line_style: 'dashed' },
   wall:       { color_3d: '#F59E0B', opacity_3d: 1.0, color_2d: '#334155', opacity_2d: 1.0, line_weight: 0.5, hatch: 'solid',
                 section_line_color: '#1E293B', section_line_weight: 0.7, section_line_style: 'solid', section_fill_color: '#334155', section_fill_opacity: 0.5,
                 view_line_color: '#64748B', view_line_weight: 0.35, view_line_style: 'dashed' },
@@ -162,6 +165,18 @@ export const BUILTIN_ELEMENT_DEFAULTS: Record<string, MaterialVisuals> = {
                 view_line_color: '#FDBA74', view_line_weight: 0.25, view_line_style: 'dashed' },
   ax:         { color_3d: '#94A3B8', opacity_3d: 1.0, color_2d: '#94A3B8', opacity_2d: 0.8, line_weight: 0.2, hatch: 'none',
                 view_line_color: '#CBD5E1', view_line_weight: 0.15, view_line_style: 'dotted' },
+  // Stairs. `stairwell` is the parent node and draws nothing itself; the
+  // flights, landings and treads are what you see.
+  stair_flight:  { color_3d: '#0E7490', opacity_3d: 1.0, color_2d: '#155E75', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
+                   section_line_color: '#164E63', section_line_weight: 0.6, section_line_style: 'solid', section_fill_color: '#A5F3FC', section_fill_opacity: 0.9,
+                   view_line_color: '#67E8F9', view_line_weight: 0.3, view_line_style: 'dashed' },
+  stair_landing: { color_3d: '#155E75', opacity_3d: 1.0, color_2d: '#155E75', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
+                   section_line_color: '#164E63', section_line_weight: 0.6, section_line_style: 'solid', section_fill_color: '#CFFAFE', section_fill_opacity: 0.9,
+                   view_line_color: '#67E8F9', view_line_weight: 0.3, view_line_style: 'dashed' },
+  stair_tread:   { color_3d: '#22D3EE', opacity_3d: 1.0, color_2d: '#0E7490', opacity_2d: 1.0, line_weight: 0.25, hatch: 'none',
+                   view_line_color: '#A5F3FC', view_line_weight: 0.2, view_line_style: 'solid' },
+  stair_railing: { color_3d: '#475569', opacity_3d: 1.0, color_2d: '#64748B', opacity_2d: 1.0, line_weight: 0.25, hatch: 'none',
+                   view_line_color: '#94A3B8', view_line_weight: 0.2, view_line_style: 'solid' },
 };
 
 /** Built-in window/door glazing defaults — used before backend fetch. */

@@ -64,6 +64,7 @@ import { OGFloorPlanViewer, OGSectionViewer, OGElevationViewer } from '@/compone
 import { TechnicalDrawingsViewer } from '@/components/views/TechnicalDrawingsViewer';
 import { FloorPlan2DViewer } from '@/components/views/FloorPlan2DViewer';
 import { Section2DViewer } from '@/components/views/Section2DViewer';
+import { DEFAULT_CUT_DEPTH_MM, parseDepthMode, parseLookSide, parsePlanCut, resolveSectionCut } from '@/lib/sectionFromPlan';
 import { Elevation2DViewer } from '@/components/views/Elevation2DViewer';
 // OBC ortho viewers kept for OG 2D Views tab only
 import { FloorPlanOrthoViewer } from '@/components/views/FloorPlanOrthoViewer';
@@ -757,6 +758,7 @@ function PropertiesPanel({
     // section / view keys
     'cut_depth_mm', 'cut_height_mm', 'cut_plane_offset_mm', 'start_elevation_mm',
     'offset_left_mm', 'offset_right_mm', 'flipped', 'show_in_plan',
+    'plan_cut', 'look_side', 'depth_mode', 'clip_to_marker', 'view_direction',
     // per-node appearance overrides (shown in dedicated Appearance sections)
     'label', 'color_3d', 'color_2d', 'slab_custom_mm',
   ]);
@@ -2754,75 +2756,88 @@ function PropertiesPanel({
       )}
 
       {/* ── Section / View properties ─────────────────────────────────────────── */}
-      {(node.type === 'section' || node.type === 'view') && (
-        <PropSection label={node.type === 'section' ? 'Section Cut' : 'View (Elevation)'} icon="✂">
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
-            <span className="text-muted-foreground">Cut Depth (mm)</span>
-            <NumInput step={500}
-              className="w-full"
-              value={Number(node.properties.cut_depth_mm ?? 6000)}
-              onChange={(v) => onUpdateProp('cut_depth_mm', v)}
-            />
-            <span className="text-muted-foreground">Cut Height (mm)</span>
-            <NumInput step={100}
-              className="w-full"
-              value={Number(node.properties.cut_height_mm ?? 3000)}
-              onChange={(v) => onUpdateProp('cut_height_mm', v)}
-            />
-            <span className="text-muted-foreground" title="Offset the cut plane along the view direction (positive = forward). Shifts the entire cut plane away from the ax line.">Plane Offset (mm)</span>
-            <NumInput step={100}
-              className="w-full"
-              value={Number(node.properties.cut_plane_offset_mm ?? 0)}
-              onChange={(v) => onUpdateProp('cut_plane_offset_mm', v)}
-            />
-            <span className="text-muted-foreground" title="Bottom elevation of the view (mm). Use negative values for underground levels.">Start Elev. (mm)</span>
-            <NumInput step={100}
-              className="w-full"
-              value={Number(node.properties.start_elevation_mm ?? 0)}
-              onChange={(v) => onUpdateProp('start_elevation_mm', v)}
-            />
-            <span className="text-muted-foreground">Offset Left (mm)</span>
-            <NumInput step={100}
-              className="w-full"
-              value={Number(node.properties.offset_left_mm ?? 0)}
-              onChange={(v) => onUpdateProp('offset_left_mm', v)}
-            />
-            <span className="text-muted-foreground">Offset Right (mm)</span>
-            <NumInput step={100}
-              className="w-full"
-              value={Number(node.properties.offset_right_mm ?? 0)}
-              onChange={(v) => onUpdateProp('offset_right_mm', v)}
-            />
-            <span className="text-muted-foreground">Flipped</span>
-            <select
-              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
-              value={String(node.properties.flipped ?? 'false')}
-              onChange={(e) => onUpdateProp('flipped', e.target.value === 'true')}
+      {(node.type === 'section' || node.type === 'view') && (() => {
+        const lookSide = parseLookSide(node.properties.look_side, node.properties.flipped);
+        const depthMode = parseDepthMode(node.properties.depth_mode);
+        const hasLine = !!parsePlanCut(node.properties.plan_cut);
+        const clip = node.properties.clip_to_marker !== false && node.properties.clip_to_marker !== 'false';
+        return (
+          <PropSection label={node.type === 'section' ? 'Secțiune' : 'Vedere (fațadă)'} icon="✂">
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+              <span className="text-muted-foreground" title="Partea liniei de marcaj spre care privești. Stânga = normala în sens trigonometric față de A→B (A vest, B est → nord).">Privire</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs">{lookSide === 'left' ? 'stânga liniei' : 'dreapta liniei'}</span>
+                <button
+                  className="px-1.5 py-0.5 text-xs rounded border border-border hover:bg-accent"
+                  title="Întoarce direcția de privire"
+                  onClick={() => onUpdateProp('look_side', lookSide === 'left' ? 'right' : 'left')}
+                >⇄</button>
+              </div>
+              <span className="text-muted-foreground" title="Cât de departe, dincolo de planul de tăiere, se mai desenează elementele proiectate.">Adâncime</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={depthMode}
+                onChange={(e) => onUpdateProp('depth_mode', e.target.value)}
+              >
+                <option value="infinite">infinită</option>
+                <option value="limited">limitată</option>
+                <option value="zero">doar elementele tăiate</option>
+              </select>
+              {depthMode === 'limited' && (
+                <>
+                  <span className="text-muted-foreground">Adâncime (mm)</span>
+                  <NumInput step={500}
+                    className="w-full"
+                    value={Number(node.properties.cut_depth_mm ?? DEFAULT_CUT_DEPTH_MM)}
+                    onChange={(v) => onUpdateProp('cut_depth_mm', v)}
+                  />
+                </>
+              )}
+              <span className="text-muted-foreground" title="Desenul se limitează orizontal la lungimea liniei de marcaj (ca în ArchiCAD).">Limitează la marcaj</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={clip ? 'true' : 'false'}
+                onChange={(e) => onUpdateProp('clip_to_marker', e.target.value === 'true')}
+              >
+                <option value="true">Da</option>
+                <option value="false">Nu</option>
+              </select>
+              <span className="text-muted-foreground" title="Cota de jos a desenului (mm). Negativ pentru subsol.">Cotă de start (mm)</span>
+              <NumInput step={100}
+                className="w-full"
+                value={Number(node.properties.start_elevation_mm ?? 0)}
+                onChange={(v) => onUpdateProp('start_elevation_mm', v)}
+              />
+              <span className="text-muted-foreground" title="Înălțimea desenului (mm). 0 = toate etajele.">Înălțime (mm)</span>
+              <NumInput step={100}
+                className="w-full"
+                value={Number(node.properties.cut_height_mm ?? 0)}
+                onChange={(v) => onUpdateProp('cut_height_mm', v)}
+              />
+              <span className="text-muted-foreground">Arată în plan</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(node.properties.show_in_plan ?? 'true')}
+                onChange={(e) => onUpdateProp('show_in_plan', e.target.value === 'true')}
+              >
+                <option value="true">Da</option>
+                <option value="false">Nu</option>
+              </select>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {hasLine
+                ? 'Linia, capetele și adâncimea se editează direct în plan: trage capetele, pătratul de adâncime sau centrul marcajului.'
+                : 'Desenează pe plan (✂ / ⊕) sau leagă nodul de 2 axe ca să definești linia.'}
+            </div>
+            <button
+              className="w-full text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded px-2 py-1.5 transition-colors"
+              onClick={() => onOpenSectionTab?.(node.id)}
             >
-              <option value="false">No</option>
-              <option value="true">Yes</option>
-            </select>
-            <span className="text-muted-foreground">Show in Plan</span>
-            <select
-              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
-              value={String(node.properties.show_in_plan ?? 'true')}
-              onChange={(e) => onUpdateProp('show_in_plan', e.target.value === 'true')}
-            >
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            Draw on plan (✂ / ⊕) or connect to 2 ax nodes to define the cut line.
-          </div>
-          <button
-            className="w-full text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded px-2 py-1.5 transition-colors"
-            onClick={() => onOpenSectionTab?.(node.id)}
-          >
-            Open {node.type === 'section' ? 'Section' : 'View'} →
-          </button>
-        </PropSection>
-      )}
+              Deschide {node.type === 'section' ? 'secțiunea' : 'vederea'} →
+            </button>
+          </PropSection>
+        );
+      })()}
 
       {/* ── Local Transform (all geometry nodes except storey/ax/section/view) ─────────── */}
       {node.type !== 'storey' && node.type !== 'ax' && node.type !== 'section' && node.type !== 'view' && (
@@ -4127,13 +4142,14 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         if (len < 1) return;
         const ux = dx / len, uy = dy / len;
 
-        // Perpendicular look direction (Y-up canvas: CCW 90° of (ux, uy) = (-uy, ux))
-        const flipped = n.properties.flipped === true || n.properties.flipped === 'true';
+        // Perpendicular look direction (Y-up canvas: CCW 90° of (ux, uy) = (-uy, ux) = left of A→B)
+        const lookRight = parseLookSide(n.properties.look_side, n.properties.flipped) === 'right';
         let nx = -uy, ny = ux;
-        if (flipped) { nx = -nx; ny = -ny; }
+        if (lookRight) { nx = -nx; ny = -ny; }
 
-        const cutDepthPx    = Number(n.properties.cut_depth_mm ?? 6000) * MM_TO_PX;
-        const planeOffsetPx = Number(n.properties.cut_plane_offset_mm ?? -1000) * MM_TO_PX;
+        const depthMode = parseDepthMode(n.properties.depth_mode);
+        const cutDepthPx    = (depthMode === 'zero' ? 0 : depthMode === 'infinite' ? 4000 : Number(n.properties.cut_depth_mm ?? 6000)) * MM_TO_PX;
+        const planeOffsetPx = Number(n.properties.cut_plane_offset_mm ?? 0) * MM_TO_PX;
         const offL = Number(n.properties.offset_left_mm ?? 0) * MM_TO_PX;
         const offR = Number(n.properties.offset_right_mm ?? 0) * MM_TO_PX;
 
@@ -4454,10 +4470,10 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       const lenA = Math.sqrt(dxA * dxA + dyA * dyA);
       if (lenA < 1) return false;
       const uxA = dxA / lenA, uyA = dyA / lenA;
-      const flipped = n.properties.flipped === true || n.properties.flipped === 'true';
+      const lookRightA = parseLookSide(n.properties.look_side, n.properties.flipped) === 'right';
       let nxA = -uyA, nyA = uxA;
-      if (flipped) { nxA = -nxA; nyA = -nyA; }
-      const plOffPx = Number(n.properties.cut_plane_offset_mm ?? -1000) * MM_TO_PX;
+      if (lookRightA) { nxA = -nxA; nyA = -nyA; }
+      const plOffPx = Number(n.properties.cut_plane_offset_mm ?? 0) * MM_TO_PX;
       const offL    = Number(n.properties.offset_left_mm  ?? 0) * MM_TO_PX;
       const offR    = Number(n.properties.offset_right_mm ?? 0) * MM_TO_PX;
       const lx1 = x1 + nxA * plOffPx - uxA * offL;
@@ -6352,29 +6368,27 @@ export function BubbleGraphPanel({
       .filter((nd): nd is BubbleGraphNode => !!nd && nd.type === 'ax');
 
     const cutDepth        = Number(n.properties.cut_depth_mm ?? 6000);
-    const cutHeight       = Number(n.properties.cut_height_mm ?? 3000);
+    const cutHeight       = Number(n.properties.cut_height_mm ?? 0);
     const planeOffset     = Number(n.properties.cut_plane_offset_mm ?? 0);
     const startElevation  = Number(n.properties.start_elevation_mm ?? 0);
-    const endElevation    = startElevation + cutHeight;
+    // Height 0 = "all storeys": leave the end open and let the viewer derive it.
+    const endElevation    = cutHeight > 0 ? startElevation + cutHeight : undefined;
     const flipped         = n.properties.flipped === true || n.properties.flipped === 'true';
     const planCutRaw = n.properties.plan_cut as { x1?: number; y1?: number; x2?: number; y2?: number } | undefined;
 
     if (n.type === 'section') {
+      // The viewer reads everything live from the node; the params are only
+      // the legacy fallback for sheet viewports.
       const existing = viewTabs.find((t) => t.type === 'section' && t.params?.nodeId === nodeId);
-      let cutY = 0;
-      if (planCutRaw && Number.isFinite(planCutRaw.y1) && Number.isFinite(planCutRaw.y2)) {
-        cutY = ((Number(planCutRaw.y1) + Number(planCutRaw.y2)) / 2) + (flipped ? -planeOffset : planeOffset);
-      } else if (axNodes.length >= 2) {
-        const p1 = getAxPos(axNodes[0]), p2 = getAxPos(axNodes[1]);
-        cutY = (p1.y + p2.y) / 2 + (flipped ? -planeOffset : planeOffset);
-      }
+      const spec = resolveSectionCut(n, nodes, edges);
+      const cutY = spec ? (spec.line.y1 + spec.line.y2) / 2 : 0;
+      const params = { cutY, cutDepth: spec?.depthMm ?? cutDepth, startElevation, endElevation, nodeId };
       if (existing) {
-        updateViewTabParams(existing.id, { cutY, cutDepth, startElevation, endElevation, nodeId, flipped });
+        updateViewTabParams(existing.id, params);
         setActiveTabId(existing.id);
         return;
       }
-      addViewTab({ type: 'section', label: n.name || 'Section', storeyId: n.parentId ?? undefined, canClose: true,
-        params: { cutY, cutDepth, startElevation, endElevation, nodeId, flipped } });
+      addViewTab({ type: 'section', label: n.name || 'Section', storeyId: n.parentId ?? undefined, canClose: true, params });
     } else {
       const existing = viewTabs.find((t) => t.type === 'elevation' && t.params?.nodeId === nodeId);
       let cutX = 0;
@@ -6506,7 +6520,8 @@ export function BubbleGraphPanel({
   useEffect(() => {
     viewTabs.forEach((tab) => {
       const nodeId = tab.params?.nodeId as string | undefined;
-      if (!nodeId || (tab.type !== 'section' && tab.type !== 'elevation')) return;
+      // Section tabs read their node live; only elevations still carry params.
+      if (!nodeId || tab.type !== 'elevation') return;
       const n = nodes.find((nd) => nd.id === nodeId);
       if (!n) return;
 
@@ -6528,20 +6543,13 @@ export function BubbleGraphPanel({
       if (axNodes.length < 2) return;
 
       const cutDepth       = Number(n.properties.cut_depth_mm ?? 6000);
-      const cutHeight      = Number(n.properties.cut_height_mm ?? 3000);
+      const cutHeight      = Number(n.properties.cut_height_mm ?? 0);
       const planeOffset    = Number(n.properties.cut_plane_offset_mm ?? 0);
       const startElevation = Number(n.properties.start_elevation_mm ?? 0);
-      const endElevation   = startElevation + cutHeight;
+      const endElevation   = cutHeight > 0 ? startElevation + cutHeight : undefined;
       const flipped        = n.properties.flipped === true || n.properties.flipped === 'true';
 
-      if (tab.type === 'section') {
-        const p1 = getAxPos(axNodes[0]), p2 = getAxPos(axNodes[1]);
-        const cutY = (p1.y + p2.y) / 2 + (flipped ? -planeOffset : planeOffset);
-        if (tab.params?.cutY !== cutY || tab.params?.cutDepth !== cutDepth ||
-            tab.params?.startElevation !== startElevation || tab.params?.endElevation !== endElevation) {
-          updateViewTabParams(tab.id, { ...tab.params, cutY, cutDepth, startElevation, endElevation });
-        }
-      } else {
+      {
         const p1 = getAxPos(axNodes[0]), p2 = getAxPos(axNodes[1]);
         const cutX = (p1.x + p2.x) / 2 + (flipped ? -planeOffset : planeOffset);
         if (tab.params?.cutX !== cutX || tab.params?.cutDepth !== cutDepth ||
@@ -8079,7 +8087,6 @@ export function BubbleGraphPanel({
                         cutDepth={activeTab.params?.cutDepth as number | undefined}
                         startElevation={activeTab.params?.startElevation as number | undefined}
                         endElevation={activeTab.params?.endElevation as number | undefined}
-                        flipped={activeTab.params?.flipped === true || activeTab.params?.flipped === 'true'}
                         sectionNodeId={activeTab.params?.nodeId as string | undefined}
                         className="w-full h-full"
                       />

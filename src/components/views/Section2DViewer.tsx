@@ -4,16 +4,24 @@
  * Delegates all geometry to drawingEngine.computeSectionView().
  * This component is a pure rendering layer: DrawingShape[] → SVG elements.
  *
+ * The section is LIVE: with a `sectionNodeId` every parameter (marker line,
+ * look side, depth, vertical range) is read from that node on each render
+ * through `resolveSectionCut`, so dragging the marker in the plan or editing
+ * the Inspector redraws the section at once. The `cutY…` props are the
+ * fallback for hosts without a node (older sheet viewports).
+ *
  * Coordinate system inside this file:
- *   U (drawing horizontal) = BIM X (East), positive right
+ *   U (drawing horizontal) = along the marker, viewer's right positive
  *   V (drawing vertical)   = BIM elevation (up), positive up
  *   SVG y is flipped: svgY = drawH - (V - vMin)
  */
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
+import { useBubbleGraphStore } from '@/store';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
-import { computeSectionView, type DrawingResult, type DrawingShape } from '@/lib/drawingEngine';
+import { computeSectionView, type DrawingResult, type DrawingShape, type SectionCut } from '@/lib/drawingEngine';
+import { resolveSectionCut, type DepthMode } from '@/lib/sectionFromPlan';
 import { SvgHatchDefs } from './SvgHatches';
 import { useFitToContent } from '@/hooks/useFitToContent';
 
@@ -47,10 +55,16 @@ export interface Section2DViewerProps {
   cutDepth?: number;
   startElevation?: number;
   endElevation?: number;
-  flipped?: boolean;
   sectionNodeId?: string;
   className?: string;
   embedded?: boolean;
+}
+
+/** "N", "SE", … for the overlay: which way the viewer looks. */
+function lookLabel(n: { x: number; y: number }): string {
+  const a = Math.atan2(n.y, n.x) * 180 / Math.PI;   // BIM: +x east, +y north
+  const names = ['E', 'NE', 'N', 'NV', 'V', 'SV', 'S', 'SE'];
+  return names[Math.round(((a + 360) % 360) / 45) % 8];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -62,27 +76,31 @@ export function Section2DViewer({
   cutDepth: cutDepthProp = 6000,
   startElevation: startElevProp,
   endElevation: endElevProp,
-  flipped: flippedProp = false,
   sectionNodeId,
   className,
   embedded = false,
 }: Section2DViewerProps) {
-  // Live params from section node (optional)
+  // Live params from the section node; props only when there is no node.
   const sectionNode = sectionNodeId ? nodes.find((n) => n.id === sectionNodeId) : undefined;
-  const cutY     = cutYProp;
-  const cutDepth = sectionNode ? Number(sectionNode.properties.cut_depth_mm ?? cutDepthProp) : cutDepthProp;
-  const cutHeight = sectionNode ? Number(sectionNode.properties.cut_height_mm ?? 0) : 0;
-  const startElev = sectionNode
-    ? Number(sectionNode.properties.start_elevation_mm ?? startElevProp ?? 0)
-    : startElevProp;
-  const endElev = sectionNode && cutHeight > 0 && startElev != null
-    ? startElev + cutHeight
-    : endElevProp;
-  const flipped = sectionNode
-    ? (sectionNode.properties.flipped === true || sectionNode.properties.flipped === 'true')
-    : flippedProp;
+  const spec = useMemo(
+    () => (sectionNode ? resolveSectionCut(sectionNode, nodes, edges) : null),
+    [sectionNode, nodes, edges],
+  );
+  const cutDepth = spec ? spec.depthMm : cutDepthProp;
+  const startElev = spec ? spec.elevMin ?? undefined : startElevProp;
+  const endElev = spec ? spec.elevMax ?? undefined : endElevProp;
 
   const { config: matConfig } = useMaterialConfig();
+  const setBubbleGraph = useBubbleGraphStore((s) => s.setBubbleGraph);
+  const rawNodes = useBubbleGraphStore((s) => s.bubbleGraphNodes);
+  const rawEdges = useBubbleGraphStore((s) => s.bubbleGraphEdges);
+  const updateProps = useCallback((patch: Record<string, unknown>) => {
+    if (!sectionNodeId) return;
+    setBubbleGraph(
+      rawNodes.map((n) => (n.id === sectionNodeId ? { ...n, properties: { ...n.properties, ...patch } } : n)),
+      rawEdges,
+    );
+  }, [sectionNodeId, rawNodes, rawEdges, setBubbleGraph]);
 
   const [zoom, setZoom]     = useState(1);
   const [pan, setPan]       = useState({ x: 0, y: 0 });
@@ -94,7 +112,7 @@ export function Section2DViewer({
   // Frame the drawing when the view opens (or switches to another section).
   useFitToContent({
     svgRef, containerRef, setZoom, setPan, enabled: !embedded,
-    viewKey: sectionNodeId ?? `${cutY}:${cutDepth}`,
+    viewKey: sectionNodeId ?? `${cutYProp}:${cutDepth}`,
   });
 
   // ── Elevation range ────────────────────────────────────────────────────
@@ -107,10 +125,14 @@ export function Section2DViewer({
     : 3000);
 
   // ── Geometry from engine ───────────────────────────────────────────────
-  const drawing: DrawingResult = useMemo(() => computeSectionView(
-    nodes, edges, matConfig,
-    { cutY, cutDepth, elevMin, elevMax },
-  ), [nodes, edges, matConfig, cutY, cutDepth, elevMin, elevMax]);
+  const cut: SectionCut = useMemo(() => spec
+    ? { line: spec.line, lookSide: spec.lookSide, cutDepth, clipToLine: spec.clipToMarker, elevMin, elevMax }
+    : { cutY: cutYProp, cutDepth, elevMin, elevMax },
+  [spec, cutDepth, cutYProp, elevMin, elevMax]);
+  const drawing: DrawingResult = useMemo(
+    () => computeSectionView(nodes, edges, matConfig, cut),
+    [nodes, edges, matConfig, cut],
+  );
 
   // ── SVG bounds (drawing-space mm, padded) ──────────────────────────────
   const uMin = drawing.uMin - PAD;
@@ -120,8 +142,9 @@ export function Section2DViewer({
   const drawW = Math.max(uMax - uMin, 1);
   const drawH = Math.max(vMax - vMin, 1);
 
-  // toX / toY: drawing-space mm → SVG px (1:1 in viewBox, Y-flipped)
-  const toX = useCallback((u: number) => (flipped ? -(u) : u) - (flipped ? -uMax : uMin), [flipped, uMin, uMax]);
+  // toX / toY: drawing-space mm → SVG px (1:1 in viewBox, Y-flipped). The
+  // engine already hands back u with the viewer's right positive, so no mirror.
+  const toX = useCallback((u: number) => u - uMin, [uMin]);
   const toY = useCallback((v: number) => drawH - (v - vMin), [drawH, vMin]);
 
   // ── Build SVG elements ─────────────────────────────────────────────────
@@ -266,7 +289,7 @@ export function Section2DViewer({
 
     return els;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing, flipped, toX, toY, uMin, uMax, vMin, vMax, drawW, drawH]);
+  }, [drawing, toX, toY, uMin, uMax, vMin, vMax, drawW, drawH]);
 
   // ── Pan / zoom events ──────────────────────────────────────────────────
   useEffect(() => {
@@ -328,8 +351,41 @@ export function Section2DViewer({
           <div className="absolute bottom-3 left-3 text-[10px] text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded border border-border/40">
             {Math.round(zoom * 100)}%
           </div>
-          <div className="absolute top-2 left-2 text-[10px] text-muted-foreground bg-background/60 px-2 py-1 rounded border border-border/40 pointer-events-none">
-            Section Y={cutY}mm · depth={cutDepth}mm
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-background/70 px-2 py-1 rounded border border-border/40">
+            <span className="pointer-events-none">
+              {sectionNode?.name ?? 'Secțiune'}
+              {spec ? ` · privire ${lookLabel(spec.normal)}` : ` · Y=${cutYProp}mm`}
+            </span>
+            {spec && (
+              <>
+                <button
+                  className="px-1.5 py-0.5 rounded border border-border/60 hover:bg-accent"
+                  title="Întoarce direcția de privire"
+                  onClick={() => updateProps({ look_side: spec.lookSide === 'left' ? 'right' : 'left' })}
+                >⇄</button>
+                <select
+                  className="bg-background border border-border/60 rounded px-1 py-0.5 text-[10px]"
+                  value={spec.depthMode}
+                  title="Adâncimea secțiunii"
+                  onChange={(e) => updateProps({ depth_mode: e.target.value as DepthMode })}
+                >
+                  <option value="infinite">adâncime ∞</option>
+                  <option value="limited">adâncime limitată</option>
+                  <option value="zero">doar tăietura</option>
+                </select>
+                {spec.depthMode === 'limited' && (
+                  <input
+                    type="number" step={500} min={0}
+                    className="w-16 bg-background border border-border/60 rounded px-1 py-0.5 text-[10px]"
+                    value={Math.round(spec.depthMm)}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (Number.isFinite(v) && v >= 0) updateProps({ cut_depth_mm: v });
+                    }}
+                  />
+                )}
+              </>
+            )}
           </div>
           <div className="absolute bottom-3 right-3 text-[10px] text-muted-foreground pointer-events-none">
             Shift+drag — pan · Scroll — zoom

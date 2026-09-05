@@ -13,7 +13,21 @@
 
 import type { BglibSymbol } from './dxfSymbolRenderer';
 
-const API_BASE = 'http://localhost:8000';
+/**
+ * Backend origin. Every route below is spelled `${API_BASE}/api/...`, while
+ * VITE_API_URL already ENDS in `/api` — so the suffix is stripped here, the
+ * same way `ifcLibraryLoader` and `useMaterialConfig` do it. Hardcoding
+ * localhost (as this file used to) left the whole DXF library — window and
+ * door symbols, and now sweep profiles — unreachable in the cloud build.
+ *
+ * The empty string is a VALID result, not a missing value: the cloud build
+ * sets VITE_API_URL to the relative `/api`, which strips to `''` and means
+ * "same origin". Falling back with `||` would send it to localhost instead.
+ */
+const _rawApiUrl = import.meta.env.VITE_API_URL as string | undefined;
+const API_BASE = _rawApiUrl === undefined || _rawApiUrl === ''
+  ? 'http://localhost:8000'
+  : _rawApiUrl.replace(/\/api\/?$/, '');
 
 // ─── Internal state ────────────────────────────────────────────────────────
 

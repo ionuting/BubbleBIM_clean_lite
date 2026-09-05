@@ -88,7 +88,7 @@ export interface BubbleGraphNode {
   z: number;
   properties: Record<string, unknown>;
   locked?: boolean;
-  parentId?: string;
+  parentId?: string | null;
 }
 
 export interface BubbleGraphEdge {
@@ -97,6 +97,12 @@ export interface BubbleGraphEdge {
   to: string;
   fromGrip?: number; // 0-8: grip index on ax 'from' node (0=center, default)
   toGrip?: number;   // 0-8: grip index on ax 'to' node (0=center, default)
+  /**
+   * What this edge MEANS (spans / bounds / hosts / …). Optional: graphs saved
+   * before relation types existed have none, and `resolveEdgeType()` infers it
+   * from the node types at the ends. Never require it — see lib/graph/edgeTypes.ts.
+   */
+  type?: import('@/lib/graph/edgeTypes').EdgeType;
 }
 
 export interface BuildingAxes {

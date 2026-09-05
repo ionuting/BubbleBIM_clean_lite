@@ -358,6 +358,30 @@ export function getConnectedNodes(
     .filter((n): n is BubbleGraphNode => n !== undefined);
 }
 
+/**
+ * The ax/column anchors wired to a node, in the order the edges were created —
+ * deduped, edge direction ignored. This is the ordering contract every contour
+ * gesture relies on (roof outline, stair boundary, sweep guide line): the user
+ * connects points in sequence and the sequence IS the polyline.
+ */
+export function getOrderedAnchorNodes(
+  nodeId: string,
+  edges: BubbleGraphEdge[],
+  nodeMap: Map<string, BubbleGraphNode>,
+): BubbleGraphNode[] {
+  const out: BubbleGraphNode[] = [];
+  const seen = new Set<string>();
+  for (const e of edges) {
+    if (e.from !== nodeId && e.to !== nodeId) continue;
+    const otherId = e.from === nodeId ? e.to : e.from;
+    if (seen.has(otherId)) continue;
+    seen.add(otherId);
+    const other = nodeMap.get(otherId);
+    if (other && (other.type === 'ax' || other.type === 'column')) out.push(other);
+  }
+  return out;
+}
+
 // ─── Opening helpers ──────────────────────────────────────────────────────────
 
 /**

@@ -379,15 +379,14 @@
       "label": "Section",
       "category": "views",
       "color": "#e11d48",
-      "description": "Section cut plane — connect to 2 ax nodes",
+      "description": "Section marker — draw it on the plan (✂ / ⊕) or connect to 2 ax nodes; drag its ends, depth line and flip handle in place",
       "defaultProperties": {
+        "look_side": "left",
+        "depth_mode": "limited",
         "cut_depth_mm": 6000,
-        "cut_height_mm": 3000,
-        "cut_plane_offset_mm": -1000,
+        "clip_to_marker": true,
+        "cut_height_mm": 0,
         "start_elevation_mm": 0,
-        "offset_left_mm": 0,
-        "offset_right_mm": 0,
-        "flipped": false,
         "show_in_plan": true
       }
     },
@@ -398,13 +397,11 @@
       "color": "#f97316",
       "description": "Elevation view plane — connect to 2 ax nodes",
       "defaultProperties": {
+        "look_side": "left",
+        "depth_mode": "limited",
         "cut_depth_mm": 6000,
-        "cut_height_mm": 3000,
-        "cut_plane_offset_mm": -1000,
+        "cut_height_mm": 0,
         "start_elevation_mm": 0,
-        "offset_left_mm": 0,
-        "offset_right_mm": 0,
-        "flipped": false,
         "show_in_plan": true
       }
     },

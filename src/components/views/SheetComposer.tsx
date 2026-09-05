@@ -480,7 +480,6 @@ function ViewportContent({ vp, nodes, edges, pxW, pxH, isSelected }: ViewportCon
           cutDepth={vp.cutDepth}
           startElevation={vp.startElevation}
           endElevation={vp.endElevation}
-          flipped={vp.flipped}
           sectionNodeId={vp.sectionNodeId}
           className="w-full h-full"
           embedded

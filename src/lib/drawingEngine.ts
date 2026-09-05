@@ -15,7 +15,7 @@
  * layer renders using <polygon>, <path>, and <pattern> fills.
  *
  * Supports:
- *   - computeSectionView   (vertical cut at Y = cutY mm)
+ *   - computeSectionView   (vertical cut along a plan marker line, any angle)
  *   - computeElevationView (external face, looking along +Y/-Y/+X/-X)
  */
 
@@ -31,9 +31,15 @@ import {
   parseBeamDims,
   getNodeSlabThickness,
   getConnectedNodes,
-  MM,
+  calcShellPolygon,
+  calcRoomPolygon,
+  parseContourOffsets,
+  insetPolygon,
 } from '@/lib/bimGeometry';
 import { expandArrayNodes } from '@/lib/formulaUtils';
+import { computeSweep } from '@/lib/sweep';
+import { computeRoofFaces } from '@/lib/roof/solver';
+import { flightProfile } from '@/lib/stair/profile';
 import { parseAxes } from '@/lib/utils';
 import type { HatchPattern, MaterialVisuals, MaterialConfig } from '@/lib/materialConfig';
 import { resolveVisuals, applyNodeColorOverrides } from '@/lib/materialConfig';
@@ -83,11 +89,33 @@ export interface DrawingResult {
 
 // ─── Cut-plane type ───────────────────────────────────────────────────────────
 
+/**
+ * A vertical section through the model, defined the way a plan marker is: a
+ * line A→B in BIM plan mm and the side of it the viewer stands on.
+ *
+ * The drawing's horizontal axis `u` runs along the marker with the viewer's
+ * RIGHT hand positive, so handedness follows from the look side alone: a
+ * west→east marker viewed from the south (look 'left' = north) puts east on the
+ * right; the same marker viewed from the north puts west on the right. There
+ * is no separate "flipped" — the engine never mirrors.
+ *
+ * `cutY` is the pre-marker form (a west→east line at that Y, looking north)
+ * and is only read when `line` is absent.
+ */
 export interface SectionCut {
-  /** BIM Y coordinate of the cut plane (mm) */
-  cutY: number;
-  /** How deep behind the cut plane to show projections (mm). Default 6000. */
+  /** Marker endpoints in BIM mm. */
+  line?: { x1: number; y1: number; x2: number; y2: number };
+  /** Which side of A→B is viewed. Default 'left' (the CCW normal). */
+  lookSide?: 'left' | 'right';
+  /** Legacy: BIM Y of a west→east cut looking north. Ignored when `line` is set. */
+  cutY?: number;
+  /**
+   * How far past the plane projected elements show (mm). `Infinity` shows
+   * everything on the viewed side; `0` shows only the cut elements.
+   */
   cutDepth: number;
+  /** Clip the drawing to the marker's length (ArchiCAD's horizontal range). */
+  clipToLine?: boolean;
   /** Bottom elevation limit (mm) */
   elevMin: number;
   /** Top elevation limit (mm) */
@@ -98,52 +126,32 @@ export type ElevationDir = 'N' | 'S' | 'E' | 'W';
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-const DEF_COLORS = {
-  cut_fill:   '#D4C5B2',
-  cut_stroke: '#1E293B',
-  proj_fill:  'none',
-  proj_stroke:'#64748B',
-};
-
 /**
- * Clip a convex polygon to the half-plane (bimY <= planeY) or (bimY >= planeY).
- * Uses the Sutherland–Hodgman algorithm in Y.
- * Returns an empty array when the polygon is entirely outside.
- *
- * @param pts   polygon corners (bimX, bimY) in mm
- * @param planeY   cut Y value
- * @param keepBelow  true → keep side where bimY <= planeY
+ * Clip a polygon to the half-plane (y <= planeY) or (y >= planeY) with
+ * Sutherland–Hodgman. Extra fields on the points (e.g. z) are interpolated
+ * through `lerp`. Returns an empty array when nothing is inside.
  */
-function clipPolygonY(
-  pts: { x: number; y: number }[],
+function clipPolygonY<T extends { x: number; y: number }>(
+  pts: T[],
   planeY: number,
   keepBelow: boolean,
-): { x: number; y: number }[] {
+  lerp: (a: T, b: T, t: number) => T = (a, b, t) =>
+    ({ ...a, x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) }),
+): T[] {
   if (pts.length === 0) return [];
-  const inside = (p: { x: number; y: number }) =>
-    keepBelow ? p.y <= planeY : p.y >= planeY;
-
-  let output = pts;
-  const input = [...output, output[0]]; // close polygon
-  output = [];
-
-  for (let i = 0; i < input.length - 1; i++) {
-    const S = input[i], E = input[i + 1];
+  const inside = (p: T) => (keepBelow ? p.y <= planeY : p.y >= planeY);
+  const out: T[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const S = pts[i], E = pts[(i + 1) % pts.length];
     const sIn = inside(S), eIn = inside(E);
     if (sIn) {
-      output.push(S);
-      if (!eIn) {
-        // S inside, E outside → compute intersection
-        const t = (planeY - S.y) / (E.y - S.y);
-        output.push({ x: S.x + t * (E.x - S.x), y: planeY });
-      }
+      out.push(S);
+      if (!eIn) out.push(lerp(S, E, (planeY - S.y) / (E.y - S.y)));
     } else if (eIn) {
-      // S outside, E inside → compute intersection
-      const t = (planeY - S.y) / (E.y - S.y);
-      output.push({ x: S.x + t * (E.x - S.x), y: planeY });
+      out.push(lerp(S, E, (planeY - S.y) / (E.y - S.y)));
     }
   }
-  return output;
+  return out;
 }
 
 /**
@@ -153,12 +161,6 @@ function clipPolygonY(
  *   ax = bimX * MM, az = -bimY * MM, bx = bimX * MM, bz = -bimY * MM
  *
  * We recover BIM mm and produce the 4-corner footprint in plan.
- *
- * ┌──────────────────────────────────────────────────────────────────┐
- * │ The wall direction unit vector (ux,uy) is computed from (ax,az)  │
- * │ → (bx,bz), then perpendicular nx=−uz, nz=ux gives wall sides.   │
- * └──────────────────────────────────────────────────────────────────┘
- *
  * Returns 4 corners in BIM mm: (x=east, y=north)
  */
 function wallSegFootprint(seg: {
@@ -166,8 +168,6 @@ function wallSegFootprint(seg: {
   tStart: number; tEnd: number;
   width: number; // metres
 }): { x: number; y: number }[] {
-  // Convert Three.js metres → BIM mm
-  // Three.js: ax=bimX*MM, az=-bimY*MM  →  bimX=ax/MM, bimY=-az/MM
   const sx = seg.ax * 1000;       // BIM X mm (start, before tStart offset)
   const sy = -seg.az * 1000;      // BIM Y mm (start)
   const ex = seg.bx * 1000;       // BIM X mm (end, before tEnd offset)
@@ -178,90 +178,34 @@ function wallSegFootprint(seg: {
   if (wallLen < 1e-3) return [];
 
   const ux = wallDx / wallLen; const uy = wallDy / wallLen;
-  // Perpendicular — left-hand normal
   const nx = -uy; const ny = ux;
-
-  const hw = (seg.width * 1000) / 2; // half thickness in mm
-
-  // tStart / tEnd are in metres along the wall centre-line
-  const sOff = seg.tStart * 1000; // mm from wall start
+  const hw = (seg.width * 1000) / 2;
+  const sOff = seg.tStart * 1000;
   const eOff = seg.tEnd   * 1000;
 
   const pSx = sx + ux * sOff; const pSy = sy + uy * sOff;
   const pEx = sx + ux * eOff; const pEy = sy + uy * eOff;
 
   return [
-    { x: pSx + nx * hw, y: pSy + ny * hw }, // front-start
-    { x: pEx + nx * hw, y: pEy + ny * hw }, // front-end
-    { x: pEx - nx * hw, y: pEy - ny * hw }, // back-end
-    { x: pSx - nx * hw, y: pSy - ny * hw }, // back-start
+    { x: pSx + nx * hw, y: pSy + ny * hw },
+    { x: pEx + nx * hw, y: pEy + ny * hw },
+    { x: pEx - nx * hw, y: pEy - ny * hw },
+    { x: pSx - nx * hw, y: pSy - ny * hw },
   ];
 }
 
-/**
- * Project a footprint polygon onto a vertical section plane (cutY).
- *
- * Returns { uMin, uMax, depthMin, depthMax } in BIM mm, or null if the polygon
- * does not cross the cut plane at all.
- *
- * For a section looking in the +Y direction (standard):
- *   u = BIM X (horizontal axis in the drawing)
- *   depth = distance from the cut plane in BIM Y
- */
-function projectFootprintOnSection(
-  footprint: { x: number; y: number }[],
-  cutY: number,
-): { uMin: number; uMax: number; depthMin: number; depthMax: number } | null {
-  if (footprint.length === 0) return null;
-  // Find the Y-range of the footprint
-  const ys = footprint.map((p) => p.y);
-  const fpYmin = Math.min(...ys); const fpYmax = Math.max(...ys);
-
-  if (fpYmax < cutY || fpYmin > cutY) return null; // doesn't cross the cut
-
-  // Clip polygon to Y >= cutY (the side behind the section cut = visible)
-  // No — we want the X extent at exactly Y=cutY, so we compute the X crossings
-  // at the cut line.
-  const xCrossings: number[] = [];
-  for (let i = 0; i < footprint.length; i++) {
-    const A = footprint[i], B = footprint[(i + 1) % footprint.length];
-    const aY = A.y, bY = B.y;
-    if ((aY <= cutY && bY > cutY) || (bY <= cutY && aY > cutY) ||
-        Math.abs(aY - cutY) < 0.01) {
-      const t = Math.abs(bY - aY) < 0.01 ? 0 : (cutY - aY) / (bY - aY);
-      xCrossings.push(A.x + t * (B.x - A.x));
-    }
-  }
-  // Also consider vertices that are exactly on the cut plane
-  footprint.forEach((p) => { if (Math.abs(p.y - cutY) < 0.5) xCrossings.push(p.x); });
-
-  if (xCrossings.length < 2) return null;
-
-  const uMin = Math.min(...xCrossings);
-  const uMax = Math.max(...xCrossings);
-
-  // Depth = distance of footprint from cut plane
-  const depthMin = Math.min(...ys.map((y) => Math.abs(y - cutY)));
-  const depthMax = Math.max(...ys.map((y) => Math.abs(y - cutY)));
-
-  return { uMin, uMax, depthMin, depthMax };
-}
-
-/**
- * Does a footprint polygon straddle the cut plane (meaning the element is CUT)?
- * A footprint straddles if it has vertices on both sides of the plane.
- */
-function footprintStraddlesCut(
-  footprint: { x: number; y: number }[],
-  cutY: number,
-  tol = 10, // mm tolerance for "exactly at" cut
-): boolean {
-  let hasAbove = false, hasBelow = false;
-  for (const p of footprint) {
-    if (p.y < cutY - tol) hasBelow = true;
-    if (p.y > cutY + tol) hasAbove = true;
-  }
-  return hasAbove && hasBelow;
+/** Rectangle footprint around a centre-line (BIM mm) of the given width. */
+function lineFootprint(
+  sx: number, sy: number, ex: number, ey: number, widthMm: number,
+): { x: number; y: number }[] {
+  const dx = ex - sx, dy = ey - sy;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-3) return [];
+  const nx = -dy / len * widthMm / 2, ny = dx / len * widthMm / 2;
+  return [
+    { x: sx + nx, y: sy + ny }, { x: ex + nx, y: ey + ny },
+    { x: ex - nx, y: ey - ny }, { x: sx - nx, y: sy - ny },
+  ];
 }
 
 /** Get material visuals safely */
@@ -275,19 +219,243 @@ function getVis(
   return node ? applyNodeColorOverrides(vis, node.properties) : vis;
 }
 
-function hexToSvgColor(hex: string): string { return hex; }
+// ─── Section frame ────────────────────────────────────────────────────────────
+
+/**
+ * The marker as a local frame. `local(p)` maps a BIM plan point to
+ * `{ x: u, y: -d }`: u along the marker (viewer's right positive), d the
+ * distance in front of the plane. Everything downstream cuts at y = 0 and
+ * looks toward negative y, so "in front" is y <= 0 and "further" is smaller y.
+ */
+interface CutFrame {
+  ax: number; ay: number;
+  tx: number; ty: number;
+  nx: number; ny: number;
+  lengthMm: number;
+  clip: boolean;
+  depth: number;
+}
+
+function buildFrame(cut: SectionCut): CutFrame {
+  let x1: number, y1: number, x2: number, y2: number;
+  let clip = cut.clipToLine === true;
+  if (cut.line) {
+    ({ x1, y1, x2, y2 } = cut.line);
+  } else {
+    const y = cut.cutY ?? 0;
+    x1 = 0; y1 = y; x2 = 1; y2 = y;
+    clip = false;
+  }
+  // Looking at the right side of A→B is looking at the left side of B→A.
+  if (cut.lookSide === 'right') {
+    [x1, y1, x2, y2] = [x2, y2, x1, y1];
+  }
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const tx = dx / len, ty = dy / len;
+  const depth = Number.isFinite(cut.cutDepth) && cut.cutDepth >= 0 ? cut.cutDepth : Infinity;
+  return { ax: x1, ay: y1, tx, ty, nx: -ty, ny: tx, lengthMm: cut.line ? len : Infinity, clip, depth };
+}
+
+type UD = { x: number; y: number };
+type UDZ = UD & { z: number };
+
+/**
+ * Where a footprint (already in frame space) crosses the plane y = 0, as
+ * paired u-intervals. The half-open crossing rule keeps the count even, so a
+ * concave footprint (an L-shaped slab) yields one interval per crossing wing.
+ */
+function cutIntervals(fp: UD[]): [number, number][] {
+  const xs: number[] = [];
+  for (let i = 0; i < fp.length; i++) {
+    const A = fp[i], B = fp[(i + 1) % fp.length];
+    if ((A.y <= 0 && B.y > 0) || (B.y <= 0 && A.y > 0)) {
+      const t = (0 - A.y) / (B.y - A.y);
+      xs.push(A.x + t * (B.x - A.x));
+    }
+  }
+  xs.sort((a, b) => a - b);
+  const out: [number, number][] = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    if (xs[i + 1] - xs[i] > 0.5) out.push([xs[i], xs[i + 1]]);
+  }
+  return out;
+}
+
+/** Does the footprint have area on both sides of the plane? */
+function straddles(fp: UD[], tol = 1): boolean {
+  let neg = false, pos = false;
+  for (const p of fp) {
+    if (p.y < -tol) neg = true;
+    if (p.y > tol) pos = true;
+  }
+  return neg && pos;
+}
+
+const rect = (u0: number, u1: number, v0: number, v1: number) => [
+  { u: u0, v: v0 }, { u: u1, v: v0 }, { u: u1, v: v1 }, { u: u0, v: v1 },
+];
+
+interface PrismStyle {
+  vis: MaterialVisuals;
+  nodeId: string;
+  nodeType: string;
+  cutWeight?: LineWeight;
+  projWeight?: LineWeight;
+}
+
+/**
+ * Emit the section of a vertical prism (footprint × [zBot, zTop]). Cut where
+ * the footprint straddles the plane — one filled rectangle per crossing
+ * interval — otherwise the projected outline of the part in front, within
+ * the depth. Returns true when the prism was cut.
+ */
+function emitPrism(
+  shapes: DrawingShape[],
+  frame: CutFrame,
+  fpBim: { x: number; y: number }[],
+  zBot: number,
+  zTop: number,
+  style: PrismStyle,
+): boolean {
+  if (fpBim.length < 3 || !(zTop > zBot)) return false;
+  const fp = fpBim.map((p) => localOf(frame, p));
+  const { vis, nodeId, nodeType } = style;
+
+  const intervals = cutIntervals(fp);
+  if (intervals.length > 0) {
+    for (const [u0, u1] of intervals) {
+      shapes.push({
+        pts: rect(u0, u1, zBot, zTop), closed: true,
+        hatch: vis.hatch,
+        fillColor: vis.section_fill_color ?? vis.color_2d,
+        strokeColor: vis.section_line_color ?? vis.color_2d,
+        lineWeight: style.cutWeight ?? 'heavy-cut',
+        depthMm: 0,
+        nodeId, nodeType,
+      });
+    }
+    return true;
+  }
+
+  const front = clipPolygonY(fp, 0, true);
+  if (front.length < 3) return false;
+  const dMin = -Math.max(...front.map((p) => p.y));
+  if (dMin > frame.depth + 1) return false;
+  const us = front.map((p) => p.x);
+  shapes.push({
+    pts: rect(Math.min(...us), Math.max(...us), zBot, zTop), closed: true,
+    hatch: 'none',
+    fillColor: 'none',
+    strokeColor: vis.view_line_color ?? vis.color_2d,
+    lineWeight: style.projWeight ?? 'projected',
+    depthMm: Math.max(0, dMin),
+    nodeId, nodeType,
+  });
+  return false;
+}
+
+function localOf(frame: CutFrame, p: { x: number; y: number }): UD {
+  const rx = p.x - frame.ax, ry = p.y - frame.ay;
+  return { x: rx * frame.tx + ry * frame.ty, y: -(rx * frame.nx + ry * frame.ny) };
+}
+
+/**
+ * Cut a planar 3D polygon (frame space with z) by the plane y = 0: the
+ * crossing points sorted along u, paired into segments.
+ */
+function cutSegments3(poly: UDZ[]): [UDZ, UDZ][] {
+  const hits: UDZ[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const A = poly[i], B = poly[(i + 1) % poly.length];
+    if ((A.y <= 0 && B.y > 0) || (B.y <= 0 && A.y > 0)) {
+      const t = (0 - A.y) / (B.y - A.y);
+      hits.push({ x: A.x + t * (B.x - A.x), y: 0, z: A.z + t * (B.z - A.z) });
+    }
+  }
+  hits.sort((a, b) => a.x - b.x);
+  const out: [UDZ, UDZ][] = [];
+  for (let i = 0; i + 1 < hits.length; i += 2) out.push([hits[i], hits[i + 1]]);
+  return out;
+}
+
+const lerp3 = (a: UDZ, b: UDZ, t: number): UDZ =>
+  ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), z: a.z + t * (b.z - a.z) });
+
+/** Sutherland–Hodgman of a (u,v) polygon against u >= lo and u <= hi, v >= vlo and v <= vhi. */
+function clipShapeBox(
+  pts: { u: number; v: number }[],
+  uLo: number, uHi: number, vLo: number, vHi: number,
+): { u: number; v: number }[] {
+  type P = { u: number; v: number };
+  const clipHalf = (input: P[], inside: (p: P) => boolean, cross: (a: P, b: P) => P): P[] => {
+    const out: P[] = [];
+    for (let i = 0; i < input.length; i++) {
+      const S = input[i], E = input[(i + 1) % input.length];
+      const sIn = inside(S), eIn = inside(E);
+      if (sIn) { out.push(S); if (!eIn) out.push(cross(S, E)); }
+      else if (eIn) out.push(cross(S, E));
+    }
+    return out;
+  };
+  const atU = (u0: number) => (a: P, b: P): P => {
+    const t = (u0 - a.u) / (b.u - a.u);
+    return { u: u0, v: a.v + t * (b.v - a.v) };
+  };
+  const atV = (v0: number) => (a: P, b: P): P => {
+    const t = (v0 - a.v) / (b.v - a.v);
+    return { u: a.u + t * (b.u - a.u), v: v0 };
+  };
+  let poly = pts;
+  if (Number.isFinite(uLo)) poly = clipHalf(poly, (p) => p.u >= uLo, atU(uLo));
+  if (poly.length && Number.isFinite(uHi)) poly = clipHalf(poly, (p) => p.u <= uHi, atU(uHi));
+  if (poly.length && Number.isFinite(vLo)) poly = clipHalf(poly, (p) => p.v >= vLo, atV(vLo));
+  if (poly.length && Number.isFinite(vHi)) poly = clipHalf(poly, (p) => p.v <= vHi, atV(vHi));
+  return poly;
+}
+
+/** Liang–Barsky clip of an open polyline to the same box; may split it. */
+function clipPolylineBox(
+  pts: { u: number; v: number }[],
+  uLo: number, uHi: number, vLo: number, vHi: number,
+): { u: number; v: number }[][] {
+  const inside = (p: { u: number; v: number }) =>
+    p.u >= uLo - 1e-6 && p.u <= uHi + 1e-6 && p.v >= vLo - 1e-6 && p.v <= vHi + 1e-6;
+  const runs: { u: number; v: number }[][] = [];
+  let run: { u: number; v: number }[] = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    let t0 = 0, t1 = 1;
+    const du = b.u - a.u, dv = b.v - a.v;
+    const tests: [number, number][] = [[-du, a.u - uLo], [du, uHi - a.u], [-dv, a.v - vLo], [dv, vHi - a.v]];
+    let ok = true;
+    for (const [p, q] of tests) {
+      if (!Number.isFinite(q)) continue;
+      if (p === 0) { if (q < 0) { ok = false; break; } continue; }
+      const r = q / p;
+      if (p < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; }
+      else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; }
+    }
+    if (!ok) { if (run.length > 1) runs.push(run); run = []; continue; }
+    const pa = { u: a.u + t0 * du, v: a.v + t0 * dv };
+    const pb = { u: a.u + t1 * du, v: a.v + t1 * dv };
+    if (run.length === 0 || !inside(a) || t0 > 0) { if (run.length > 1) runs.push(run); run = [pa]; }
+    run.push(pb);
+    if (t1 < 1) { runs.push(run); run = []; }
+  }
+  if (run.length > 1) runs.push(run);
+  return runs;
+}
 
 // ─── Section view computation ─────────────────────────────────────────────────
 
 /**
- * Compute all drawing shapes for a vertical section cut.
+ * Compute all drawing shapes for a vertical section cut. See `SectionCut` for
+ * the marker model; every element is mapped through the marker's local frame
+ * so an oblique marker works exactly like an orthogonal one.
  *
- * The section plane is Y = cutY (BIM North mm).
- * Looking direction: +Y (North), so the drawing shows:
- *   U = BIM X (East), V = BIM Z (elevation, up).
- *
- * Elements CUT by the plane (footprint straddles cutY) → heavy outline + hatch fill
- * Elements VISIBLE behind the plane (between cutY and cutY−cutDepth) → thin projected outline
+ * Elements CUT by the plane → heavy outline + hatch fill.
+ * Elements VISIBLE in front of the plane, within `cutDepth` → thin outline.
  */
 export function computeSectionView(
   rawNodes: BubbleGraphNode[],
@@ -300,158 +468,125 @@ export function computeSectionView(
   const wallJoins = calcWallJoins(nodes, edges);
   const storeys = nodes.filter((n) => n.type === 'storey');
 
-  const { cutY, cutDepth, elevMin, elevMax } = cut;
-  const cutMin = cutY - cutDepth; // furthest visible Y (behind cut)
-  const cutMax = cutY;
+  const frame = buildFrame(cut);
+  const { elevMin, elevMax } = cut;
+  const L = (p: { x: number; y: number }) => localOf(frame, p);
+  /** Is a frame-space footprint worth looking at (touches the plane or the depth band)? */
+  const nearPlane = (fp: UD[]) => {
+    const ys = fp.map((p) => p.y);
+    return Math.max(...ys) >= -frame.depth - 1 && Math.min(...ys) <= 1;
+  };
 
   const shapes: DrawingShape[] = [];
   const axes: DrawingAxis[] = [];
   const levels: DrawingLevel[] = [];
 
-  // ── Elevation grid lines + levels ─────────────────────────────────────────
-  const processedStoreyIds = new Set<string>();
+  // ── Levels ────────────────────────────────────────────────────────────────
   for (const s of storeys) {
     const bot = Number(s.properties.bottomElevation ?? 0);
-    const top = Number(s.properties.topElevation ?? 3000);
     levels.push({ vMm: bot, label: `+${(bot / 1000).toFixed(3)}` });
-    if (!processedStoreyIds.has(s.id)) {
-      processedStoreyIds.add(s.id);
-    }
   }
-  // Deduplicate levels
-  const topLevel = Math.max(...storeys.map((s) => Number(s.properties.topElevation ?? 3000)));
-  levels.push({ vMm: topLevel, label: `+${(topLevel / 1000).toFixed(3)}` });
+  if (storeys.length) {
+    const topLevel = Math.max(...storeys.map((s) => Number(s.properties.topElevation ?? 3000)));
+    levels.push({ vMm: topLevel, label: `+${(topLevel / 1000).toFixed(3)}` });
+  }
 
-  // ── Axis grid lines (X axes visible in section) ───────────────────────────
-  const seenAxX = new Set<number>();
+  // ── Axis grid lines: where each grid line meets the marker ────────────────
+  // A marker along X meets the X axes (numbered); one along Y meets the Y
+  // axes (lettered); an oblique marker meets both.
   for (const s of storeys) {
+    const seen = new Set<string>();
     const axX = parseAxes(s.properties.axesX).sort((a, b) => a - b);
-    axX.forEach((x, i) => {
-      if (!seenAxX.has(x)) {
-        seenAxX.add(x);
-        axes.push({ u: x, label: String(i + 1), kind: 'X' });
-      }
-    });
+    const axY = parseAxes(s.properties.axesY).sort((a, b) => a - b);
+    if (Math.abs(frame.tx) > 1e-6) {
+      axX.forEach((x, i) => {
+        const u = (x - frame.ax) / frame.tx;
+        const key = `X${i}`;
+        if (!seen.has(key)) { seen.add(key); axes.push({ u, label: String(i + 1), kind: 'X' }); }
+      });
+    }
+    if (Math.abs(frame.ty) > 1e-6) {
+      axY.forEach((y, i) => {
+        const u = (y - frame.ay) / frame.ty;
+        const key = `Y${i}`;
+        if (!seen.has(key)) { seen.add(key); axes.push({ u, label: String.fromCharCode(65 + i), kind: 'Y' }); }
+      });
+    }
     break; // global axes from first storey
   }
 
-  // ── Process each storey ────────────────────────────────────────────────────
+  // ── Per-storey prisms: columns and slabs ─────────────────────────────────
   for (const s of storeys) {
     const bot = Number(s.properties.bottomElevation ?? 0);
     const top = Number(s.properties.topElevation ?? 3000);
     if (bot > elevMax || top < elevMin) continue;
 
-    // ── Columns from ax nodes ────────────────────────────────────────────
+    // Columns from ax nodes
     for (const n of nodes.filter((nd) => nd.type === 'ax' && nd.parentId === s.id)) {
       if (String(n.properties.has_column ?? '').toLowerCase() !== 'true') continue;
-
       const { x: bimX, y: bimY } = getAxRealPos(n, nodeMap);
-      if (bimY < cutMin - 1000 || bimY > cutMax + 1000) continue; // too far
-
       const { w, d } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
       const wMm = w * 1000; const dMm = d * 1000;
-
-      // Footprint: square centered at (bimX, bimY)
       const footprint = [
         { x: bimX - wMm / 2, y: bimY - dMm / 2 },
         { x: bimX + wMm / 2, y: bimY - dMm / 2 },
         { x: bimX + wMm / 2, y: bimY + dMm / 2 },
         { x: bimX - wMm / 2, y: bimY + dMm / 2 },
       ];
-
-      const proj = projectFootprintOnSection(footprint, cutY);
-      if (!proj) continue;
-      const isCut = footprintStraddlesCut(footprint, cutY);
-      const inProjectionRange = bimY >= cutMin - 10;
-
-      if (!isCut && !inProjectionRange) continue;
-
       const vis = getVis('column', String(n.properties.material ?? ''), matConfig, n);
-      const colH = top - bot;
-
-      const pts = [
-        { u: proj.uMin, v: bot },
-        { u: proj.uMax, v: bot },
-        { u: proj.uMax, v: bot + colH },
-        { u: proj.uMin, v: bot + colH },
-      ];
-
-      shapes.push({
-        pts, closed: true,
-        hatch: isCut ? vis.hatch : 'none',
-        fillColor: isCut ? (vis.section_fill_color ?? vis.color_2d) : 'none',
-        strokeColor: isCut ? (vis.section_line_color ?? vis.color_2d) : vis.color_2d,
-        lineWeight: isCut ? 'heavy-cut' : 'projected',
-        depthMm: Math.abs(bimY - cutY),
-        nodeId: n.id, nodeType: 'column',
-      });
+      emitPrism(shapes, frame, footprint, bot, top, { vis, nodeId: n.id, nodeType: 'column' });
     }
 
-    // ── Standalone column nodes ──────────────────────────────────────────
+    // Standalone column nodes
     for (const n of nodes.filter((nd) => nd.type === 'column' && nd.parentId === s.id)) {
-      const bimX = n.x; const bimY = n.y;
-      if (bimY < cutMin - 1000 || bimY > cutMax + 1000) continue;
-
       const { w, d } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
       const wMm = w * 1000; const dMm = d * 1000;
       const footprint = [
-        { x: bimX - wMm / 2, y: bimY - dMm / 2 },
-        { x: bimX + wMm / 2, y: bimY - dMm / 2 },
-        { x: bimX + wMm / 2, y: bimY + dMm / 2 },
-        { x: bimX - wMm / 2, y: bimY + dMm / 2 },
+        { x: n.x - wMm / 2, y: n.y - dMm / 2 },
+        { x: n.x + wMm / 2, y: n.y - dMm / 2 },
+        { x: n.x + wMm / 2, y: n.y + dMm / 2 },
+        { x: n.x - wMm / 2, y: n.y + dMm / 2 },
       ];
-      const proj = projectFootprintOnSection(footprint, cutY);
-      if (!proj) continue;
-      const isCut = footprintStraddlesCut(footprint, cutY);
-      if (!isCut && bimY < cutMin) continue;
-
       const vis = getVis('column', String(n.properties.material ?? ''), matConfig, n);
-      const colH = top - bot;
-      shapes.push({
-        pts: [
-          { u: proj.uMin, v: bot },
-          { u: proj.uMax, v: bot },
-          { u: proj.uMax, v: bot + colH },
-          { u: proj.uMin, v: bot + colH },
-        ],
-        closed: true,
-        hatch: isCut ? vis.hatch : 'none',
-        fillColor: isCut ? (vis.section_fill_color ?? vis.color_2d) : 'none',
-        strokeColor: isCut ? (vis.section_line_color ?? vis.color_2d) : vis.color_2d,
-        lineWeight: isCut ? 'heavy-cut' : 'projected',
-        depthMm: Math.abs(bimY - cutY),
-        nodeId: n.id, nodeType: 'column',
-      });
+      emitPrism(shapes, frame, footprint, bot, top, { vis, nodeId: n.id, nodeType: 'column' });
     }
 
-    // ── Slabs ────────────────────────────────────────────────────────────
+    // Slab nodes — the real contour (anchors, inset by contour_offset), the
+    // same one the 3D viewers extrude. No contour → the siblings' bounding
+    // box, exactly like ogBimMapper's fallback.
     for (const n of nodes.filter((nd) => nd.type === 'slab' && nd.parentId === s.id)) {
       const thickMm = getNodeSlabThickness(n) * 1000;
-      const slabTop = top;       // slab sits at storey top
-      const slabBot = top - thickMm;
-
+      let poly = calcShellPolygon(n, nodeMap, edges);
+      if (poly && poly.length >= 3) {
+        const inward = parseContourOffsets(n.properties.contour_offset).map((o) => -o);
+        if (inward.some((o) => o !== 0)) poly = insetPolygon(poly, inward);
+      }
+      if (!poly || poly.length < 3) {
+        const sibs = nodes.filter((sb) => sb.parentId === n.parentId && sb.type !== 'storey');
+        const pts = (sibs.length ? sibs : [n]).map((sb) => getNodeBimPos(sb, nodeMap));
+        const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        if (x1 - x0 < 1 || y1 - y0 < 1) continue;
+        poly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+      }
       const vis = getVis('slab', String(n.properties.material ?? ''), matConfig, n);
+      emitPrism(shapes, frame, poly, top - thickMm, top,
+        { vis, nodeId: n.id, nodeType: 'slab', cutWeight: 'medium-cut' });
+    }
 
-      // Slab spans across X axes
-      const axX = parseAxes(s.properties.axesX).sort((a, b) => a - b);
-      const slabMinX = axX.length > 0 ? axX[0] - 500 : -5000;
-      const slabMaxX = axX.length > 0 ? axX[axX.length - 1] + 500 : 5000;
-
-      shapes.push({
-        pts: [
-          { u: slabMinX, v: slabBot },
-          { u: slabMaxX, v: slabBot },
-          { u: slabMaxX, v: slabTop },
-          { u: slabMinX, v: slabTop },
-        ],
-        closed: true,
-        hatch: vis.hatch,
-        fillColor: vis.section_fill_color ?? vis.color_2d,
-        strokeColor: vis.section_line_color ?? vis.color_2d,
-        lineWeight: 'medium-cut',
-        depthMm: 0, // slab at cut plane
-        nodeId: n.id, nodeType: 'slab',
-      });
+    // Room-derived slabs (has_slab, default true) — the 3D viewers draw them,
+    // so the section must too.
+    for (const n of nodes.filter((nd) => nd.type === 'room' && nd.parentId === s.id)) {
+      if (n.properties.has_slab === 'False' || n.properties.has_slab === false) continue;
+      let poly = calcRoomPolygon(n, nodeMap, edges);
+      if (!poly || poly.length < 3) continue;
+      const inward = parseContourOffsets(n.properties.contour_offset).map((o) => -o);
+      if (inward.some((o) => o !== 0)) poly = insetPolygon(poly, inward);
+      if (!poly || poly.length < 3) continue;
+      const thickMm = getNodeSlabThickness(n) * 1000;
+      const vis = getVis('slab', String(n.properties.slab_material ?? ''), matConfig, n);
+      emitPrism(shapes, frame, poly, top - thickMm, top,
+        { vis, nodeId: n.id, nodeType: 'slab', cutWeight: 'medium-cut' });
     }
   }
 
@@ -459,99 +594,25 @@ export function computeSectionView(
   for (const wn of nodes.filter((n) => n.type === 'wall')) {
     const geo = calcWallGeometry(wn, nodeMap, edges, wallJoins);
     if (!geo) continue;
-
-    const { bot } = getStoreyBand(wn, nodeMap);
-    const wallH = Number(wn.properties.height ?? 3000);
-    const wallTop = bot + wallH;
-
     const vis = getVis('wall', String(wn.properties.material ?? ''), matConfig, wn);
 
     for (const seg of geo.solidSegs) {
       const footprint = wallSegFootprint(seg);
       if (footprint.length === 0) continue;
-
-      // Check if footprint is in view range
-      const fpYs = footprint.map((p) => p.y);
-      const fpYmin = Math.min(...fpYs); const fpYmax = Math.max(...fpYs);
-      if (fpYmax < cutMin - 10 || fpYmin > cutMax + 10) continue;
-
-      const isCut = footprintStraddlesCut(footprint, cutY);
-      const inRange = fpYmax >= cutMin && fpYmin <= cutMax;
-      if (!isCut && !inRange) continue;
-
-      const proj = projectFootprintOnSection(footprint, cutY);
-      // For projected (non-cut) walls we use the mid-Y of footprint as approximate u range
-      let uMin: number, uMax: number, depthMm: number;
-      if (proj) {
-        uMin = proj.uMin; uMax = proj.uMax;
-        depthMm = proj.depthMin;
-      } else if (!isCut) {
-        // Projected — no direct intersection with cut, show full X extent behind it
-        const fpXs = footprint.map((p) => p.x);
-        uMin = Math.min(...fpXs); uMax = Math.max(...fpXs);
-        depthMm = Math.min(...fpYs.map((y) => Math.abs(y - cutY)));
-      } else {
-        continue;
-      }
-
-      // Wall segment elevation: use tStart/tEnd for height within the wall
-      const segBotM = seg.baseY;         // Three.js metres (Y = up)
-      const segTopM = seg.baseY + seg.height;
-      const segBotMm = segBotM * 1000;   // → BIM mm elevation
-      const segTopMm = segTopM * 1000;
-
-      shapes.push({
-        pts: [
-          { u: uMin, v: segBotMm },
-          { u: uMax, v: segBotMm },
-          { u: uMax, v: segTopMm },
-          { u: uMin, v: segTopMm },
-        ],
-        closed: true,
-        hatch: isCut ? vis.hatch : 'none',
-        fillColor: isCut ? (vis.section_fill_color ?? vis.color_2d) : 'none',
-        strokeColor: isCut
-          ? (vis.section_line_color ?? vis.color_2d)
-          : (vis.view_line_color ?? vis.color_2d),
-        lineWeight: isCut ? 'heavy-cut' : 'projected',
-        depthMm,
-        nodeId: wn.id, nodeType: 'wall',
-      });
+      if (!nearPlane(footprint.map(L))) continue;
+      const segBotMm = seg.baseY * 1000;
+      const segTopMm = (seg.baseY + seg.height) * 1000;
+      emitPrism(shapes, frame, footprint, segBotMm, segTopMm, { vis, nodeId: wn.id, nodeType: 'wall' });
     }
 
-    // ── Beam on top of wall ────────────────────────────────────────────
+    // Beam on top of the wall: a prism along the wall's centre-line.
     if (geo.beamDesc) {
       const bd = geo.beamDesc;
-      const footprint = [
-        { x: bd.ax * 1000, y: -bd.az * 1000 },
-        { x: bd.bx * 1000, y: -bd.bz * 1000 },
-        { x: bd.bx * 1000, y: -bd.bz * 1000 },
-        { x: bd.ax * 1000, y: -bd.az * 1000 },
-      ];
-      // For beams we approximate with the wall mid-Y
-      const midY = (-geo.szM * 1000 + -geo.ezM * 1000) / 2;
-      if (midY >= cutMin - 10 && midY <= cutMax + 10) {
-        const isCut = Math.abs(midY - cutY) < 300;
+      const footprint = lineFootprint(bd.ax * 1000, -bd.az * 1000, bd.bx * 1000, -bd.bz * 1000, bd.width * 1000);
+      if (footprint.length && nearPlane(footprint.map(L))) {
         const bvis = getVis('beam', String(wn.properties.material ?? ''), matConfig, wn);
-        const bBotMm = bd.baseY * 1000;
-        const bTopMm = (bd.baseY + bd.height) * 1000;
-        const sxMm = bd.ax * 1000; const exMm = bd.bx * 1000;
-        const hw = (bd.width * 1000) / 2;
-        shapes.push({
-          pts: [
-            { u: Math.min(sxMm, exMm), v: bBotMm },
-            { u: Math.max(sxMm, exMm), v: bBotMm },
-            { u: Math.max(sxMm, exMm), v: bTopMm },
-            { u: Math.min(sxMm, exMm), v: bTopMm },
-          ],
-          closed: true,
-          hatch: isCut ? bvis.hatch : 'none',
-          fillColor: isCut ? (bvis.section_fill_color ?? bvis.color_2d) : 'none',
-          strokeColor: isCut ? (bvis.section_line_color ?? bvis.color_2d) : bvis.color_2d,
-          lineWeight: isCut ? 'medium-cut' : 'projected',
-          depthMm: Math.abs(midY - cutY),
-          nodeId: wn.id, nodeType: 'beam',
-        });
+        emitPrism(shapes, frame, footprint, bd.baseY * 1000, (bd.baseY + bd.height) * 1000,
+          { vis: bvis, nodeId: wn.id, nodeType: 'beam', cutWeight: 'medium-cut' });
       }
     }
   }
@@ -563,92 +624,272 @@ export function computeSectionView(
     const pA = getNodeBimPos(pts[0], nodeMap);
     const pB = getNodeBimPos(pts[1], nodeMap);
     const { sx, sy, ex, ey } = calcSpanEffectiveEnds(bn, pA, pB, pts[0], pts[1], nodeMap);
-    const midY = (sy + ey) / 2;
-    if (midY < cutMin - 1000 || midY > cutMax + 1000) continue;
-
     const { top } = getStoreyBand(bn, nodeMap);
     const { bw, bh } = parseBeamDims(String(bn.properties.beam_section ?? bn.properties.beam_type ?? 'B30x60'));
-    const bBotMm = top - bh * 1000;
-    const bTopMm = top;
-
-    const isCut = Math.abs(midY - cutY) < 300;
+    const footprint = lineFootprint(sx, sy, ex, ey, bw * 1000);
+    if (!footprint.length || !nearPlane(footprint.map(L))) continue;
     const bvis = getVis('beam', String(bn.properties.material ?? ''), matConfig, bn);
+    emitPrism(shapes, frame, footprint, top - bh * 1000, top,
+      { vis: bvis, nodeId: bn.id, nodeType: 'beam', cutWeight: 'medium-cut' });
+  }
 
-    shapes.push({
-      pts: [
-        { u: Math.min(sx, ex), v: bBotMm },
-        { u: Math.max(sx, ex), v: bBotMm },
-        { u: Math.max(sx, ex), v: bTopMm },
-        { u: Math.min(sx, ex), v: bTopMm },
-      ],
-      closed: true,
-      hatch: isCut ? bvis.hatch : 'none',
-      fillColor: isCut ? (bvis.section_fill_color ?? bvis.color_2d) : 'none',
-      strokeColor: isCut ? (bvis.section_line_color ?? bvis.color_2d) : bvis.color_2d,
-      lineWeight: isCut ? 'medium-cut' : 'projected',
-      depthMm: Math.abs(midY - cutY),
-      nodeId: bn.id, nodeType: 'beam',
-    });
+  // ── Sweep elements ─────────────────────────────────────────────────────
+  // A segment crossing the plane draws the TRUE placed profile (lateral axis
+  // projected on u, profile height on v). Anything else falls back to the
+  // projected bbox, like beams.
+  for (const sn of nodes.filter((nd) => nd.type === 'sweep')) {
+    const res = computeSweep(sn, nodeMap, edges);
+    if (!res.placed || !res.path) continue;
+    const svis = getVis('sweep', String(sn.properties.material ?? ''), matConfig, sn);
+    const placed = res.placed;
+    let drewCut = false;
+
+    if (res.path.kind === 'horizontal') {
+      const pts = res.path.points;
+      const segCount = res.path.closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < segCount; i++) {
+        const A = pts[i], B = pts[(i + 1) % pts.length];
+        const la = L(A), lb = L(B);
+        if ((la.y > 0 && lb.y > 0) || (la.y <= 0 && lb.y <= 0)) continue;
+        const dy = lb.y - la.y;
+        if (Math.abs(dy) < 1e-6) continue;
+        const t = (0 - la.y) / dy;
+        const cx = la.x + (lb.x - la.x) * t;
+        // Lateral axis (left of travel, BIM) projected on the viewer's right.
+        const bdx = B.x - A.x, bdy = B.y - A.y;
+        const len = Math.hypot(bdx, bdy) || 1;
+        const sxDir = (-bdy * frame.tx + bdx * frame.ty) / len;
+        shapes.push({
+          pts: placed.map((p) => ({ u: cx + sxDir * p.x, v: A.z + p.y })),
+          closed: true,
+          hatch: svis.hatch,
+          fillColor: svis.section_fill_color ?? svis.color_2d,
+          strokeColor: svis.section_line_color ?? svis.color_2d,
+          lineWeight: 'medium-cut',
+          depthMm: 0,
+          nodeId: sn.id, nodeType: 'sweep',
+        });
+        drewCut = true;
+      }
+    }
+
+    if (!drewCut) {
+      for (const fp of res.footprint) {
+        if (!nearPlane(fp.map(L))) continue;
+        emitPrism(shapes, frame, fp, res.zMinMm, res.zMaxMm,
+          { vis: svis, nodeId: sn.id, nodeType: 'sweep', cutWeight: 'medium-cut' });
+      }
+    }
   }
 
   // ── Foundations ────────────────────────────────────────────────────────
   for (const n of nodes.filter((nd) => nd.type === 'foundation')) {
-    const bimY = n.y;
-    if (bimY < cutMin - 1000 || bimY > cutMax + 1000) continue;
-
     const fW = Number(n.properties.width ?? 1000);
     const fH = Number(n.properties.depth ?? n.properties.height ?? 500);
     const { bot } = getStoreyBand(n, nodeMap);
-    const fBotMm = bot - fH;
-    const fTopMm = bot;
     const fHalfW = fW / 2;
     const footprint = [
-      { x: n.x - fHalfW, y: bimY - fHalfW },
-      { x: n.x + fHalfW, y: bimY - fHalfW },
-      { x: n.x + fHalfW, y: bimY + fHalfW },
-      { x: n.x - fHalfW, y: bimY + fHalfW },
+      { x: n.x - fHalfW, y: n.y - fHalfW },
+      { x: n.x + fHalfW, y: n.y - fHalfW },
+      { x: n.x + fHalfW, y: n.y + fHalfW },
+      { x: n.x - fHalfW, y: n.y + fHalfW },
     ];
-    const proj = projectFootprintOnSection(footprint, cutY);
-    const isCut = footprintStraddlesCut(footprint, cutY);
-    if (!proj && !isCut) continue;
-
-    const uMin = proj ? proj.uMin : (n.x - fHalfW);
-    const uMax = proj ? proj.uMax : (n.x + fHalfW);
+    if (!nearPlane(footprint.map(L))) continue;
     const fvis = getVis('foundation', String(n.properties.material ?? ''), matConfig, n);
-
-    shapes.push({
-      pts: [
-        { u: uMin, v: fBotMm },
-        { u: uMax, v: fBotMm },
-        { u: uMax, v: fTopMm },
-        { u: uMin, v: fTopMm },
-      ],
-      closed: true,
-      hatch: fvis.hatch,
-      fillColor: fvis.section_fill_color ?? fvis.color_2d,
-      strokeColor: fvis.section_line_color ?? fvis.color_2d,
-      lineWeight: isCut ? 'heavy-cut' : 'medium-cut',
-      depthMm: Math.abs(bimY - cutY),
-      nodeId: n.id, nodeType: 'foundation',
-    });
+    // Below ground a projected foundation is not visible; draw it hidden.
+    emitPrism(shapes, frame, footprint, bot - fH, bot,
+      { vis: fvis, nodeId: n.id, nodeType: 'foundation', projWeight: 'hidden' });
   }
 
+  // ── Roofs ──────────────────────────────────────────────────────────────
+  // Each face is a planar 3D polygon: its crossing with the plane is the cut
+  // (a band of the covering thickness on a slope, a line on a gable end);
+  // the part in front of the plane is its projected outline.
+  for (const rn of nodes.filter((nd) => nd.type === 'roof')) {
+    const { faces } = computeRoofFaces(rn, nodes, edges);
+    if (!faces.length) continue;
+    const thickMm = Math.max(10, Number(rn.properties.covering_thickness_mm ?? 40));
+    const rvis = getVis('roof', String(rn.properties.material ?? ''), matConfig, rn);
+    for (const face of faces) {
+      const poly: UDZ[] = face.vertices.map((v) => ({ ...L(v), z: v.z }));
+      if (!nearPlane(poly)) continue;
+      const segs = cutSegments3(poly);
+      for (const [p, q] of segs) {
+        if (face.role === 'slope') {
+          shapes.push({
+            pts: [
+              { u: p.x, v: p.z }, { u: q.x, v: q.z },
+              { u: q.x, v: q.z - thickMm }, { u: p.x, v: p.z - thickMm },
+            ],
+            closed: true,
+            hatch: rvis.hatch,
+            fillColor: rvis.section_fill_color ?? rvis.color_2d,
+            strokeColor: rvis.section_line_color ?? rvis.color_2d,
+            lineWeight: 'medium-cut',
+            depthMm: 0,
+            nodeId: rn.id, nodeType: 'roof',
+          });
+        } else {
+          shapes.push({
+            pts: [{ u: p.x, v: p.z }, { u: q.x, v: q.z }],
+            closed: false, hatch: 'none', fillColor: 'none',
+            strokeColor: rvis.section_line_color ?? rvis.color_2d,
+            lineWeight: 'heavy-cut', depthMm: 0,
+            nodeId: rn.id, nodeType: 'roof',
+          });
+        }
+      }
+      const front = clipPolygonY(poly, 0, true, lerp3);
+      if (front.length < 3) continue;
+      const dMin = -Math.max(...front.map((p) => p.y));
+      if (dMin > frame.depth + 1) continue;
+      shapes.push({
+        pts: front.map((p) => ({ u: p.x, v: p.z })),
+        closed: true, hatch: 'none', fillColor: 'none',
+        strokeColor: rvis.view_line_color ?? rvis.color_2d,
+        lineWeight: 'projected',
+        depthMm: Math.max(0, dMin),
+        nodeId: rn.id, nodeType: 'roof',
+      });
+    }
+  }
+
+  // ── Stairs ─────────────────────────────────────────────────────────────
+  // A flight is `flightProfile` extruded across its width. Cut along the run
+  // it shows the sawtooth — the drawing every stair section is; cut across
+  // it shows the block at the crossing; in front, the projected profile.
+  for (const fn of nodes.filter((nd) => nd.type === 'stair_flight')) {
+    const p = fn.properties;
+    const a = { x: Number(p.ax), y: Number(p.ay), z: Number(p.az) };
+    const b = { x: Number(p.bx), y: Number(p.by), z: Number(p.bz) };
+    if (![a.x, a.y, a.z, b.x, b.y, b.z].every(Number.isFinite)) continue;
+    const widthMm = Number(p.width_mm ?? 1000);
+    const riserMm = Number(p.riser_mm ?? 170);
+    const treadMm = Number(p.tread_mm ?? 280);
+    const thickMm = Number(p.thickness_mm ?? 150);
+    const steps = Math.max(1, Math.round(Number(p.steps ?? 1)));
+    const runMm = Math.hypot(b.x - a.x, b.y - a.y);
+    if (runMm < 1) continue;
+    const dir = { x: (b.x - a.x) / runMm, y: (b.y - a.y) / runMm };
+    const footprint = lineFootprint(a.x, a.y, b.x, b.y, widthMm);
+    const fp = footprint.map(L);
+    if (!nearPlane(fp)) continue;
+    const svis = getVis('stair_flight', String(p.material ?? ''), matConfig, fn);
+    const profile = flightProfile(steps, riserMm, treadMm, thickMm, {
+      footDropMm: Number(p.foot_drop_mm ?? 0),
+      headDropMm: Number(p.head_drop_mm ?? thickMm),
+      ...(p.tail_mm != null ? { tailMm: Number(p.tail_mm) } : {}),
+    });
+    const along = dir.x * frame.tx + dir.y * frame.ty; // run projected on u
+    const la = L(a);
+    const isCut = straddles(fp);
+
+    if (profile && isCut && Math.abs(along) > 0.7) {
+      shapes.push({
+        pts: profile.map((q) => ({ u: la.x + q.x * along, v: a.z + q.y })),
+        closed: true,
+        hatch: svis.hatch,
+        fillColor: svis.section_fill_color ?? svis.color_2d,
+        strokeColor: svis.section_line_color ?? svis.color_2d,
+        lineWeight: 'medium-cut',
+        depthMm: 0,
+        nodeId: fn.id, nodeType: 'stair_flight',
+      });
+      continue;
+    }
+    if (isCut) {
+      // Crossing the run: where does the walking line meet the plane?
+      const lb = L(b);
+      const t = Math.abs(lb.y - la.y) > 1e-6 ? Math.min(1, Math.max(0, (0 - la.y) / (lb.y - la.y))) : 0.5;
+      const zAt = a.z + t * (b.z - a.z);
+      for (const [u0, u1] of cutIntervals(fp)) {
+        shapes.push({
+          pts: rect(u0, u1, zAt - thickMm, zAt + riserMm), closed: true,
+          hatch: svis.hatch,
+          fillColor: svis.section_fill_color ?? svis.color_2d,
+          strokeColor: svis.section_line_color ?? svis.color_2d,
+          lineWeight: 'medium-cut', depthMm: 0,
+          nodeId: fn.id, nodeType: 'stair_flight',
+        });
+      }
+      continue;
+    }
+    const front = clipPolygonY(fp, 0, true);
+    if (front.length < 3) continue;
+    const dMin = -Math.max(...front.map((q) => q.y));
+    if (dMin > frame.depth + 1) continue;
+    if (profile && Math.abs(along) > 0.05) {
+      shapes.push({
+        pts: profile.map((q) => ({ u: la.x + q.x * along, v: a.z + q.y })),
+        closed: true, hatch: 'none', fillColor: 'none',
+        strokeColor: svis.view_line_color ?? svis.color_2d,
+        lineWeight: 'projected', depthMm: Math.max(0, dMin),
+        nodeId: fn.id, nodeType: 'stair_flight',
+      });
+    } else {
+      const us = front.map((q) => q.x);
+      shapes.push({
+        pts: rect(Math.min(...us), Math.max(...us), Math.min(a.z, b.z) - thickMm, Math.max(a.z, b.z) + riserMm),
+        closed: true, hatch: 'none', fillColor: 'none',
+        strokeColor: svis.view_line_color ?? svis.color_2d,
+        lineWeight: 'projected', depthMm: Math.max(0, dMin),
+        nodeId: fn.id, nodeType: 'stair_flight',
+      });
+    }
+  }
+
+  // Landings and winders: flat prisms hung under their walking level.
+  for (const n of nodes.filter((nd) => nd.type === 'stair_landing' || nd.type === 'stair_winder')) {
+    let poly: { x: number; y: number }[] = [];
+    try { poly = JSON.parse(String(n.properties.polygon ?? '[]')); } catch { /* no polygon, no shape */ }
+    if (!Array.isArray(poly) || poly.length < 3) continue;
+    const levelMm = Number(n.properties.level_mm ?? n.z);
+    const hMm = n.type === 'stair_landing'
+      ? Number(n.properties.thickness_mm ?? 150)
+      : Number(n.properties.riser_mm ?? 170);
+    if (!nearPlane(poly.map(L))) continue;
+    const vis = getVis(n.type, String(n.properties.material ?? ''), matConfig, n);
+    emitPrism(shapes, frame, poly, levelMm - hMm, levelMm,
+      { vis, nodeId: n.id, nodeType: n.type, cutWeight: 'medium-cut' });
+  }
+
+  // ── Horizontal and vertical range ──────────────────────────────────────
+  // ArchiCAD clips the section to the marker's length and to its vertical
+  // range; so do we, splitting polylines where they leave the box.
+  const uLo = frame.clip ? 0 : -Infinity;
+  const uHi = frame.clip ? frame.lengthMm : Infinity;
+  const clipped: DrawingShape[] = [];
+  for (const sh of shapes) {
+    if (sh.closed) {
+      const pts = clipShapeBox(sh.pts, uLo, uHi, elevMin, elevMax);
+      if (pts.length >= 3) clipped.push({ ...sh, pts });
+    } else {
+      for (const run of clipPolylineBox(sh.pts, uLo, uHi, elevMin, elevMax)) {
+        clipped.push({ ...sh, pts: run });
+      }
+    }
+  }
+  const visibleAxes = frame.clip
+    ? axes.filter((a) => a.u >= uLo - 1 && a.u <= uHi + 1)
+    : axes;
+
   // ── Sort: painter's algorithm (far elements first = back to front) ─────────
-  shapes.sort((a, b) => b.depthMm - a.depthMm);
+  clipped.sort((a, b) => b.depthMm - a.depthMm);
 
   // ── Compute bounds ─────────────────────────────────────────────────────────
   let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
-  for (const sh of shapes) {
+  for (const sh of clipped) {
     for (const p of sh.pts) {
       if (p.u < uMin) uMin = p.u; if (p.u > uMax) uMax = p.u;
       if (p.v < vMin) vMin = p.v; if (p.v > vMax) vMax = p.v;
     }
   }
-  axes.forEach((a) => { if (a.u < uMin) uMin = a.u; if (a.u > uMax) uMax = a.u; });
+  visibleAxes.forEach((a) => { if (a.u < uMin) uMin = a.u; if (a.u > uMax) uMax = a.u; });
+  if (frame.clip) { uMin = Math.min(uMin, 0); uMax = Math.max(uMax, frame.lengthMm); }
   if (!isFinite(uMin)) { uMin = 0; uMax = 20000; }
   if (!isFinite(vMin)) { vMin = elevMin; vMax = elevMax; }
 
-  return { shapes, axes, levels, uMin, uMax, vMin, vMax };
+  return { shapes: clipped, axes: visibleAxes, levels, uMin, uMax, vMin, vMax };
 }
 
 // ─── Elevation view computation ───────────────────────────────────────────────
