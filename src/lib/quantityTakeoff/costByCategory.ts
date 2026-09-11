@@ -4,6 +4,7 @@
  */
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { aggregateCalcGroups } from './calcAggregate';
+import type { TakeoffOptions } from './takeoffContext';
 
 export interface CategoryCost {
   categorie: string;
@@ -20,9 +21,10 @@ export function costByCategory(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
   prices: Record<string, number>,
+  opts?: TakeoffOptions,
 ): CategoryCost[] {
   const byCat = new Map<string, number>();
-  for (const cap of aggregateCalcGroups(nodes, edges))
+  for (const cap of aggregateCalcGroups(nodes, edges, opts))
     for (const s of cap.storeys)
       for (const ag of s.articles) {
         const cost = ag.total * (prices[ag.normId] ?? 0);

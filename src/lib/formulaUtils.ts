@@ -15,6 +15,7 @@
  */
 
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
+import { WALL_TYPE_MAP } from '@/lib/elementLibrary';
 
 // ─── Formula context ──────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ export function resolveFormulaContext(
       const os    = osRaw != null ? Number(osRaw) : 0;
       const oe    = oeRaw != null ? Number(oeRaw) : 0;
       DEFAULT.wall_length    = Math.max(0, wallLen - os - oe);
-      DEFAULT.wall_thickness = parseWallThicknessMm(String(wallNode.properties.wall_type ?? 'W20'));
+      DEFAULT.wall_thickness = wallThicknessMmOf(wallNode);
     }
     DEFAULT.wall_height = Number(wallNode.properties.height ?? (storeyTop - storeyBot));
 
@@ -249,10 +250,32 @@ function parseAxesList(raw: unknown): number[] {
   return [];
 }
 
+/**
+ * Wall thickness in mm from the type id. The element library is the source of
+ * truth — `TF25` and `CLT140` carry no W-digit code, and reading them with the
+ * regex alone priced every timber and CLT wall as 200 mm. Same rule as
+ * `bimGeometry.parseWallThickness`, so the takeoff and the 3D agree.
+ */
 function parseWallThicknessMm(t: string): number {
   if (/separator/i.test(t)) return 10;
+  const lib = WALL_TYPE_MAP.get(t);
+  if (lib) return lib.thickness_mm;
   const m = t.match(/[Ww](\d+)/);
   return m ? +m[1] * 10 : 200;
+}
+
+/**
+ * Grosimea unui perete-NOD, în mm, pentru deviz.
+ *
+ * Trece prin `wall_custom_mm` la fel ca geometria (`getNodeWallThickness`), ca
+ * un perete de 60 cm să se deconteze cu volumul pe care îl și are pe ecran.
+ */
+function wallThicknessMmOf(n: BubbleGraphNode): number {
+  const type = String(n.properties?.wall_type ?? 'W20');
+  if (/separator/i.test(type)) return 10;
+  const customMm = Number(n.properties?.wall_custom_mm ?? 0);
+  if (customMm > 0) return customMm;
+  return parseWallThicknessMm(type);
 }
 
 function calcRoomPolyForContext(

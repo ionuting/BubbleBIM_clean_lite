@@ -13,31 +13,23 @@ import {
   type NormMappingOutput,
 } from '@/lib/norms';
 import {
-  measureNode,
+  measureNodeMemo,
   getElementTypeId,
   getElementMaterial,
   getStoreyInfo,
 } from './geometryMeasures';
 import { traceForOutput, type CalcTrace } from './calcTrace';
+import { resolveStructuralSystem } from '@/lib/systems/structuralSystem';
+import { resolveSpecs, suppressedArticles } from '@/lib/norms/specs';
+import { resolveTakeoffSpecs, resolveTakeoffSystem, type TakeoffOptions } from './takeoffContext';
+import { zonePassesFor, scalesWithHeight } from './zonePasses';
 
 const ROUND = (n: number) => Math.round(n * 100) / 100;
 
 function evalFormula(formula: string, m: NodeMeasures): number {
-  const env: Record<string, number> = {
-    length_m: m.length_m,
-    height_m: m.height_m,
-    thickness_m: m.thickness_m,
-    width_m: m.width_m,
-    depth_m: m.depth_m,
-    gross_area_m2: m.gross_area_m2,
-    net_area_m2: m.net_area_m2,
-    area_m2: m.area_m2,
-    perimeter_m: m.perimeter_m,
-    section_m2: m.section_m2,
-    volume_m3: m.volume_m3,
-    count: m.count,
-    opening_area_m2: m.opening_area_m2,
-  };
+  // Every NodeMeasures key is a number and a formula variable — adding a
+  // measure in norms/types.ts is enough for the library to reference it.
+  const env: Record<string, number> = { ...m };
   try {
     const keys = Object.keys(env);
     const vals = Object.values(env);
@@ -80,51 +72,116 @@ function applyOutput(
   }
 }
 
+
+/**
+ * Whether an output belongs in THIS band of a zoned element.
+ *
+ * An output that is linear in height (plaster = `perimeter_m * height_m`, a
+ * wall's volume, the envelope's façade area) is emitted in every band and the
+ * bands add back up to the whole. Anything else — a room's floor area, a
+ * `count`, a formula with a hardcoded height — is emitted once, in the first
+ * band, because emitting it per band would multiply it by the number of bands.
+ *
+ * The test is a measurement, not an annotation: the element is measured once at
+ * half its height and the output is checked for `2·q(H/2) == q(H)`. Nothing in
+ * the norm library has to declare anything.
+ */
+function emitInPass(
+  output: NormMappingOutput,
+  full: NodeMeasures,
+  probe: NodeMeasures | null,
+  passIndex: number,
+): boolean {
+  if (!probe) return true;              // not zoned — the single pass takes all
+  if (passIndex === 0) return true;     // the first band carries the non-scaling work
+  return scalesWithHeight(
+    applyOutput(output, probe).quantity,
+    applyOutput(output, full).quantity,
+  );
+}
+
+/**
+ * A wall with `has_beam` carries a ring beam (centură / frame beam) the 3D
+ * viewer draws from the wall's own anchors. The deviz used to miss it: only
+ * `beam` NODES were measured. This hands the takeoff a synthetic beam per
+ * such wall — same id (so F3 rows point at the wall), type `beam`, the
+ * section the geometry reads (`beam_section`, else `beam_type`, else the
+ * 20×30 default) — measured by `measureBeam` through the wall's anchors.
+ */
+export function ringBeamsOf(nodes: BubbleGraphNode[]): BubbleGraphNode[] {
+  const out: BubbleGraphNode[] = [];
+  for (const n of nodes) {
+    if (n.type !== 'wall') continue;
+    if (String(n.properties?.has_beam ?? '').toLowerCase() !== 'true') continue;
+    const section = String(n.properties.beam_section ?? n.properties.beam_type ?? 'B20x30');
+    out.push({ ...n, type: 'beam', name: `${n.name ?? n.id} (centură)`, properties: { ...n.properties, beam_section: section } });
+  }
+  return out;
+}
+
 /**
  * Compute raw takeoff lines (one per node × norm output).
  */
 export function computeTakeoff(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
+  opts?: TakeoffOptions,
 ): TakeoffLine[] {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const wallJoins = calcWallJoins(nodes, edges);
+  const projectSystem = resolveTakeoffSystem(opts);
+  const projectSpecs = resolveTakeoffSpecs(opts);
   const lines: TakeoffLine[] = [];
 
-  for (const node of nodes) {
-    const measures = measureNode(node, edges, nodeMap, wallJoins);
+  for (const node of [...nodes, ...ringBeamsOf(nodes)]) {
+    const measures = measureNodeMemo(opts?.memo, node, edges, nodeMap, wallJoins);
     if (!measures) continue;
 
-    const elementTypeId = getElementTypeId(node);
-    const material = getElementMaterial(node);
-    const rules = findMappingRules(node.type, elementTypeId, material);
-    if (rules.length === 0) continue;
-
     const { storeyId, storeyName } = getStoreyInfo(node, nodeMap);
-    const seenNorms = new Set<string>();
+    const { passes, probe } = zonePassesFor(node, measures, edges, nodeMap, wallJoins);
 
-    for (const rule of rules) {
-      for (const output of rule.outputs) {
-        if (seenNorms.has(output.normId)) continue;
-        const article = getActiveCatalog().map.get(output.normId);
-        if (!article) continue;
+    for (let i = 0; i < passes.length; i++) {
+      const pass = passes[i];
+      const elementTypeId = getElementTypeId(pass.node);
+      const material = getElementMaterial(pass.node);
+      const system = resolveStructuralSystem(pass.node, projectSystem);
+      const specs = resolveSpecs(pass.node, projectSpecs);
+      const rules = findMappingRules(pass.node.type, elementTypeId, material, system, specs);
+      if (rules.length === 0) continue;
+      // Articles the DEFAULT decomposition produced, dropped because another
+      // option was chosen. Only spec-less rules are affected: a rule that
+      // carries a specification is here precisely because that option is in
+      // force, so an option re-declaring one of the default's articles (premium
+      // paint keeps the same exterior coat) must not delete its own work.
+      const dropped = suppressedArticles(specs);
 
-        const { quantity, source } = applyOutput(output, measures);
-        if (quantity <= 0) continue;
+      const seenNorms = new Set<string>();
 
-        seenNorms.add(output.normId);
-        lines.push({
-          normId: output.normId,
-          nodeId: node.id,
-          nodeName: node.name ?? node.id,
-          nodeType: node.type,
-          elementTypeId,
-          storeyId,
-          storeyName,
-          quantity: ROUND(quantity),
-          unit: article.unit,
-          source,
-        });
+      for (const rule of rules) {
+        for (const output of rule.outputs) {
+          if (seenNorms.has(output.normId)) continue;
+          if (!rule.spec && dropped.has(output.normId)) continue;
+          if (!emitInPass(output, measures, probe, i)) continue;
+          const article = getActiveCatalog().map.get(output.normId);
+          if (!article) continue;
+
+          const { quantity, source } = applyOutput(output, pass.measures);
+          if (quantity <= 0) continue;
+
+          seenNorms.add(output.normId);
+          lines.push({
+            normId: output.normId,
+            nodeId: node.id,
+            nodeName: node.name ?? node.id,
+            nodeType: node.type,
+            elementTypeId,
+            storeyId,
+            storeyName,
+            quantity: ROUND(quantity),
+            unit: article.unit,
+            source: pass.zone ? `${source} · ${pass.zone.label}` : source,
+          });
+        }
       }
     }
   }
@@ -185,8 +242,9 @@ export interface TakeoffResult {
 export function computeFullTakeoff(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
+  opts?: TakeoffOptions,
 ): TakeoffResult {
-  const lines = computeTakeoff(nodes, edges);
+  const lines = computeTakeoff(nodes, edges, opts);
   return { lines, f3: aggregateF3(lines) };
 }
 
@@ -203,46 +261,66 @@ export interface TracedTakeoffLine extends TakeoffLine {
 export function computeTakeoffTraced(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
+  opts?: TakeoffOptions,
 ): TracedTakeoffLine[] {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const wallJoins = calcWallJoins(nodes, edges);
+  const projectSystem = resolveTakeoffSystem(opts);
+  const projectSpecs = resolveTakeoffSpecs(opts);
   const lines: TracedTakeoffLine[] = [];
 
-  for (const node of nodes) {
-    const measures = measureNode(node, edges, nodeMap, wallJoins);
+  for (const node of [...nodes, ...ringBeamsOf(nodes)]) {
+    const measures = measureNodeMemo(opts?.memo, node, edges, nodeMap, wallJoins);
     if (!measures) continue;
 
-    const elementTypeId = getElementTypeId(node);
-    const material = getElementMaterial(node);
-    const rules = findMappingRules(node.type, elementTypeId, material);
-    if (rules.length === 0) continue;
-
     const { storeyId, storeyName } = getStoreyInfo(node, nodeMap);
-    const seenNorms = new Set<string>();
+    const { passes, probe } = zonePassesFor(node, measures, edges, nodeMap, wallJoins);
 
-    for (const rule of rules) {
-      for (const output of rule.outputs) {
-        if (seenNorms.has(output.normId)) continue;
-        const article = getActiveCatalog().map.get(output.normId);
-        if (!article) continue;
+    for (let i = 0; i < passes.length; i++) {
+      const pass = passes[i];
+      const elementTypeId = getElementTypeId(pass.node);
+      const material = getElementMaterial(pass.node);
+      const system = resolveStructuralSystem(pass.node, projectSystem);
+      const specs = resolveSpecs(pass.node, projectSpecs);
+      const rules = findMappingRules(pass.node.type, elementTypeId, material, system, specs);
+      if (rules.length === 0) continue;
+      // Articles the DEFAULT decomposition produced, dropped because another
+      // option was chosen. Only spec-less rules are affected: a rule that
+      // carries a specification is here precisely because that option is in
+      // force, so an option re-declaring one of the default's articles (premium
+      // paint keeps the same exterior coat) must not delete its own work.
+      const dropped = suppressedArticles(specs);
 
-        const { quantity, source, trace } = traceForOutput(output, measures, article.unit);
-        if (quantity <= 0) continue;
+      const seenNorms = new Set<string>();
 
-        seenNorms.add(output.normId);
-        lines.push({
-          normId: output.normId,
-          nodeId: node.id,
-          nodeName: node.name ?? node.id,
-          nodeType: node.type,
-          elementTypeId,
-          storeyId,
-          storeyName,
-          quantity: ROUND(quantity),
-          unit: article.unit,
-          source,
-          trace,
-        });
+      for (const rule of rules) {
+        for (const output of rule.outputs) {
+          if (seenNorms.has(output.normId)) continue;
+          if (!rule.spec && dropped.has(output.normId)) continue;
+          if (!emitInPass(output, measures, probe, i)) continue;
+          const article = getActiveCatalog().map.get(output.normId);
+          if (!article) continue;
+
+          const { quantity, source, trace } = traceForOutput(output, pass.measures, article.unit);
+          if (quantity <= 0) continue;
+
+          seenNorms.add(output.normId);
+          lines.push({
+            normId: output.normId,
+            nodeId: node.id,
+            nodeName: node.name ?? node.id,
+            nodeType: node.type,
+            elementTypeId,
+            storeyId,
+            storeyName,
+            quantity: ROUND(quantity),
+            unit: article.unit,
+            source: pass.zone ? `${source} · ${pass.zone.label}` : source,
+            trace: pass.zone
+              ? { ...trace, sourceLabel: `${trace.sourceLabel} · banda ${pass.zone.label}` }
+              : trace,
+          });
+        }
       }
     }
   }

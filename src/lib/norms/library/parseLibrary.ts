@@ -14,9 +14,12 @@ import {
   type LibraryCategory,
   type LibraryMapping,
   type LibraryCatalogMeta,
+  type LibrarySpecGroup,
+  type LibrarySpecOption,
   type PriceComponents,
   VALID_UNITS,
   VALID_MEASURES,
+  VALID_SYSTEMS,
 } from './types';
 
 export interface ParseIssue {
@@ -167,7 +170,15 @@ export function parseCategoryMdCollecting(
       if (parts.some((p) => p !== null) && price === undefined) {
         issues.push({ file, line: row.line, message: `preț incomplet pentru ${normId} — completează material/manoperă/utilaj/transport sau lasă-le goale` });
       }
-      articles.push({ normId, symbol: symbol || normId, denumire, unit: unitRaw as NormUnit, price });
+      const srcRaw = cell(artTable.header, row.cells, 'sursă');
+      const dateRaw = cell(artTable.header, row.cells, 'data');
+      if (dateRaw && !/^\d{4}-\d{2}(-\d{2})?$/.test(dateRaw)) {
+        issues.push({ file, line: row.line, message: `data invalidă "${dateRaw}" pentru ${normId} — se scrie AAAA-LL sau AAAA-LL-ZZ` });
+      }
+      articles.push({
+        normId, symbol: symbol || normId, denumire, unit: unitRaw as NormUnit, price,
+        ...(srcRaw || dateRaw ? { priceSource: { source: srcRaw, date: dateRaw } } : {}),
+      });
     }
   }
 
@@ -179,6 +190,8 @@ export function parseCategoryMdCollecting(
       const nodeType = cell(mapTable.header, row.cells, 'nodeType');
       const elementType = cell(mapTable.header, row.cells, 'elementType') || '*';
       const materialKeyRaw = cell(mapTable.header, row.cells, 'materialKey');
+      const systemRaw = cell(mapTable.header, row.cells, 'sistem').toLowerCase();
+      const specRaw = cell(mapTable.header, row.cells, 'spec');
       const measureRaw = cell(mapTable.header, row.cells, 'măsură');
       const formula = cell(mapTable.header, row.cells, 'formulă');
       const netRaw = cell(mapTable.header, row.cells, 'netOfOpenings').toLowerCase();
@@ -193,11 +206,21 @@ export function parseCategoryMdCollecting(
         issues.push({ file, line: row.line, message: `măsura este \`formula\` dar coloana \`formulă\` e goală (${normId})` });
         continue;
       }
+      if (systemRaw && !VALID_SYSTEMS.includes(systemRaw)) {
+        issues.push({ file, line: row.line, message: `sistem invalid "${systemRaw}" (permise: ${VALID_SYSTEMS.join(', ')})` });
+        continue;
+      }
+      if (specRaw && !/^[a-z0-9_]+:[a-z0-9_]+$/.test(specRaw)) {
+        issues.push({ file, line: row.line, message: `spec invalid "${specRaw}" — se scrie \`grup:opțiune\` cu litere mici, cifre și _` });
+        continue;
+      }
       mappings.push({
         normId,
         nodeType,
         elementType,
         materialKey: materialKeyRaw || undefined,
+        system: systemRaw || undefined,
+        spec: specRaw || undefined,
         measure: measureRaw as MeasureKey,
         formula: formula || undefined,
         netOfOpenings: netRaw === 'da' || netRaw === 'true' || netRaw === 'x' ? true : undefined,
@@ -206,6 +229,119 @@ export function parseCategoryMdCollecting(
   }
 
   return { categorie, capitol, articles, mappings, sourceFile: file };
+}
+
+/**
+ * Parsează `_specificatii.md`: grupurile de specificații și opțiunile lor.
+ *
+ * Două tabele. `## Grupuri` declară decizia (eticheta, pe ce noduri se poate
+ * suprascrie, opțiunea implicită și articolele pe care le produce implicitul);
+ * `## Opțiuni` declară alternativele. Ce produce fiecare alternativă vine din
+ * coloana `spec` a mapărilor, nu de aici — grupul e doar vocabularul.
+ */
+export function parseSpecsMd(text: string, file = '_specificatii.md'): LibrarySpecGroup[] {
+  const issues: ParseIssue[] = [];
+  const groups = parseSpecsMdCollecting(text, file, issues);
+  if (issues.length > 0) throw new LibraryParseError(issues);
+  return groups;
+}
+
+/** Ca `parseSpecsMd`, dar acumulează problemele în loc să arunce. */
+export function parseSpecsMdCollecting(
+  text: string,
+  file: string,
+  issues: ParseIssue[],
+): LibrarySpecGroup[] {
+  const lines = text.split(/\r?\n/);
+  const fm = parseFrontmatter(lines, file, issues);
+  const list: (LibrarySpecGroup & { options: LibrarySpecOption[] })[] = [];
+  const byId = new Map<string, LibrarySpecGroup>();
+
+  const grpTable = findTable(fm.body, fm.bodyStartLine, 'Grupuri');
+  if (!grpTable) {
+    issues.push({ file, line: 1, message: 'lipsește secțiunea `## Grupuri`' });
+    return [];
+  }
+  for (const row of grpTable.rows) {
+    const id = cell(grpTable.header, row.cells, 'grup');
+    const label = cell(grpTable.header, row.cells, 'etichetă');
+    const applies = cell(grpTable.header, row.cells, 'aplicabil');
+    const def = cell(grpTable.header, row.cells, 'implicit');
+    const arts = cell(grpTable.header, row.cells, 'articole implicite');
+    const description = cell(grpTable.header, row.cells, 'descriere');
+    if (!id) { issues.push({ file, line: row.line, message: 'grup fără `grup`' }); continue; }
+    if (!/^[a-z0-9_]+$/.test(id)) {
+      issues.push({ file, line: row.line, message: `id de grup invalid "${id}" — litere mici, cifre și _` });
+      continue;
+    }
+    if (byId.has(id)) { issues.push({ file, line: row.line, message: `grup duplicat "${id}"` }); continue; }
+    if (!def) { issues.push({ file, line: row.line, message: `grupul "${id}" nu declară opțiunea \`implicit\`` }); continue; }
+    const g: LibrarySpecGroup & { options: LibrarySpecOption[] } = {
+      id,
+      label: label || id,
+      appliesTo: applies.split(',').map((t) => t.trim()).filter(Boolean),
+      defaultOption: def,
+      defaultArticles: arts.split(',').map((t) => t.trim()).filter(Boolean),
+      ...(description ? { description } : {}),
+      options: [],
+    };
+    if (g.appliesTo.length === 0) {
+      issues.push({ file, line: row.line, message: `grupul "${id}" nu declară \`aplicabil\` (tipurile de nod)` });
+      continue;
+    }
+    list.push(g);
+    byId.set(id, g);
+  }
+
+  const optTable = findTable(fm.body, fm.bodyStartLine, 'Opțiuni');
+  if (!optTable) {
+    issues.push({ file, line: 1, message: 'lipsește secțiunea `## Opțiuni`' });
+    return list;
+  }
+  for (const row of optTable.rows) {
+    const group = cell(optTable.header, row.cells, 'grup');
+    const id = cell(optTable.header, row.cells, 'opțiune');
+    const label = cell(optTable.header, row.cells, 'etichetă');
+    const description = cell(optTable.header, row.cells, 'descriere');
+    const material = cell(optTable.header, row.cells, 'material');
+    const lambdaRaw = cell(optTable.header, row.cells, 'lambda');
+    const grosimeRaw = cell(optTable.header, row.cells, 'grosime');
+    const lambda = lambdaRaw ? Number(lambdaRaw.replace(',', '.')) : NaN;
+    const grosime = grosimeRaw ? Number(grosimeRaw.replace(',', '.')) : NaN;
+    if (!group || !id) { issues.push({ file, line: row.line, message: 'opțiune fără `grup` sau `opțiune`' }); continue; }
+    const g = byId.get(group);
+    if (!g) { issues.push({ file, line: row.line, message: `opțiunea "${id}" trimite la grupul inexistent "${group}"` }); continue; }
+    if (!/^[a-z0-9_]+$/.test(id)) {
+      issues.push({ file, line: row.line, message: `id de opțiune invalid "${id}" — litere mici, cifre și _` });
+      continue;
+    }
+    if (g.options.some((o) => o.id === id)) {
+      issues.push({ file, line: row.line, message: `opțiune duplicată "${group}:${id}"` });
+      continue;
+    }
+    if (lambdaRaw && !(lambda > 0)) {
+      issues.push({ file, line: row.line, message: `opțiunea "${group}:${id}": lambda invalid "${lambdaRaw}" — W/mK, pozitiv` });
+      continue;
+    }
+    if (grosimeRaw && !(grosime > 0)) {
+      issues.push({ file, line: row.line, message: `opțiunea "${group}:${id}": grosime invalidă "${grosimeRaw}" — mm, pozitiv` });
+      continue;
+    }
+    g.options.push({
+      group, id, label: label || id,
+      ...(description ? { description } : {}),
+      ...(material ? { material } : {}),
+      ...(lambda > 0 ? { lambda } : {}),
+      ...(grosime > 0 ? { grosime } : {}),
+    });
+  }
+
+  for (const g of list) {
+    if (!g.options.some((o) => o.id === g.defaultOption)) {
+      issues.push({ file, line: 1, message: `grupul "${g.id}": opțiunea implicită "${g.defaultOption}" nu e declarată în \`## Opțiuni\`` });
+    }
+  }
+  return list;
 }
 
 /** Parsează `_catalog.md` (metadatele catalogului). */

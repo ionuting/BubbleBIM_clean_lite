@@ -20,11 +20,13 @@ Storage:
                                             complexity for no matching value
                                             here.
 
-A commit never mutates or removes another commit. `restore()` APPENDS a new
-commit whose content matches the target instead of rewriting history — a
-misclicked restore can never destroy anything already in the log (closer to
-`git revert` than `git reset --hard`, deliberately — see README section this
-module's docstring links to in the History panel).
+No commit ever mutates another, and nothing is removed implicitly.
+`restore()` APPENDS a new commit whose content matches the target instead of
+rewriting history — a misclicked restore can never destroy anything already
+in the log (closer to `git revert` than `git reset --hard`, deliberately —
+see README section this module's docstring links to in the History panel).
+`delete_commit()` is the single exception: an explicit, user-initiated drop
+of one version, which repairs the parent chain around the hole it leaves.
 
 Only explicit `gc()` reclaims disk space (deletes blobs no live commit
 references any more), and `prune_auto_commits()` drops old low-value 'auto'
@@ -151,6 +153,60 @@ class VersionHistory:
                 return entry
         return None
 
+    def amend(
+        self,
+        commit_id: int,
+        data: dict,
+        message: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Repoint an EXISTING commit at `data` — `git commit --amend`.
+
+        Keeps what identifies the commit in the log: its `id`, its `parent`,
+        its `kind` and every comment already left on it. Replaces what it says
+        about the model: the content hash, the node/edge counts, and the
+        message when one is given. Stamps `amended_at` so the log never
+        pretends the snapshot is as old as the commit.
+
+        Why not just commit again: a checkpoint is a name for a moment in the
+        work ("foundations done"). When the work moves on, the user wants that
+        NAME to follow — not a second entry competing with it.
+
+        The old blob is unlinked if no other commit still references it;
+        content addressing means several commits can share one legitimately.
+
+        Returns the updated entry, or None if `commit_id` doesn't exist.
+        """
+        log = self._load_log()
+        idx = next((i for i, e in enumerate(log) if e["id"] == commit_id), None)
+        if idx is None:
+            return None
+
+        entry = log[idx]
+        old_hash = entry["hash"]
+        new_hash = self._write_blob(data)
+
+        entry["hash"] = new_hash
+        entry["node_count"] = len(data.get("nodes", []))
+        entry["edge_count"] = len(data.get("edges", []))
+        entry["amended_at"] = datetime.now(timezone.utc).isoformat()
+        if message is not None and message.strip():
+            entry["message"] = message.strip()
+        # How many commits sit after this one — the caller decides whether to
+        # warn: amending anything but the tip rewrites a point others followed.
+        entry_newer = len(log) - idx - 1
+        self._save_log(log)
+
+        freed_bytes = 0
+        if old_hash != new_hash and all(e["hash"] != old_hash for e in log):
+            blob = self._blob_path(old_hash)
+            if blob.exists():
+                freed_bytes = blob.stat().st_size
+                blob.unlink()
+                if not any(blob.parent.iterdir()):
+                    blob.parent.rmdir()
+
+        return {**entry, "freed_bytes": freed_bytes, "newer_commits": entry_newer}
+
     def get_content(self, commit_id: int) -> Optional[dict]:
         entry = self.get_commit(commit_id)
         return self._read_blob(entry["hash"]) if entry else None
@@ -168,6 +224,41 @@ class VersionHistory:
         return {"commit": new_entry, "content": content}
 
     # ── retention ─────────────────────────────────────────────────────────
+
+    def delete_commit(self, commit_id: int) -> Optional[dict]:
+        """Permanently remove ONE commit from the log. This is the only
+        destructive operation in this module — every other one appends — and
+        it exists because a user asked to drop versions they no longer want.
+
+        The chain is repaired: children of the deleted commit are re-parented
+        onto its parent, so the log stays a valid linear history with no
+        dangling `parent` ids. The blob is unlinked too, but ONLY if no other
+        commit still references it — content-addressing means several commits
+        can legitimately share one blob (e.g. a restore and its target).
+
+        Returns the removed entry (plus `freed_bytes`), or None if commit_id
+        doesn't exist. The live graph is never touched — deleting a version
+        removes a snapshot, not the model you're working on.
+        """
+        log = self._load_log()
+        idx = next((i for i, e in enumerate(log) if e["id"] == commit_id), None)
+        if idx is None:
+            return None
+        removed = log.pop(idx)
+        for entry in log:
+            if entry["parent"] == commit_id:
+                entry["parent"] = removed["parent"]
+        self._save_log(log)
+
+        freed_bytes = 0
+        if all(e["hash"] != removed["hash"] for e in log):
+            blob = self._blob_path(removed["hash"])
+            if blob.exists():
+                freed_bytes = blob.stat().st_size
+                blob.unlink()
+                if not any(blob.parent.iterdir()):
+                    blob.parent.rmdir()
+        return {**removed, "freed_bytes": freed_bytes}
 
     def prune_auto_commits(self, keep: int = 50) -> int:
         """Drop old 'auto' commit metadata beyond the most recent `keep`

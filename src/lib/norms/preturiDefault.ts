@@ -50,6 +50,14 @@ export const PRETURI_DEFAULT_RO: Record<string, ComponentePret> = {
 
   // ── Centuri ──
   '0003_CA01D_02': { material: 450, manopera: 110, utilaj: 55, transport: 45 },
+  // Scări — aceleași articole de beton armat ca la centuri, la aceleași prețuri.
+  '0017_CA01D_02': { material: 450, manopera: 110, utilaj: 55, transport: 45 },
+  '0017_CB01C_02': { material: 45, manopera: 55, utilaj: 4, transport: 6 },
+  '0017_CC01A4_02': { material: 5.2, manopera: 1.8, utilaj: 0.2, transport: 0.3 },
+  // Profile liniare (sweep) — aceleași articole de beton armat, aceleași prețuri.
+  '0018_CA01D_02': { material: 450, manopera: 110, utilaj: 55, transport: 45 },
+  '0018_CB01C_02': { material: 45, manopera: 55, utilaj: 4, transport: 6 },
+  '0018_CC01A4_02': { material: 5.2, manopera: 1.8, utilaj: 0.2, transport: 0.3 },
   '0003_CC01A4_02': { material: 5.2, manopera: 1.8, utilaj: 0.2, transport: 0.3 },
   '0003_CC01A1_02': { material: 5.4, manopera: 2.4, utilaj: 0.2, transport: 0.3 },
   '0003_CB01C_02': { material: 45, manopera: 55, utilaj: 4, transport: 6 },

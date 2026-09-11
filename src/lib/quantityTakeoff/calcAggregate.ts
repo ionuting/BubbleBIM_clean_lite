@@ -10,6 +10,7 @@ import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { getActiveCatalog, type NormArticle, type NormUnit } from '@/lib/norms';
 import { computeTakeoffTraced } from './takeoffEngine';
 import type { CalcTrace } from './calcTrace';
+import type { TakeoffOptions } from './takeoffContext';
 
 export interface CalcElement {
   nodeId: string;
@@ -47,9 +48,10 @@ const R = (n: number) => Math.round(n * 100) / 100;
 export function aggregateCalcGroups(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
+  opts?: TakeoffOptions,
 ): CapitolGroup[] {
   const catalog = getActiveCatalog();
-  const traced = computeTakeoffTraced(nodes, edges);
+  const traced = computeTakeoffTraced(nodes, edges, opts);
 
   // capitol -> storeyId -> normId -> ArticleGroup
   const byCapitol = new Map<string, Map<string, Map<string, ArticleGroup>>>();

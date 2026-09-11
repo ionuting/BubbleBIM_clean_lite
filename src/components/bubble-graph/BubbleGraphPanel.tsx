@@ -88,7 +88,9 @@ import type { WindowType, DoorType } from '@/lib/elementLibrary';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { safeEval, parseArrayProp, isArrayExpr, resolveFormulaContext, evalProp } from '@/lib/formulaUtils';
 import type { FormulaContext } from '@/lib/formulaUtils';
-import { calcRoomPolygon, calcRoomParametricGrid, type RoomParametricGrid, parseContourOffsets, insetPolygon } from '@/lib/bimGeometry';
+import { calcRoomPolygon, calcRoomParametricGrid, type RoomParametricGrid, parseContourOffsets, insetPolygon, parseWallThickness } from '@/lib/bimGeometry';
+import { distToSegment, pickBestHit, type HitCandidate } from '@/lib/graph/pickHit';
+import { ZoneSpecField } from '@/components/zones/ZoneSpecField';
 import {
   COVERING_PRESETS, DEFAULT_COVERING_HEIGHT_MM, DEFAULT_COVERING_THICKNESS_MM, DEFAULT_ROOM_HEIGHT_MM,
   getEditableCoveringLayers, getRoomHeightMm, scaleCoveringPreset, serializeCoveringLayers,
@@ -721,7 +723,7 @@ function PropertiesPanel({
   // Smart property keys that get dedicated UI
   const smartKeys = new Set([
     'has_column', 'column_type', 'has_beam', 'beam_type', 'beam_material',
-    'wall_type', 'is_circular', 'arc_radius', 'slab_type', 'material',
+    'wall_type', 'wall_custom_mm', 'is_circular', 'arc_radius', 'slab_type', 'material',
     'bottomElevation', 'topElevation', 'axesX', 'axesY', 'width', 'height', 'depth',
     'sill_height', 'wall_offset', 'discipline', 'offset', 'elevation',
     'offsetStart', 'offsetEnd', 'offsetVerticalStart', 'offsetVerticalEnd',
@@ -1279,6 +1281,35 @@ function PropertiesPanel({
                 <option key={g.id} value={g.id}>{g.label}</option>
               ))}
             </select>
+            {/* Grosime proprie — catalogul acoperă cazurile uzuale, dar un zid de
+                60 cm n-are de ce să ceară un tip nou în librărie. Gol = grosimea
+                tipului, ca până acum. */}
+            <span
+              className="text-muted-foreground"
+              title="Grosime proprie, în mm. Gol sau 0 = grosimea tipului ales."
+            >Grosime (mm)</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" step="10" min="0"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-24"
+                placeholder={String(Math.round(parseWallThickness(String(propVal('wall_type') ?? 'W20')) * 1000))}
+                value={Number(propVal('wall_custom_mm') ?? 0) > 0 ? String(propVal('wall_custom_mm')) : ''}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  onUpdateProp('wall_custom_mm', Number.isFinite(v) && v > 0 ? v : undefined);
+                }}
+              />
+              {Number(propVal('wall_custom_mm') ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  title="Înapoi la grosimea tipului"
+                  onClick={() => onUpdateProp('wall_custom_mm', undefined)}
+                >
+                  ↺ tip
+                </button>
+              )}
+            </div>
             <span className="text-muted-foreground">Circular Wall</span>
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
               <input type="checkbox"
@@ -1485,6 +1516,12 @@ function PropertiesPanel({
                         ))
                       : null}
                   </select>
+                  {/* Ce se decontează pe banda asta — BCA pe soclu, zidărie deasupra. */}
+                  <ZoneSpecField
+                    nodeType="wall"
+                    value={(layer as { spec?: unknown }).spec}
+                    onChange={(spec) => updateLayer({ spec } as Partial<WallLayer>)}
+                  />
                   <span className="text-muted-foreground">Color</span>
                   <div className="flex items-center gap-2">
                     <input
@@ -2150,6 +2187,12 @@ function PropertiesPanel({
                           ))
                         : null}
                     </select>
+                    {/* Ce se decontează pe banda asta — faianță jos, tencuială sus. */}
+                    <ZoneSpecField
+                      nodeType="room"
+                      value={(layer as { spec?: unknown }).spec}
+                      onChange={(spec) => updateLayer({ spec } as Partial<RoomCoveringLayer>)}
+                    />
                     <span className="text-muted-foreground">Color</span>
                     <div className="flex items-center gap-2">
                       <input
@@ -4507,16 +4550,28 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
     // storey nodes are not hit-testable for movement (they are locked in canvas)
     // First pass: non-room nodes (highest priority)
-    const nonRoom = displayNodes.find((n) => {
-      if (exclude?.has(n.id)) return false;
-      if (n.type === 'storey' || n.type === 'room') return false;
-      if (n.type === 'section' || n.type === 'view') return false; // handled above
+    // ── Non-room nodes ────────────────────────────────────────────────────
+    // Se strâng TOȚI candidații cu distanța lor, apoi decide `pickBestHit`:
+    // un punct (ax, stâlp) bate o linie (perete, grindă), iar în aceeași clasă
+    // câștigă cel mai apropiat. Înainte se folosea `.find`, deci câștiga primul
+    // din listă — și cum un perete e atins pe toată lungimea lui, fura clicul
+    // de pe punctul de ax pe care stă.
+    const candidates: Array<HitCandidate<BubbleGraphNode>> = [];
+    for (const n of displayNodes) {
+      if (exclude?.has(n.id)) continue;
+      if (n.type === 'storey' || n.type === 'room') continue;
+      if (n.type === 'section' || n.type === 'view') continue; // handled above
+
       if (n.type === 'ax') {
         const { hw, hd } = parseColHalfDims((n.properties.column_type as string) ?? 'C25x25');
         const hwp = Math.max(12, hw * MM_TO_PX * AX_D), hdp = Math.max(12, hd * MM_TO_PX * AX_D);
         const nx = n.x * MM_TO_PX, ny = n.y * MM_TO_PX;
-        return cx >= nx - hwp && cx <= nx + hwp && cy >= ny - hdp && cy <= ny + hdp;
+        if (cx >= nx - hwp && cx <= nx + hwp && cy >= ny - hdp && cy <= ny + hdp) {
+          candidates.push({ node: n, nodeType: n.type, dist: Math.hypot(nx - cx, ny - cy), radius: Infinity });
+        }
+        continue;
       }
+
       if (n.type === 'wall' || n.type === 'beam') {
         // Hit-test along the whole span (endpoint ax→ax), not just the midpoint,
         // so walls stay selectable even when a room polygon sits under them.
@@ -4525,18 +4580,23 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
           .map((e) => displayNodes.find((m) => m.id === (e.from === n.id ? e.to : e.from)))
           .filter((m): m is BubbleGraphNode => !!m && (m.type === 'ax' || m.type === 'column'));
         if (ends.length >= 2) {
-          const x1 = ends[0].x * MM_TO_PX, y1 = ends[0].y * MM_TO_PX;
-          const x2 = ends[1].x * MM_TO_PX, y2 = ends[1].y * MM_TO_PX;
-          const dx = x2 - x1, dy = y2 - y1;
-          const L2 = dx * dx + dy * dy || 1;
-          let t = ((cx - x1) * dx + (cy - y1) * dy) / L2;
-          t = Math.max(0, Math.min(1, t));
-          const px = x1 + t * dx, py = y1 + t * dy;
-          return Math.hypot(px - cx, py - cy) < 12;
+          const d = distToSegment(
+            cx, cy,
+            ends[0].x * MM_TO_PX, ends[0].y * MM_TO_PX,
+            ends[1].x * MM_TO_PX, ends[1].y * MM_TO_PX,
+          );
+          candidates.push({ node: n, nodeType: n.type, dist: d, radius: 12 });
+          continue;
         }
       }
-      return Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy) < 20;
-    });
+
+      candidates.push({
+        node: n, nodeType: n.type,
+        dist: Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy),
+        radius: 20,
+      });
+    }
+    const nonRoom = pickBestHit(candidates)?.node;
     if (nonRoom) return nonRoom;
 
     // Second pass: room nodes (lowest priority — only selected when nothing else hit)

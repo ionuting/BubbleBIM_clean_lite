@@ -9,7 +9,7 @@ import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import {
   getNodeBimPos,
   getConnectedNodes,
-  parseWallThickness,
+  getNodeWallThickness,
   parseColumnDims,
   parseBeamDims,
 } from '@/lib/bimGeometry';
@@ -75,7 +75,7 @@ export function buildCalc2DModel(
       if (axes.length >= 2) {
         walls.push({
           a: pos(axes[0]), b: pos(axes[1]),
-          thick: parseWallThickness(String(n.properties.wall_type ?? 'W20')) * M2MM,
+          thick: getNodeWallThickness(n) * M2MM,
           focus: isFocus,
         });
       } else {

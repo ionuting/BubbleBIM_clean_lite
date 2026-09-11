@@ -65,6 +65,31 @@ const MEASURE_META: Record<keyof NodeMeasures, MeasureMeta> = {
   volume_m3: { symbol: 'V', label: 'Volume', unit: 'm³' },
   count: { symbol: 'n', label: 'Count', unit: 'pcs' },
   opening_area_m2: { symbol: 'A_gol', label: 'Opening area', unit: 'm²' },
+  stud_count: { symbol: 'n_st', label: 'Studs', unit: 'pcs' },
+  framing_length_m: { symbol: 'L_fr', label: 'Framing length', unit: 'm' },
+  sheathing_area_m2: { symbol: 'A_sh', label: 'Sheathing area (one face)', unit: 'm²' },
+  stud_length_m: { symbol: 'L_st', label: 'Stud length (verticals)', unit: 'm' },
+  plate_length_m: { symbol: 'L_pl', label: 'Plate length', unit: 'm' },
+  header_length_m: { symbol: 'L_hd', label: 'Header length (plies)', unit: 'm' },
+  header_count: { symbol: 'n_hd', label: 'Headers', unit: 'pcs' },
+  sheathing_sheet_count: { symbol: 'n_sh', label: 'Sheathing sheets (one face)', unit: 'pcs' },
+  panel_count: { symbol: 'n_pn', label: 'CLT panels', unit: 'pcs' },
+  panel_area_m2: { symbol: 'A_pn', label: 'CLT panel area (gross)', unit: 'm²' },
+  cut_length_m: { symbol: 'L_cut', label: 'CNC cut length', unit: 'm' },
+  joint_length_m: { symbol: 'L_jt', label: 'Panel joint length', unit: 'm' },
+  connector_count: { symbol: 'n_cn', label: 'Connectors (brackets + hold-downs)', unit: 'pcs' },
+  is_exterior: { symbol: 'ext', label: 'Exterior wall (1/0)', unit: '' },
+  is_interior: { symbol: 'int', label: 'Interior wall (1/0)', unit: '' },
+  opening_count: { symbol: 'n_gol', label: 'Openings', unit: 'pcs' },
+  opening_width_m: { symbol: 'B_gol', label: 'Opening widths summed', unit: 'm' },
+  outer_perimeter_m: { symbol: 'P_ext', label: 'Contour perimeter', unit: 'm' },
+  hole_perimeter_m: { symbol: 'P_gol', label: 'Cell perimeters summed', unit: 'm' },
+  hole_area_m2: { symbol: 'A_gol', label: 'Cell areas summed', unit: 'm²' },
+  hole_count: { symbol: 'n_cel', label: 'Cells', unit: 'pcs' },
+  net_solid_area_m2: { symbol: 'A_plin', label: 'Solid area (contour − cells)', unit: 'm²' },
+  band_area_m2: { symbol: 'A_band', label: 'Band area (perimeter × thickness)', unit: 'm²' },
+  outer_face_area_m2: { symbol: 'A_fat', label: 'Façade area (contour × height)', unit: 'm²' },
+  inner_face_area_m2: { symbol: 'A_int', label: 'Interior faces (cells × height)', unit: 'm²' },
 };
 
 /** Display unit for a norm unit. */
@@ -113,21 +138,8 @@ export function evalFormulaTraced(
   formula: string,
   m: NodeMeasures,
 ): { value: number; substituted: string; inputs: CalcInput[] } {
-  const env: Record<string, number> = {
-    length_m: m.length_m,
-    height_m: m.height_m,
-    thickness_m: m.thickness_m,
-    width_m: m.width_m,
-    depth_m: m.depth_m,
-    gross_area_m2: m.gross_area_m2,
-    net_area_m2: m.net_area_m2,
-    area_m2: m.area_m2,
-    perimeter_m: m.perimeter_m,
-    section_m2: m.section_m2,
-    volume_m3: m.volume_m3,
-    count: m.count,
-    opening_area_m2: m.opening_area_m2,
-  };
+  // Same rule as takeoffEngine.evalFormula: every NodeMeasures key is a variable.
+  const env: Record<string, number> = { ...m };
   let value = 0;
   try {
     const keys = Object.keys(env);

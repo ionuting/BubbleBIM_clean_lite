@@ -12,7 +12,9 @@ export function cn(...inputs: ClassValue[]) {
  *  - undefined / null
  */
 export function parseAxes(val: unknown): number[] {
-  if (Array.isArray(val)) return val as number[];
+  // Always a fresh array: a dozen call sites `.sort()` the result in place, and
+  // handing them the stored property would silently reorder the storey's axes.
+  if (Array.isArray(val)) return (val as number[]).slice();
   if (typeof val === 'string' && val.trim().startsWith('[')) {
     try { return JSON.parse(val) as number[]; } catch { /* fall through */ }
   }

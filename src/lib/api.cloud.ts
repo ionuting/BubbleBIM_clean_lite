@@ -22,6 +22,8 @@ export interface BubbleGraphEdge {
   id: string;
   from: string;
   to: string;
+  /** Relation semantics — optional, inferred when absent. See lib/graph/edgeTypes.ts. */
+  type?: import('@/lib/graph/edgeTypes').EdgeType;
 }
 
 export interface BuildingAxes {
@@ -42,6 +44,10 @@ export interface GraphData {
   /** Open drawing tabs (plans/sections/elevations/…) — persisted so the drawing workspace survives a reload. */
   viewTabs?: import('@/store').ViewTab[];
   activeTabId?: string;
+  /** Project-wide structural system; individual elements may override it. See lib/systems/structuralSystem.ts. */
+  structuralSystem?: import('@/lib/systems/structuralSystem').StructuralSystem;
+  /** Project-wide material/finish choices (lib/norms/specs.ts). */
+  specs?: Record<string, string>;
 }
 
 function normalizeGraph(data: GraphData): GraphData {
@@ -329,6 +335,21 @@ export async function getHistoryCommitContent(commitId: number): Promise<GraphDa
   }
 }
 
+/** Permanently delete ONE version. Does not touch the project's live data. */
+export async function deleteHistoryCommit(commitId: number): Promise<{ success: boolean; freed_bytes: number } | null> {
+  const projectId = requireProject();
+  if (!projectId) return null;
+  try {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/history/${commitId}`, { method: 'DELETE', headers: authHeaders(false) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return { success: true, freed_bytes: data.deleted?.freed_bytes ?? 0 };
+  } catch (err) {
+    console.error('❌ Failed to delete commit:', err);
+    return null;
+  }
+}
+
 export async function restoreHistoryCommit(commitId: number): Promise<{ success: boolean; commit: HistoryCommit; nodes_restored: number; edges_restored: number } | null> {
   const projectId = requireProject();
   if (!projectId) return null;
@@ -364,6 +385,26 @@ export async function gcHistory(keepAuto = 50): Promise<{ success: boolean; prun
     return await res.json();
   } catch (err) {
     console.error('❌ Failed to run history gc:', err);
+    return null;
+  }
+}
+
+/** Repoint a version at the CURRENT saved graph — `git commit --amend`. */
+export async function amendHistoryCommit(
+  commitId: number,
+  message = '',
+): Promise<{ success: boolean; commit: HistoryCommit & { newer_commits: number } } | null> {
+  const projectId = requireProject();
+  if (!projectId) return null;
+  try {
+    const res = await fetch(
+      `${API_BASE}/projects/${projectId}/history/${commitId}/amend?message=${encodeURIComponent(message)}`,
+      { method: 'POST', headers: authHeaders(false) },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('❌ Failed to amend history commit:', err);
     return null;
   }
 }

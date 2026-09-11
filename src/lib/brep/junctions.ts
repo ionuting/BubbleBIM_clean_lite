@@ -36,7 +36,7 @@
 
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import {
-  calcWallGeometry, getConnectedNodes, isWallSeparator, parseWallThickness,
+  calcWallGeometry, getConnectedNodes, isWallSeparator, getNodeWallThickness,
   type WallGeometry,
 } from '@/lib/bimGeometry';
 import type { Solid } from './types';
@@ -160,7 +160,7 @@ export function wallPriority(
 
   return {
     explicit: Number.isFinite(explicit) ? explicit : 0,
-    thickness: parseWallThickness(type) * 1000,
+    thickness: getNodeWallThickness(wall) * 1000,
     length,
     id: wall.id,
   };

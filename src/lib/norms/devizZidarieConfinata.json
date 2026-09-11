@@ -13,7 +13,9 @@
     "Termoizolatie",
     "Vopsitorii",
     "Diverse",
-    "Soclu"
+    "Soclu",
+    "Scări",
+    "Profile liniare"
   ],
   "articles": [
     {
@@ -275,6 +277,60 @@
       "unit": "mp",
       "categorie": "Soclu",
       "categorie_code": "0016",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0017_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "categorie": "Scări",
+      "categorie_code": "0017",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0017_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "categorie": "Scări",
+      "categorie_code": "0017",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0017_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "categorie": "Scări",
+      "categorie_code": "0017",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0018_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "categorie": "Profile liniare",
+      "categorie_code": "0018",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0018_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "categorie": "Profile liniare",
+      "categorie_code": "0018",
+      "capitol": "4. Investiție de bază"
+    },
+    {
+      "id": "0018_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "categorie": "Profile liniare",
+      "categorie_code": "0018",
       "capitol": "4. Investiție de bază"
     }
   ]

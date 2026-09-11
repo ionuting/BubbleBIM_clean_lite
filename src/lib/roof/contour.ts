@@ -4,72 +4,24 @@
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import {
   calcShellPolygon,
-  getAxRealPos,
   getConnectedNodes,
-  getNodeBimPos,
   getStoreyBand,
   insetPolygon,
 } from '@/lib/bimGeometry';
-import { parseAxes } from '@/lib/utils';
+import { ensureCcw, isSimplePolygon, planPos as roofNodePos, polygonArea } from '@/lib/geom/plan2d';
 import { sanitizePolygon } from './straightSkeleton';
 import type { Pt2, RoofContour, RoofDiagnostic } from './types';
 
-/** Plan position for roof contour — prefers grid axes, then bimX/Y, then node.x/y. */
-function roofNodePos(n: BubbleGraphNode, map: Map<string, BubbleGraphNode>): Pt2 {
-  if (n.type !== 'ax' && n.type !== 'column') return getNodeBimPos(n, map);
-  if (n.properties.bimX != null && n.properties.bimY != null) {
-    return { x: Number(n.properties.bimX), y: Number(n.properties.bimY) };
-  }
-  const storey = n.parentId ? map.get(n.parentId) : undefined;
-  const axesX = parseAxes(storey?.properties?.axesX);
-  const axesY = parseAxes(storey?.properties?.axesY);
-  if (axesX.length > 0 && axesY.length > 0) return getAxRealPos(n, map);
-  return { x: n.x, y: n.y };
-}
-
-function ensureCcw(pts: Pt2[]): Pt2[] {
-  let area2 = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const j = (i + 1) % pts.length;
-    area2 += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-  }
-  if (area2 < 0) return [...pts].reverse();
-  return pts;
-}
-
-function polygonArea(pts: Pt2[]): number {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const j = (i + 1) % pts.length;
-    a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-  }
-  return a / 2;
-}
-
-/** Proper segment intersection (excludes shared endpoints of adjacent edges). */
-function segsCross(a: Pt2, b: Pt2, c: Pt2, d: Pt2): boolean {
-  const o = (p: Pt2, q: Pt2, r: Pt2) => (r.x - p.x) * (q.y - p.y) - (q.x - p.x) * (r.y - p.y);
-  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
-  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
-}
-
-/** True if the closed polygon has no self-crossing edges (ignores adjacency). */
-function isSimplePolygon(pts: Pt2[]): boolean {
-  const n = pts.length;
-  if (n < 4) return true;
-  for (let i = 0; i < n; i++) {
-    const a = pts[i], b = pts[(i + 1) % n];
-    for (let j = i + 1; j < n; j++) {
-      if (Math.abs(i - j) <= 1 || (i === 0 && j === n - 1)) continue; // adjacent edges
-      if (segsCross(a, b, pts[j], pts[(j + 1) % n])) return false;
-    }
-  }
-  return true;
-}
-
 /**
  * Exterior cycle of an undirected ax–ax graph built from walls.
- * At junctions (deg > 2), picks the sharpest left turn to stay on the outer ring.
+ *
+ * Walked counter-clockwise from the leftmost-lowest node, heading east first.
+ * With the interior on the LEFT of a CCW walk, staying on the outer ring at a
+ * junction (deg > 2) means taking the RIGHTMOST option — the smallest turn.
+ * Taking the largest left turn instead follows the first interior face: on a
+ * box with a partition it returned the western half as "the outline". A plain
+ * ring has no junction, so both rules agree there, which is how it went
+ * unnoticed.
  */
 export function walkWallExteriorCycle(
   adj: Map<string, string[]>,
@@ -115,17 +67,19 @@ export function walkWallExteriorCycle(
     const inDy = pCur.y - pPrev.y;
 
     let best = candidates[0];
-    let bestTurn = -Infinity;
+    let bestTurn = Infinity;
     for (const n of candidates) {
       if (n === prev && candidates.length > 1) continue;
       const pNext = pos.get(n)!;
       const outDx = pNext.x - pCur.x;
       const outDy = pNext.y - pCur.y;
-      // Cross product: positive = left turn (CCW). Prefer largest left turn for outer CCW walk.
+      // Cross product: positive = left turn (CCW). The outer ring is the
+      // rightmost way on — the SMALLEST turn; going back the way we came
+      // (turn = ±π) is only ever taken at a dead end.
       const cross = inDx * outDy - inDy * outDx;
       const dot = inDx * outDx + inDy * outDy;
       const turn = Math.atan2(cross, dot);
-      if (turn > bestTurn + 1e-9) {
+      if (turn < bestTurn - 1e-9) {
         bestTurn = turn;
         best = n;
       }

@@ -8,8 +8,9 @@
  */
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import type { NormArticle } from '@/lib/norms';
-import { PRETURI_DEFAULT_RO, totalPret } from '@/lib/norms';
+import { getCompiledUnitPrices } from '@/lib/norms/catalogCompiled';
 import { aggregateCalcGroups } from './calcAggregate';
+import type { TakeoffOptions } from './takeoffContext';
 
 export interface UsedArticle {
   normId: string;
@@ -30,9 +31,9 @@ export interface PriceRunPlan {
 }
 
 /** Articolele distincte folosite efectiv în model. */
-export function usedArticles(nodes: BubbleGraphNode[], edges: BubbleGraphEdge[]): UsedArticle[] {
+export function usedArticles(nodes: BubbleGraphNode[], edges: BubbleGraphEdge[], opts?: TakeoffOptions): UsedArticle[] {
   const seen = new Map<string, NormArticle>();
-  for (const cap of aggregateCalcGroups(nodes, edges))
+  for (const cap of aggregateCalcGroups(nodes, edges, opts))
     for (const s of cap.storeys)
       for (const ag of s.articles) if (!seen.has(ag.normId)) seen.set(ag.normId, ag.article);
   return [...seen.entries()].map(([normId, article]) => ({ normId, article }));
@@ -46,9 +47,12 @@ export function planPriceRun(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
   current: Record<string, number>,
-  opts: { overwrite?: boolean } = {},
+  opts: { overwrite?: boolean } & TakeoffOptions = {},
 ): PriceRunPlan {
-  const used = usedArticles(nodes, edges);
+  const used = usedArticles(nodes, edges, opts);
+  // Prețurile implicite vin din librăria COMPILATĂ (MD → JSON), ca articolele
+  // adăugate în MD — lemnul, de pildă — să fie tarifabile fără o copie în TS.
+  const defaults = getCompiledUnitPrices();
   const toApply: Record<string, number> = {};
   const missing: UsedArticle[] = [];
   const kept: UsedArticle[] = [];
@@ -59,14 +63,14 @@ export function planPriceRun(
       kept.push(u);
       continue;
     }
-    const def = PRETURI_DEFAULT_RO[u.normId];
-    if (!def) {
+    const def = defaults[u.normId];
+    if (!(def > 0)) {
       // Fără preț implicit: dacă are deja unul manual îl păstrăm, altfel e lipsă.
       if (hasManual) kept.push(u);
       else missing.push(u);
       continue;
     }
-    toApply[u.normId] = totalPret(def);
+    toApply[u.normId] = def;
   }
 
   const categories = [...new Set(used.map((u) => u.article.categorie))].sort((a, b) => a.localeCompare(b, 'ro'));
@@ -78,6 +82,7 @@ export function unpricedArticles(
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
   prices: Record<string, number>,
+  opts?: TakeoffOptions,
 ): UsedArticle[] {
-  return usedArticles(nodes, edges).filter((u) => (prices[u.normId] ?? 0) <= 0);
+  return usedArticles(nodes, edges, opts).filter((u) => (prices[u.normId] ?? 0) <= 0);
 }

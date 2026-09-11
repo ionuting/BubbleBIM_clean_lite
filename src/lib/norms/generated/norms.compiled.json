@@ -4,6 +4,70 @@
   "currency": "lei",
   "articles": [
     {
+      "id": "0030_BT01_C25",
+      "symbol": "BT01 C25",
+      "denumire": "BETON GATA PREPARAT C25/30 TURNAT CU POMPA IN ELEMENTE VERTICALE SI ORIZONTALE",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Beton"
+    },
+    {
+      "id": "0030_BT02_C30",
+      "symbol": "BT02 C30",
+      "denumire": "BETON GATA PREPARAT C30/37 TURNAT CU POMPA IN ELEMENTE VERTICALE SI ORIZONTALE",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Beton"
+    },
+    {
+      "id": "0020_CA02C_02",
+      "symbol": "CA02C 02",
+      "denumire": "TURNARE BETON C25/30 CU POMPA IN STALPI SI GRINZI DE CADRU, INCLUSIV VIBRARE",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
+      "id": "0020_CB02A_02",
+      "symbol": "CB02A 02",
+      "denumire": "COFRAJE METALICE REFOLOSIBILE PENTRU STALPI SI GRINZI DE CADRU, INCLUSIV SUSTINERI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
+      "id": "0020_CC02C_02",
+      "symbol": "CC02C 02",
+      "denumire": "MONTARE ARMATURI DIN OTEL BST500 IN STALPI SI GRINZI DE CADRU, CARCASE LEGATE",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
+      "id": "0020_CD01A_02",
+      "symbol": "CD01A 02",
+      "denumire": "ZIDARIE DE UMPLUTURA DIN BLOCURI CERAMICE CU GOLURI VERTICALE, INTRE ELEMENTELE CADRULUI",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
+      "id": "0020_CD02A_02",
+      "symbol": "CD02A 02",
+      "denumire": "BUIANDRUGI PREFABRICATI DIN BETON ARMAT LA GOLURI IN ZIDARIA DE UMPLUTURA",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
+      "id": "0020_CD03A_02",
+      "symbol": "CD03A 02",
+      "denumire": "LEGAREA ZIDARIEI DE UMPLUTURA DE STALPI CU ANCORE DIN OTEL LA 50 CM",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Cadre beton armat"
+    },
+    {
       "id": "0003_CA01D_02",
       "symbol": "CA01D 02",
       "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
@@ -36,12 +100,92 @@
       "categorie": "Centuri"
     },
     {
+      "id": "0021_CLT01_PN",
+      "symbol": "CLT01 PN",
+      "denumire": "PANOURI CLT DIN MOLID C24, CALITATE INDUSTRIALA, LIVRATE LA SANTIER (VOLUM BRUT PANOU)",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT02_CNC",
+      "symbol": "CLT02 CNC",
+      "denumire": "PRELUCRARE CNC PANOURI CLT: DEBITARE CONTUR SI GOLURI",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT03_MNT",
+      "symbol": "CLT03 MNT",
+      "denumire": "MONTAJ PANOURI CLT DE PERETE CU MACARAUA, POZITIONARE SI ANCORARE PROVIZORIE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT04_CON",
+      "symbol": "CLT04 CON",
+      "denumire": "COLTARE SI HOLD-DOWN DIN OTEL ZINCAT CU HOLZSURUBURI, LA BAZA PANOURILOR SI LA GOLURI",
+      "unit": "buc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT05_JNT",
+      "symbol": "CLT05 JNT",
+      "denumire": "HOLZSURUBURI AUTOFILETANTE SI BANDA DE ETANSARE LA ROSTURI PANOU-PANOU SI PANOU-PLANSEU",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT06_GK",
+      "symbol": "CLT06 GK",
+      "denumire": "PLACARE INTERIOARA CU GIPS-CARTON 12.5 MM DIRECT PE CLT (PROTECTIE LA FOC)",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
+      "id": "0021_CLT07_FL",
+      "symbol": "CLT07 FL",
+      "denumire": "PANOURI CLT DE PLANSEU, LIVRARE SI MONTAJ CU MACARAUA, INCLUSIV IMBINARI SI ETANSARE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti CLT"
+    },
+    {
       "id": "0015_CK26A_02",
       "symbol": "CK26A 02",
       "denumire": "GLAFURI MONTATE LA FERESTRE DIN MASE PLASTICE",
       "unit": "ml",
       "capitol": "4. Investiție de bază",
       "categorie": "Diverse"
+    },
+    {
+      "id": "0024_FA01_STD",
+      "symbol": "FA01 STD",
+      "denumire": "PLACARE PERETI CU FAIANTA CERAMICA FORMAT UZUAL, LIPITA CU ADEZIV SI ROSTUITA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Faianta"
+    },
+    {
+      "id": "0024_FA02_POR",
+      "symbol": "FA02 POR",
+      "denumire": "PLACARE PERETI CU GRESIE PORTELANATA, ROSTURI FINE, LIPITA CU ADEZIV FLEXIBIL",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Faianta"
+    },
+    {
+      "id": "0024_FA03_MAR",
+      "symbol": "FA03 MAR",
+      "denumire": "PLACARE PERETI CU PLACI MARE FORMAT PESTE 120X60 CM, MONTAJ IN DOI, ADEZIV C2TE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Faianta"
     },
     {
       "id": "0006_CE08A_02",
@@ -92,6 +236,150 @@
       "categorie": "Invelitoare"
     },
     {
+      "id": "0006_TIGCER_02",
+      "symbol": "TIGCER 02",
+      "denumire": "INVELITORI DIN TIGLA CERAMICA PROFILATA PE SIPCI, INCLUSIV COAME SI ACCESORII",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0006_TIGMET_02",
+      "symbol": "TIGMET 02",
+      "denumire": "INVELITORI DIN TIGLA METALICA CU FOLIE ANTICONDENS, PE SIPCI SI CONTRASIPCI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Invelitoare"
+    },
+    {
+      "id": "0023_PD01_LAM",
+      "symbol": "PD01 LAM",
+      "denumire": "PARCHET LAMINAT CLASA 32, CU FOLIE SI IZOFON, MONTAJ FLOTANT INCLUSIV PLINTA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pardoseli"
+    },
+    {
+      "id": "0023_PD02_STR",
+      "symbol": "PD02 STR",
+      "denumire": "PARCHET STRATIFICAT CU STRAT DE UZURA DIN LEMN, MONTAJ FLOTANT INCLUSIV PLINTA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pardoseli"
+    },
+    {
+      "id": "0023_PD03_GRE",
+      "symbol": "PD03 GRE",
+      "denumire": "PARDOSELI DIN GRESIE PORTELANATA LIPITA CU ADEZIV, INCLUSIV ROSTUIRE SI PLINTA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pardoseli"
+    },
+    {
+      "id": "0023_PD04_LVT",
+      "symbol": "PD04 LVT",
+      "denumire": "PARDOSEALA DIN VINIL LVT LIPIT PE SUPORT EGALIZAT, INCLUSIV PLINTA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pardoseli"
+    },
+    {
+      "id": "0019_LF01_TF",
+      "symbol": "LF01 TF",
+      "denumire": "MONTANTI SI TALPI DIN LEMN ECARISAT C24 45X145 MM, TAIERE, MONTAJ SI FIXARE MECANICA",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF02_OSB",
+      "symbol": "LF02 OSB",
+      "denumire": "PLACARE EXTERIOARA CU PLACI OSB/3 12 MM, FIXATE PE MONTANTI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF03_MW",
+      "symbol": "LF03 MW",
+      "denumire": "TERMOIZOLATIE DIN VATA MINERALA 140 MM MONTATA INTRE MONTANTI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF04_GK",
+      "symbol": "LF04 GK",
+      "denumire": "PLACARE INTERIOARA CU GIPS-CARTON 12.5 MM PE MONTANTI, ROSTURI CHITUITE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF05_VB",
+      "symbol": "LF05 VB",
+      "denumire": "BARIERA DE VAPORI DIN FOLIE PE, LA INTERIOR, CU BANDA DE ETANSARE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF06_WB",
+      "symbol": "LF06 WB",
+      "denumire": "FOLIE ANTICONDENS PERMEABILA LA VAPORI, LA EXTERIOR, PESTE OSB",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF07_TJ",
+      "symbol": "LF07 TJ",
+      "denumire": "GRINZI DE PLANSEU DIN LEMN ECARISAT C24 45X195 MM LA 500 MM, MONTAJ",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF08_HDR",
+      "symbol": "LF08 HDR",
+      "denumire": "BUIANDRUGI DIN DULAPI DUBLI C24 SAU LVL LA GOLURI, TAIERE SI MONTAJ PE MONTANTI JACK",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF09_ANC",
+      "symbol": "LF09 ANC",
+      "denumire": "ANCORAREA TALPII INFERIOARE IN PLACA DE BETON CU ANCORE CHIMICE M12 LA 600 MM",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF10_FIX",
+      "symbol": "LF10 FIX",
+      "denumire": "FIXARI MECANICE (CUIE INELARE, HOLZSURUBURI, COLTARE) PENTRU CADRE DE LEMN, PER MONTANT",
+      "unit": "buc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF11_GL",
+      "symbol": "LF11 GL",
+      "denumire": "MONTANTI SI TALPI DIN LEMN LAMELAR INCLEIAT GL24H, TAIERE SI MONTAJ",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
+      "id": "0019_LF12_LVL",
+      "symbol": "LF12 LVL",
+      "denumire": "MONTANTI SI TALPI DIN LVL FURNIR LAMINAT, TAIERE SI MONTAJ",
+      "unit": "ml",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Pereti lemn"
+    },
+    {
       "id": "0004_RPCH05A_91",
       "symbol": "RPCH05A 91",
       "denumire": "PLANSEU DE LEMN CU DECHID.PINA LA 4 M EXEC.DIN GRI NZI LEMN DE RASIN.SAU FOIOASE 24MM PE SIPCI24X48MM",
@@ -108,9 +396,145 @@
       "categorie": "Planseu lemn"
     },
     {
+      "id": "0018_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Profile liniare"
+    },
+    {
+      "id": "0018_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Profile liniare"
+    },
+    {
+      "id": "0018_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Profile liniare"
+    },
+    {
+      "id": "0031_RC01_BET",
+      "symbol": "RC01 BET",
+      "denumire": "BETON C25/30 TURNAT CU POMPA IN GRINZI DE FUNDARE SI RADIERE CELULARE",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0031_RC02_COF",
+      "symbol": "RC02 COF",
+      "denumire": "COFRAJE PENTRU GRINZI DE FUNDARE SI PERETI DE RADIER, INCLUSIV SUSTINERI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0031_RC03_ARM",
+      "symbol": "RC03 ARM",
+      "denumire": "ARMATURI DIN OTEL BST500 IN GRINZI DE FUNDARE SI RADIERE, CARCASE LEGATE",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0031_RC04_EGA",
+      "symbol": "RC04 EGA",
+      "denumire": "BETON DE EGALIZARE C8/10 DE 10 CM SUB TALPA FUNDATIEI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0031_RC05_HID",
+      "symbol": "RC05 HID",
+      "denumire": "HIDROIZOLATIE BITUMINOASA IN DOUA STRATURI SUB SI PE LATERALUL RADIERULUI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0031_RC06_UMP",
+      "symbol": "RC06 UMP",
+      "denumire": "UMPLUTURA COMPACTATA DIN BALAST IN CELULELE RADIERULUI, IN STRATURI DE 20 CM",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Radier celular"
+    },
+    {
+      "id": "0022_GK01_STD",
+      "symbol": "GK01 STD",
+      "denumire": "PLACARE CU GIPS-CARTON STANDARD 12.5 MM PE SCHELET METALIC, ROSTURI CHITUITE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
+      "id": "0022_GK02_SCH",
+      "symbol": "GK02 SCH",
+      "denumire": "SCHELET METALIC CW/UW 75 MM PENTRU PERETI DE COMPARTIMENTARE, MONTAJ SI FIXARE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
+      "id": "0022_GK03_IZO",
+      "symbol": "GK03 IZO",
+      "denumire": "VATA MINERALA 50 MM IN SCHELETUL PERETILOR DE GIPS-CARTON",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
+      "id": "0022_GK04_RU",
+      "symbol": "GK04 RU",
+      "denumire": "PLACARE CU GIPS-CARTON REZISTENT LA UMEZEALA 12.5 MM PE SCHELET METALIC",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
+      "id": "0022_GK05_RF",
+      "symbol": "GK05 RF",
+      "denumire": "PLACARE CU GIPS-CARTON REZISTENT LA FOC 12.5 MM PE SCHELET METALIC",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
+      "id": "0022_GK06_DBL",
+      "symbol": "GK06 DBL",
+      "denumire": "DUBLA PLACARE CU GIPS-CARTON 2X12.5 MM PE FIECARE FATA, ROSTURI DECALATE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Rigips"
+    },
+    {
       "id": "0007_CG01F1_82",
       "symbol": "CG01F1 82",
       "denumire": "SAPA SUPORT DIN IPSOS AUTONIVELATOARE SUB PARDOSEL I DE 3CM GROSIME",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Sapa egalizare"
+    },
+    {
+      "id": "0007_SP01_CIM",
+      "symbol": "SP01 CIM",
+      "denumire": "SAPA CIMENTATA 5 CM ARMATA CU FIBRE, DRISCUITA MECANIC",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Sapa egalizare"
+    },
+    {
+      "id": "0007_SP03_USC",
+      "symbol": "SP03 USC",
+      "denumire": "SAPA USCATA DIN PLACI FIBROGIPS PE STRAT DE GRANULE DE EGALIZARE",
       "unit": "mp",
       "capitol": "4. Investiție de bază",
       "categorie": "Sapa egalizare"
@@ -122,6 +546,30 @@
       "unit": "mp",
       "capitol": "4. Investiție de bază",
       "categorie": "Sarpanta"
+    },
+    {
+      "id": "0017_CA01D_02",
+      "symbol": "CA01D 02",
+      "denumire": "PREPARARE BETON PE SANTIER CU BETONIERA, BETON CLA SA C 20/16",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Scări"
+    },
+    {
+      "id": "0017_CB01C_02",
+      "symbol": "CB01C 02",
+      "denumire": "COFR DIN SCINDURI DE RASINOASE EL.TIP SPECIAL LA C ONSTRUCTII CU H<20M,EXCLUSIV SUSTINERILE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Scări"
+    },
+    {
+      "id": "0017_CC01A4_02",
+      "symbol": "CC01A4 02",
+      "denumire": "FASONAREA BARELOR DIN OTEL BETON PC PE SANTIER, AV AND D= 12,14,16 MM",
+      "unit": "kg",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Scări"
     },
     {
       "id": "0016_RPCE26A_09",
@@ -196,9 +644,65 @@
       "categorie": "Tencuiala"
     },
     {
+      "id": "0011_CF25MEC_02",
+      "symbol": "CF25MEC 02",
+      "denumire": "TENCUIELI INTERIOARE DIN IPSOS DE 1 CM APLICATE MECANIZAT CU POMPA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Tencuiala"
+    },
+    {
+      "id": "0011_CF10VC_02",
+      "symbol": "CF10VC 02",
+      "denumire": "TENCUIELI INTERIOARE DIN MORTAR DE VAR-CIMENT DE 2 CM GROSIME, DRISCUITE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Tencuiala"
+    },
+    {
+      "id": "0011_CF35DEC_02",
+      "symbol": "CF35DEC 02",
+      "denumire": "TENCUIALA DECORATIVA SILICONICA STRUCTURATA 1.5 MM PE TERMOSISTEM, CU AMORSA",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Tencuiala"
+    },
+    {
       "id": "0012_00107A011_02",
       "symbol": "00107A011 02",
       "denumire": "TERMOIZOLARE FATADE - DEKO THERM CU POLISTIREN EXP ANDAT CU ADEZIV \"DEKOMAX\"",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Termoizolatie"
+    },
+    {
+      "id": "0012_EPS15_02",
+      "symbol": "EPS15 02",
+      "denumire": "TERMOIZOLARE FATADE CU POLISTIREN EXPANDAT 15 CM, ADEZIV SI DIBLUIRE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Termoizolatie"
+    },
+    {
+      "id": "0012_EPSG10_02",
+      "symbol": "EPSG10 02",
+      "denumire": "TERMOIZOLARE FATADE CU POLISTIREN EXPANDAT GRAFITAT 10 CM, ADEZIV SI DIBLUIRE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Termoizolatie"
+    },
+    {
+      "id": "0012_VATA15_02",
+      "symbol": "VATA15 02",
+      "denumire": "TERMOIZOLARE FATADE CU VATA BAZALTICA 15 CM, ADEZIV SI DIBLURI METALICE",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Termoizolatie"
+    },
+    {
+      "id": "0012_FL16_02",
+      "symbol": "FL16 02",
+      "denumire": "TERMOIZOLARE FATADE CU PLACI DIN FIBRA LEMNOASA 16 CM, FIXARE MECANICA",
       "unit": "mp",
       "capitol": "4. Investiție de bază",
       "categorie": "Termoizolatie"
@@ -220,6 +724,22 @@
       "categorie": "Vopsitorii"
     },
     {
+      "id": "0013_CN20PR_02",
+      "symbol": "CN20PR 02",
+      "denumire": "VOPSITORII INTERIOARE CU LAVABILA PREMIUM REZISTENTA LA SPALARE, DOUA STRATURI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Vopsitorii"
+    },
+    {
+      "id": "0013_CN30SIL_02",
+      "symbol": "CN30SIL 02",
+      "denumire": "VOPSITORII EXTERIOARE CU VOPSEA SILICATICA PERMEABILA LA VAPORI, DOUA STRATURI",
+      "unit": "mp",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Vopsitorii"
+    },
+    {
       "id": "0001_00201A01_02",
       "symbol": "00201A01 02",
       "denumire": "ZIDARIE LA PERETI STRUCTURALI DIN BLOCURI CERAMICE POROTHERM 38 (250X380X238) CU LOCAS DE MORTAR",
@@ -234,15 +754,41 @@
       "unit": "mp",
       "capitol": "4. Investiție de bază",
       "categorie": "Zidarie"
+    },
+    {
+      "id": "0001_BCA25_02",
+      "symbol": "BCA25 02",
+      "denumire": "ZIDARIE DIN BLOCURI BCA 25 CM CU MORTAR ADEZIV PENTRU ROSTURI SUBTIRI",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Zidarie"
+    },
+    {
+      "id": "0001_CARPLIN_02",
+      "symbol": "CARPLIN 02",
+      "denumire": "ZIDARIE DIN CARAMIDA PLINA PRESATA CU MORTAR DE CIMENT-VAR",
+      "unit": "mc",
+      "capitol": "4. Investiție de bază",
+      "categorie": "Zidarie"
     }
   ],
   "categories": [
+    "Beton",
+    "Cadre beton armat",
     "Centuri",
+    "Pereti CLT",
     "Diverse",
+    "Faianta",
     "Invelitoare",
+    "Pardoseli",
+    "Pereti lemn",
     "Planseu lemn",
+    "Profile liniare",
+    "Radier celular",
+    "Rigips",
     "Sapa egalizare",
     "Sarpanta",
+    "Scări",
     "Soclu",
     "Stalpisori",
     "Tencuiala",
@@ -251,6 +797,267 @@
     "Zidarie"
   ],
   "mapping": [
+    {
+      "nodeType": "column",
+      "elementTypeId": "*",
+      "spec": "beton:c25_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT01_C25",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "*",
+      "spec": "beton:c25_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT01_C25",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "*",
+      "spec": "beton:c25_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT01_C25",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "*",
+      "spec": "beton:c30_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT02_C30",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "*",
+      "spec": "beton:c30_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT02_C30",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "*",
+      "spec": "beton:c30_pompat",
+      "outputs": [
+        {
+          "normId": "0030_BT02_C30",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "column",
+      "elementTypeId": "*",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CA02C_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0020_CB02A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0020_CC02C_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 120"
+        }
+      ]
+    },
+    {
+      "nodeType": "ax",
+      "elementTypeId": "*",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CA02C_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0020_CB02A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        },
+        {
+          "normId": "0020_CC02C_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 120"
+        }
+      ]
+    },
+    {
+      "nodeType": "beam",
+      "elementTypeId": "*",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CA02C_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0020_CB02A_02",
+          "measure": "formula",
+          "formula": "(width_m + 2 * height_m) * length_m"
+        },
+        {
+          "normId": "0020_CC02C_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 100"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W15",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W20",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W25",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W30",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W35",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W40",
+      "structuralSystem": "rc_frame",
+      "outputs": [
+        {
+          "normId": "0020_CD01A_02",
+          "measure": "formula",
+          "formula": "net_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0020_CD02A_02",
+          "measure": "formula",
+          "formula": "opening_width_m + 0.5 * opening_count"
+        },
+        {
+          "normId": "0020_CD03A_02",
+          "measure": "formula",
+          "formula": "2 * height_m"
+        }
+      ]
+    },
     {
       "nodeType": "beam",
       "elementTypeId": "B20x30",
@@ -452,6 +1259,293 @@
       ]
     },
     {
+      "nodeType": "wall",
+      "elementTypeId": "CLT100",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "CLT120",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "CLT140",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W15",
+      "structuralSystem": "clt",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W20",
+      "structuralSystem": "clt",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W25",
+      "structuralSystem": "clt",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W30",
+      "structuralSystem": "clt",
+      "outputs": [
+        {
+          "normId": "0021_CLT01_PN",
+          "measure": "formula",
+          "formula": "panel_area_m2 * thickness_m"
+        },
+        {
+          "normId": "0021_CLT02_CNC",
+          "measure": "formula",
+          "formula": "cut_length_m"
+        },
+        {
+          "normId": "0021_CLT03_MNT",
+          "measure": "formula",
+          "formula": "panel_area_m2"
+        },
+        {
+          "normId": "0021_CLT04_CON",
+          "measure": "formula",
+          "formula": "connector_count"
+        },
+        {
+          "normId": "0021_CLT05_JNT",
+          "measure": "formula",
+          "formula": "joint_length_m"
+        },
+        {
+          "normId": "0021_CLT06_GK",
+          "measure": "formula",
+          "formula": "net_area_m2 * (1 + is_interior)"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "CLT160",
+      "outputs": [
+        {
+          "normId": "0021_CLT07_FL",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "CLT200",
+      "outputs": [
+        {
+          "normId": "0021_CLT07_FL",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "*",
+      "structuralSystem": "clt",
+      "outputs": [
+        {
+          "normId": "0021_CLT07_FL",
+          "measure": "area"
+        }
+      ]
+    },
+    {
       "nodeType": "window",
       "elementTypeId": "*",
       "outputs": [
@@ -459,6 +1553,639 @@
           "normId": "0015_CK26A_02",
           "measure": "formula",
           "formula": "width_m * 2 + height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "faianta:standard",
+      "outputs": [
+        {
+          "normId": "0024_FA01_STD",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "faianta:portelanata",
+      "outputs": [
+        {
+          "normId": "0024_FA02_POR",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "faianta:mare_format",
+      "outputs": [
+        {
+          "normId": "0024_FA03_MAR",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "roof",
+      "elementTypeId": "*",
+      "outputs": [
+        {
+          "normId": "0006_CE07A_02",
+          "measure": "area"
+        },
+        {
+          "normId": "0005_CE28A_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "roof",
+      "elementTypeId": "*",
+      "spec": "invelitoare:tigla_ceramica",
+      "outputs": [
+        {
+          "normId": "0006_TIGCER_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "roof",
+      "elementTypeId": "*",
+      "spec": "invelitoare:tigla_metalica",
+      "outputs": [
+        {
+          "normId": "0006_TIGMET_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "pardoseala:parchet_laminat",
+      "outputs": [
+        {
+          "normId": "0023_PD01_LAM",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "pardoseala:parchet_stratificat",
+      "outputs": [
+        {
+          "normId": "0023_PD02_STR",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "pardoseala:gresie",
+      "outputs": [
+        {
+          "normId": "0023_PD03_GRE",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "pardoseala:lvt",
+      "outputs": [
+        {
+          "normId": "0023_PD04_LVT",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "*",
+      "structuralSystem": "timber_frame",
+      "outputs": [
+        {
+          "normId": "0019_LF01_TF",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        },
+        {
+          "normId": "0019_LF08_HDR",
+          "measure": "formula",
+          "formula": "header_length_m"
+        },
+        {
+          "normId": "0019_LF02_OSB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * is_exterior"
+        },
+        {
+          "normId": "0019_LF03_MW",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * is_exterior"
+        },
+        {
+          "normId": "0019_LF04_GK",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * (1 + is_interior)"
+        },
+        {
+          "normId": "0019_LF05_VB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * is_exterior"
+        },
+        {
+          "normId": "0019_LF06_WB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * is_exterior"
+        },
+        {
+          "normId": "0019_LF09_ANC",
+          "measure": "formula",
+          "formula": "length_m"
+        },
+        {
+          "normId": "0019_LF10_FIX",
+          "measure": "formula",
+          "formula": "stud_count"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "TF14",
+      "outputs": [
+        {
+          "normId": "0019_LF01_TF",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        },
+        {
+          "normId": "0019_LF08_HDR",
+          "measure": "formula",
+          "formula": "header_length_m"
+        },
+        {
+          "normId": "0019_LF04_GK",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        },
+        {
+          "normId": "0019_LF10_FIX",
+          "measure": "formula",
+          "formula": "stud_count"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "TF20",
+      "outputs": [
+        {
+          "normId": "0019_LF01_TF",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        },
+        {
+          "normId": "0019_LF08_HDR",
+          "measure": "formula",
+          "formula": "header_length_m"
+        },
+        {
+          "normId": "0019_LF02_OSB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF03_MW",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF04_GK",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF05_VB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF06_WB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF09_ANC",
+          "measure": "formula",
+          "formula": "length_m"
+        },
+        {
+          "normId": "0019_LF10_FIX",
+          "measure": "formula",
+          "formula": "stud_count"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "TF25",
+      "outputs": [
+        {
+          "normId": "0019_LF01_TF",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        },
+        {
+          "normId": "0019_LF08_HDR",
+          "measure": "formula",
+          "formula": "header_length_m"
+        },
+        {
+          "normId": "0019_LF02_OSB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF03_MW",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF04_GK",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF05_VB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF06_WB",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0019_LF09_ANC",
+          "measure": "formula",
+          "formula": "length_m"
+        },
+        {
+          "normId": "0019_LF10_FIX",
+          "measure": "formula",
+          "formula": "stud_count"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "TJ20",
+      "outputs": [
+        {
+          "normId": "0019_LF07_TJ",
+          "measure": "formula",
+          "formula": "area_m2 / 0.5"
+        },
+        {
+          "normId": "0004_RPCH05A_91",
+          "measure": "area"
+        },
+        {
+          "normId": "0004_RPCE19C_09",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "TJ24",
+      "outputs": [
+        {
+          "normId": "0019_LF07_TJ",
+          "measure": "formula",
+          "formula": "area_m2 / 0.5"
+        },
+        {
+          "normId": "0004_RPCH05A_91",
+          "measure": "area"
+        },
+        {
+          "normId": "0004_RPCE19C_09",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "slab",
+      "elementTypeId": "*",
+      "structuralSystem": "timber_frame",
+      "outputs": [
+        {
+          "normId": "0019_LF07_TJ",
+          "measure": "formula",
+          "formula": "area_m2 / 0.5"
+        },
+        {
+          "normId": "0004_RPCH05A_91",
+          "measure": "area"
+        },
+        {
+          "normId": "0004_RPCE19C_09",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "*",
+      "spec": "lemn:lamelar",
+      "outputs": [
+        {
+          "normId": "0019_LF11_GL",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "*",
+      "spec": "lemn:lvl",
+      "outputs": [
+        {
+          "normId": "0019_LF12_LVL",
+          "measure": "formula",
+          "formula": "stud_length_m + plate_length_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "sweep",
+      "elementTypeId": "*",
+      "outputs": [
+        {
+          "normId": "0018_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0018_CB01C_02",
+          "measure": "area"
+        },
+        {
+          "normId": "0018_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "beam_grid",
+      "outputs": [
+        {
+          "normId": "0031_RC01_BET",
+          "measure": "volume"
+        },
+        {
+          "normId": "0031_RC02_COF",
+          "measure": "formula",
+          "formula": "outer_face_area_m2 + inner_face_area_m2"
+        },
+        {
+          "normId": "0031_RC03_ARM",
+          "measure": "formula",
+          "formula": "volume_m3 * 110"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "foundation",
+      "outputs": [
+        {
+          "normId": "0031_RC01_BET",
+          "measure": "volume"
+        },
+        {
+          "normId": "0031_RC02_COF",
+          "measure": "formula",
+          "formula": "outer_face_area_m2 + inner_face_area_m2"
+        },
+        {
+          "normId": "0031_RC03_ARM",
+          "measure": "formula",
+          "formula": "volume_m3 * 90"
+        },
+        {
+          "normId": "0031_RC04_EGA",
+          "measure": "formula",
+          "formula": "net_solid_area_m2"
+        },
+        {
+          "normId": "0031_RC05_HID",
+          "measure": "formula",
+          "formula": "net_solid_area_m2 + outer_face_area_m2"
+        },
+        {
+          "normId": "0031_RC06_UMP",
+          "measure": "formula",
+          "formula": "hole_area_m2 * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W10",
+      "outputs": [
+        {
+          "normId": "0022_GK02_SCH",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0022_GK03_IZO",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W12",
+      "outputs": [
+        {
+          "normId": "0022_GK02_SCH",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        },
+        {
+          "normId": "0022_GK03_IZO",
+          "measure": "formula",
+          "formula": "sheathing_area_m2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W10",
+      "spec": "rigips:standard",
+      "outputs": [
+        {
+          "normId": "0022_GK01_STD",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W12",
+      "spec": "rigips:standard",
+      "outputs": [
+        {
+          "normId": "0022_GK01_STD",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W10",
+      "spec": "rigips:ru",
+      "outputs": [
+        {
+          "normId": "0022_GK04_RU",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W12",
+      "spec": "rigips:ru",
+      "outputs": [
+        {
+          "normId": "0022_GK04_RU",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W10",
+      "spec": "rigips:rf",
+      "outputs": [
+        {
+          "normId": "0022_GK05_RF",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W12",
+      "spec": "rigips:rf",
+      "outputs": [
+        {
+          "normId": "0022_GK05_RF",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W10",
+      "spec": "rigips:dubla",
+      "outputs": [
+        {
+          "normId": "0022_GK06_DBL",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W12",
+      "spec": "rigips:dubla",
+      "outputs": [
+        {
+          "normId": "0022_GK06_DBL",
+          "measure": "formula",
+          "formula": "sheathing_area_m2 * 2"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "sapa:cimentata",
+      "outputs": [
+        {
+          "normId": "0007_SP01_CIM",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "sapa:autonivelanta",
+      "outputs": [
+        {
+          "normId": "0007_CG01F1_82",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "sapa:uscata",
+      "outputs": [
+        {
+          "normId": "0007_SP03_USC",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "stairwell",
+      "elementTypeId": "*",
+      "outputs": [
+        {
+          "normId": "0017_CA01D_02",
+          "measure": "volume"
+        },
+        {
+          "normId": "0017_CB01C_02",
+          "measure": "formula",
+          "formula": "length_m * width_m"
+        },
+        {
+          "normId": "0017_CC01A4_02",
+          "measure": "formula",
+          "formula": "volume_m3 * 61.5"
         }
       ]
     },
@@ -1272,24 +2999,176 @@
           "formula": "perimeter_m * height_m"
         },
         {
-          "normId": "0011_CF06B1_82",
+          "normId": "0013_CN05A_02",
           "measure": "formula",
           "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "tencuiala_int:ipsos_mecanizat",
+      "outputs": [
+        {
+          "normId": "0011_CF25MEC_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "tencuiala_int:var_ciment",
+      "outputs": [
+        {
+          "normId": "0011_CF10VC_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "outputs": [
+        {
+          "normId": "0011_CF06B1_82",
+          "measure": "area"
         },
         {
           "normId": "0012_00107A011_02",
-          "measure": "formula",
-          "formula": "perimeter_m * height_m"
+          "measure": "area"
         },
+        {
+          "normId": "0013_CN11A_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "tencuiala_ext:decorativa",
+      "outputs": [
+        {
+          "normId": "0011_CF35DEC_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "termoizolatie:eps15",
+      "outputs": [
+        {
+          "normId": "0012_EPS15_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "termoizolatie:eps_grafitat10",
+      "outputs": [
+        {
+          "normId": "0012_EPSG10_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "termoizolatie:vata15",
+      "outputs": [
+        {
+          "normId": "0012_VATA15_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "termoizolatie:fibra_lemn16",
+      "outputs": [
+        {
+          "normId": "0012_FL16_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "structuralSystem": "timber_frame",
+      "outputs": [
         {
           "normId": "0013_CN05A_02",
           "measure": "formula",
           "formula": "perimeter_m * height_m"
-        },
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "structuralSystem": "clt",
+      "outputs": [
         {
-          "normId": "0013_CN11A_02",
+          "normId": "0013_CN05A_02",
           "measure": "formula",
           "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "vopsitorie:premium",
+      "outputs": [
+        {
+          "normId": "0013_CN20PR_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "room",
+      "elementTypeId": "*",
+      "spec": "vopsitorie:silicatica",
+      "outputs": [
+        {
+          "normId": "0013_CN05A_02",
+          "measure": "formula",
+          "formula": "perimeter_m * height_m"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "vopsitorie:premium",
+      "outputs": [
+        {
+          "normId": "0013_CN11A_02",
+          "measure": "area"
+        }
+      ]
+    },
+    {
+      "nodeType": "shell",
+      "elementTypeId": "envelope",
+      "spec": "vopsitorie:silicatica",
+      "outputs": [
+        {
+          "normId": "0013_CN30SIL_02",
+          "measure": "area"
         }
       ]
     },
@@ -1352,9 +3231,189 @@
           "measure": "volume"
         }
       ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W15",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W20",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W25",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W30",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W35",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W40",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W15",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W20",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W25",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W30",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W35",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W40",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
     }
   ],
   "prices": {
+    "0030_BT01_C25": {
+      "material": 500,
+      "manopera": 75,
+      "utilaj": 85,
+      "transport": 45
+    },
+    "0030_BT02_C30": {
+      "material": 560,
+      "manopera": 75,
+      "utilaj": 85,
+      "transport": 45
+    },
+    "0020_CA02C_02": {
+      "material": 520,
+      "manopera": 95,
+      "utilaj": 90,
+      "transport": 50
+    },
+    "0020_CB02A_02": {
+      "material": 38,
+      "manopera": 48,
+      "utilaj": 6,
+      "transport": 5
+    },
+    "0020_CC02C_02": {
+      "material": 5.6,
+      "manopera": 2.1,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0020_CD01A_02": {
+      "material": 400,
+      "manopera": 210,
+      "utilaj": 20,
+      "transport": 40
+    },
+    "0020_CD02A_02": {
+      "material": 45,
+      "manopera": 22,
+      "utilaj": 3,
+      "transport": 3
+    },
+    "0020_CD03A_02": {
+      "material": 6,
+      "manopera": 8,
+      "utilaj": 0,
+      "transport": 0.5
+    },
     "0003_CA01D_02": {
       "material": 450,
       "manopera": 110,
@@ -1379,11 +3438,71 @@
       "utilaj": 4,
       "transport": 6
     },
+    "0021_CLT01_PN": {
+      "material": 2100,
+      "manopera": 0,
+      "utilaj": 0,
+      "transport": 120
+    },
+    "0021_CLT02_CNC": {
+      "material": 9,
+      "manopera": 0,
+      "utilaj": 6,
+      "transport": 0
+    },
+    "0021_CLT03_MNT": {
+      "material": 4,
+      "manopera": 32,
+      "utilaj": 22,
+      "transport": 0
+    },
+    "0021_CLT04_CON": {
+      "material": 28,
+      "manopera": 14,
+      "utilaj": 0.5,
+      "transport": 1
+    },
+    "0021_CLT05_JNT": {
+      "material": 12,
+      "manopera": 9,
+      "utilaj": 0.3,
+      "transport": 0.5
+    },
+    "0021_CLT06_GK": {
+      "material": 26,
+      "manopera": 20,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0021_CLT07_FL": {
+      "material": 380,
+      "manopera": 28,
+      "utilaj": 24,
+      "transport": 20
+    },
     "0015_CK26A_02": {
       "material": 34,
       "manopera": 22,
       "utilaj": 1,
       "transport": 3
+    },
+    "0024_FA01_STD": {
+      "material": 95,
+      "manopera": 85,
+      "utilaj": 2,
+      "transport": 5
+    },
+    "0024_FA02_POR": {
+      "material": 135,
+      "manopera": 95,
+      "utilaj": 2,
+      "transport": 6
+    },
+    "0024_FA03_MAR": {
+      "material": 210,
+      "manopera": 145,
+      "utilaj": 6,
+      "transport": 9
     },
     "0006_CE08A_02": {
       "material": 32,
@@ -1421,6 +3540,114 @@
       "utilaj": 1,
       "transport": 2
     },
+    "0006_TIGCER_02": {
+      "material": 105,
+      "manopera": 62,
+      "utilaj": 4,
+      "transport": 12
+    },
+    "0006_TIGMET_02": {
+      "material": 68,
+      "manopera": 38,
+      "utilaj": 3,
+      "transport": 5
+    },
+    "0023_PD01_LAM": {
+      "material": 85,
+      "manopera": 32,
+      "utilaj": 1,
+      "transport": 4
+    },
+    "0023_PD02_STR": {
+      "material": 175,
+      "manopera": 42,
+      "utilaj": 1,
+      "transport": 5
+    },
+    "0023_PD03_GRE": {
+      "material": 120,
+      "manopera": 78,
+      "utilaj": 2,
+      "transport": 6
+    },
+    "0023_PD04_LVT": {
+      "material": 140,
+      "manopera": 48,
+      "utilaj": 1,
+      "transport": 4
+    },
+    "0019_LF01_TF": {
+      "material": 14,
+      "manopera": 9,
+      "utilaj": 0.5,
+      "transport": 1
+    },
+    "0019_LF02_OSB": {
+      "material": 38,
+      "manopera": 16,
+      "utilaj": 1,
+      "transport": 3
+    },
+    "0019_LF03_MW": {
+      "material": 34,
+      "manopera": 9,
+      "utilaj": 0,
+      "transport": 3
+    },
+    "0019_LF04_GK": {
+      "material": 28,
+      "manopera": 22,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0019_LF05_VB": {
+      "material": 6,
+      "manopera": 5,
+      "utilaj": 0,
+      "transport": 0.5
+    },
+    "0019_LF06_WB": {
+      "material": 8,
+      "manopera": 5,
+      "utilaj": 0,
+      "transport": 0.5
+    },
+    "0019_LF07_TJ": {
+      "material": 22,
+      "manopera": 10,
+      "utilaj": 0.5,
+      "transport": 1.5
+    },
+    "0019_LF08_HDR": {
+      "material": 38,
+      "manopera": 12,
+      "utilaj": 0.5,
+      "transport": 2
+    },
+    "0019_LF09_ANC": {
+      "material": 9,
+      "manopera": 7,
+      "utilaj": 0.5,
+      "transport": 0.5
+    },
+    "0019_LF10_FIX": {
+      "material": 3.5,
+      "manopera": 2.5,
+      "utilaj": 0.2,
+      "transport": 0.2
+    },
+    "0019_LF11_GL": {
+      "material": 38,
+      "manopera": 10,
+      "utilaj": 0.5,
+      "transport": 2
+    },
+    "0019_LF12_LVL": {
+      "material": 46,
+      "manopera": 10,
+      "utilaj": 0.5,
+      "transport": 2
+    },
     "0004_RPCH05A_91": {
       "material": 190,
       "manopera": 90,
@@ -1433,17 +3660,137 @@
       "utilaj": 1,
       "transport": 4
     },
+    "0018_CA01D_02": {
+      "material": 450,
+      "manopera": 110,
+      "utilaj": 55,
+      "transport": 45
+    },
+    "0018_CB01C_02": {
+      "material": 45,
+      "manopera": 55,
+      "utilaj": 4,
+      "transport": 6
+    },
+    "0018_CC01A4_02": {
+      "material": 5.2,
+      "manopera": 1.8,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0031_RC01_BET": {
+      "material": 500,
+      "manopera": 80,
+      "utilaj": 85,
+      "transport": 45
+    },
+    "0031_RC02_COF": {
+      "material": 36,
+      "manopera": 46,
+      "utilaj": 5,
+      "transport": 5
+    },
+    "0031_RC03_ARM": {
+      "material": 5.6,
+      "manopera": 2.2,
+      "utilaj": 0.2,
+      "transport": 0.3
+    },
+    "0031_RC04_EGA": {
+      "material": 62,
+      "manopera": 22,
+      "utilaj": 8,
+      "transport": 8
+    },
+    "0031_RC05_HID": {
+      "material": 34,
+      "manopera": 26,
+      "utilaj": 1,
+      "transport": 4
+    },
+    "0031_RC06_UMP": {
+      "material": 95,
+      "manopera": 34,
+      "utilaj": 26,
+      "transport": 30
+    },
+    "0022_GK01_STD": {
+      "material": 28,
+      "manopera": 22,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0022_GK02_SCH": {
+      "material": 24,
+      "manopera": 18,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0022_GK03_IZO": {
+      "material": 16,
+      "manopera": 7,
+      "utilaj": 0,
+      "transport": 1.5
+    },
+    "0022_GK04_RU": {
+      "material": 36,
+      "manopera": 22,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0022_GK05_RF": {
+      "material": 42,
+      "manopera": 24,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0022_GK06_DBL": {
+      "material": 54,
+      "manopera": 38,
+      "utilaj": 1.5,
+      "transport": 3
+    },
     "0007_CG01F1_82": {
       "material": 34,
       "manopera": 22,
       "utilaj": 2,
       "transport": 4
     },
+    "0007_SP01_CIM": {
+      "material": 42,
+      "manopera": 30,
+      "utilaj": 4,
+      "transport": 6
+    },
+    "0007_SP03_USC": {
+      "material": 96,
+      "manopera": 40,
+      "utilaj": 1,
+      "transport": 6
+    },
     "0005_CE28A_02": {
       "material": 130,
       "manopera": 75,
       "utilaj": 6,
       "transport": 10
+    },
+    "0017_CA01D_02": {
+      "material": 450,
+      "manopera": 110,
+      "utilaj": 55,
+      "transport": 45
+    },
+    "0017_CB01C_02": {
+      "material": 45,
+      "manopera": 55,
+      "utilaj": 4,
+      "transport": 6
+    },
+    "0017_CC01A4_02": {
+      "material": 5.2,
+      "manopera": 1.8,
+      "utilaj": 0.2,
+      "transport": 0.3
     },
     "0016_RPCE26A_09": {
       "material": 14,
@@ -1499,11 +3846,53 @@
       "utilaj": 3,
       "transport": 4
     },
+    "0011_CF25MEC_02": {
+      "material": 21,
+      "manopera": 15,
+      "utilaj": 6,
+      "transport": 3
+    },
+    "0011_CF10VC_02": {
+      "material": 17,
+      "manopera": 32,
+      "utilaj": 2,
+      "transport": 3
+    },
+    "0011_CF35DEC_02": {
+      "material": 42,
+      "manopera": 34,
+      "utilaj": 2,
+      "transport": 4
+    },
     "0012_00107A011_02": {
       "material": 70,
       "manopera": 48,
       "utilaj": 3,
       "transport": 6
+    },
+    "0012_EPS15_02": {
+      "material": 92,
+      "manopera": 52,
+      "utilaj": 3,
+      "transport": 7
+    },
+    "0012_EPSG10_02": {
+      "material": 88,
+      "manopera": 48,
+      "utilaj": 3,
+      "transport": 6
+    },
+    "0012_VATA15_02": {
+      "material": 128,
+      "manopera": 62,
+      "utilaj": 4,
+      "transport": 9
+    },
+    "0012_FL16_02": {
+      "material": 155,
+      "manopera": 66,
+      "utilaj": 4,
+      "transport": 10
     },
     "0013_CN05A_02": {
       "material": 11,
@@ -1514,6 +3903,18 @@
     "0013_CN11A_02": {
       "material": 17,
       "manopera": 20,
+      "utilaj": 1,
+      "transport": 2
+    },
+    "0013_CN20PR_02": {
+      "material": 19,
+      "manopera": 18,
+      "utilaj": 1,
+      "transport": 1.5
+    },
+    "0013_CN30SIL_02": {
+      "material": 28,
+      "manopera": 22,
       "utilaj": 1,
       "transport": 2
     },
@@ -1528,6 +3929,892 @@
       "manopera": 12,
       "utilaj": 1,
       "transport": 2
+    },
+    "0001_BCA25_02": {
+      "material": 330,
+      "manopera": 190,
+      "utilaj": 20,
+      "transport": 35
+    },
+    "0001_CARPLIN_02": {
+      "material": 520,
+      "manopera": 300,
+      "utilaj": 25,
+      "transport": 55
     }
-  }
+  },
+  "priceMeta": {
+    "0030_BT01_C25": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0030_BT02_C30": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CA02C_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CB02A_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CC02C_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CD01A_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CD02A_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0020_CD03A_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0003_CA01D_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0003_CC01A4_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0003_CC01A1_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0003_CB01C_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0021_CLT01_PN": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT02_CNC": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT03_MNT": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT04_CON": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT05_JNT": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT06_GK": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0021_CLT07_FL": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0015_CK26A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0024_FA01_STD": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0024_FA02_POR": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0024_FA03_MAR": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0006_CE08A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_CE07A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_CE08B_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_CE08C_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_CE08D_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_CE08E_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0006_TIGCER_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0006_TIGMET_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0023_PD01_LAM": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0023_PD02_STR": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0023_PD03_GRE": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0023_PD04_LVT": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF01_TF": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF02_OSB": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF03_MW": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF04_GK": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF05_VB": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF06_WB": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF07_TJ": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF08_HDR": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF09_ANC": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF10_FIX": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF11_GL": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0019_LF12_LVL": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0004_RPCH05A_91": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0004_RPCE19C_09": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0018_CA01D_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0018_CB01C_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0018_CC01A4_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0031_RC01_BET": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0031_RC02_COF": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0031_RC03_ARM": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0031_RC04_EGA": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0031_RC05_HID": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0031_RC06_UMP": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK01_STD": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK02_SCH": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK03_IZO": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK04_RU": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK05_RF": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0022_GK06_DBL": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0007_CG01F1_82": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0007_SP01_CIM": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0007_SP03_USC": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0005_CE28A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0017_CA01D_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0017_CB01C_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0017_CC01A4_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0016_RPCE26A_09": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0016_CD03A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0016_00301E_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0002_CA01D_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0002_CB01C_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0002_CC01A4_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0002_CC01A1_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0011_CF24A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0011_CF06B1_82": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0011_CF25MEC_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0011_CF10VC_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0011_CF35DEC_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0012_00107A011_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0012_EPS15_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0012_EPSG10_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0012_VATA15_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0012_FL16_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0013_CN05A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0013_CN11A_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0013_CN20PR_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0013_CN30SIL_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0001_00201A01_02": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0001_RPCE26A_09": {
+      "source": "estimare (2025–2026)",
+      "date": ""
+    },
+    "0001_BCA25_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    },
+    "0001_CARPLIN_02": {
+      "source": "estimare",
+      "date": "2026-09"
+    }
+  },
+  "specGroups": [
+    {
+      "id": "zidarie",
+      "label": "Zidărie",
+      "appliesTo": [
+        "wall"
+      ],
+      "defaultOption": "porotherm38",
+      "defaultArticles": [
+        "0001_00201A01_02"
+      ],
+      "description": "Blocul din care se ridică pereții portanți de zidărie",
+      "options": [
+        {
+          "group": "zidarie",
+          "id": "porotherm38",
+          "label": "Porotherm 38 (implicit)",
+          "description": "Blocuri ceramice cu locaș de mortar",
+          "material": "brick",
+          "lambda": 0.14,
+          "grosime": 380
+        },
+        {
+          "group": "zidarie",
+          "id": "bca25",
+          "label": "BCA 25 cm",
+          "description": "Beton celular autoclavizat, mai ieftin și mai ușor",
+          "material": "aac_block",
+          "lambda": 0.11,
+          "grosime": 250
+        },
+        {
+          "group": "zidarie",
+          "id": "caramida_plina",
+          "label": "Cărămidă plină presată",
+          "description": "Grea, scumpă, folosită la reabilitări și la soclu",
+          "material": "brick",
+          "lambda": 0.8,
+          "grosime": 250
+        }
+      ]
+    },
+    {
+      "id": "beton",
+      "label": "Clasa betonului",
+      "appliesTo": [
+        "column",
+        "ax",
+        "beam"
+      ],
+      "defaultOption": "c20_santier",
+      "defaultArticles": [
+        "0002_CA01D_02",
+        "0003_CA01D_02"
+      ],
+      "description": "Clasa și modul de punere în operă pentru sâmburi și centuri",
+      "options": [
+        {
+          "group": "beton",
+          "id": "c20_santier",
+          "label": "C20/25 preparat pe șantier (implicit)",
+          "description": "Betonieră la fața locului"
+        },
+        {
+          "group": "beton",
+          "id": "c25_pompat",
+          "label": "C25/30 gata preparat, pompat",
+          "description": "Autobetonieră + pompă"
+        },
+        {
+          "group": "beton",
+          "id": "c30_pompat",
+          "label": "C30/37 gata preparat, pompat",
+          "description": "Clasă superioară, expunere severă"
+        }
+      ]
+    },
+    {
+      "id": "lemn",
+      "label": "Lemn de structură",
+      "appliesTo": [
+        "wall"
+      ],
+      "defaultOption": "c24",
+      "defaultArticles": [
+        "0019_LF01_TF"
+      ],
+      "description": "Esența și clasa montanților și tălpilor din pereții de lemn",
+      "options": [
+        {
+          "group": "lemn",
+          "id": "c24",
+          "label": "Rășinoase C24 (implicit)",
+          "description": "Lemn ecarisat uscat, clasa de rezistență uzuală",
+          "material": "wood"
+        },
+        {
+          "group": "lemn",
+          "id": "lamelar",
+          "label": "Lemn lamelar încleiat GL24h",
+          "description": "Stabil dimensional, secțiuni mari",
+          "material": "wood"
+        },
+        {
+          "group": "lemn",
+          "id": "lvl",
+          "label": "LVL furnir laminat",
+          "description": "Rezistență mare, deschideri mari",
+          "material": "wood"
+        }
+      ]
+    },
+    {
+      "id": "tencuiala_int",
+      "label": "Tencuială interioară",
+      "appliesTo": [
+        "room"
+      ],
+      "defaultOption": "ipsos",
+      "defaultArticles": [
+        "0011_CF24A_02"
+      ],
+      "description": "Tencuiala pereților la interior",
+      "options": [
+        {
+          "group": "tencuiala_int",
+          "id": "ipsos",
+          "label": "Ipsos 1 cm, manual (implicit)",
+          "description": "Aplicare manuală",
+          "material": "plaster",
+          "lambda": 0.35,
+          "grosime": 10
+        },
+        {
+          "group": "tencuiala_int",
+          "id": "ipsos_mecanizat",
+          "label": "Ipsos mecanizat",
+          "description": "Pompă de tencuit, manoperă mai mică",
+          "material": "plaster",
+          "lambda": 0.35,
+          "grosime": 10
+        },
+        {
+          "group": "tencuiala_int",
+          "id": "var_ciment",
+          "label": "Mortar var-ciment",
+          "description": "Mai dur, suport pentru placări",
+          "material": "plaster",
+          "lambda": 0.87,
+          "grosime": 20
+        },
+        {
+          "group": "tencuiala_int",
+          "id": "fara",
+          "label": "Fără tencuială",
+          "description": "Pe banda placată cu faianță: șapa de sub placaj intră în articolul de placare"
+        }
+      ]
+    },
+    {
+      "id": "tencuiala_ext",
+      "label": "Tencuială exterioară",
+      "appliesTo": [
+        "shell"
+      ],
+      "defaultOption": "driscuita",
+      "defaultArticles": [
+        "0011_CF06B1_82"
+      ],
+      "description": "Stratul de finisaj al fațadei, peste termoizolație",
+      "options": [
+        {
+          "group": "tencuiala_ext",
+          "id": "driscuita",
+          "label": "Driscuită 2.5 cm (implicit)",
+          "description": "Tencuială obișnuită pe zidărie",
+          "material": "plaster",
+          "lambda": 0.87,
+          "grosime": 25
+        },
+        {
+          "group": "tencuiala_ext",
+          "id": "decorativa",
+          "label": "Decorativă siliconică",
+          "description": "Pe termosistem, structurată",
+          "material": "plaster",
+          "lambda": 0.7,
+          "grosime": 3
+        },
+        {
+          "group": "tencuiala_ext",
+          "id": "fara",
+          "label": "Fără tencuială exterioară",
+          "description": "Fațadă ventilată sau placare, tratate separat"
+        }
+      ]
+    },
+    {
+      "id": "termoizolatie",
+      "label": "Termoizolație fațadă",
+      "appliesTo": [
+        "shell"
+      ],
+      "defaultOption": "eps10",
+      "defaultArticles": [
+        "0012_00107A011_02"
+      ],
+      "description": "Materialul și grosimea izolației de fațadă",
+      "options": [
+        {
+          "group": "termoizolatie",
+          "id": "eps10",
+          "label": "Polistiren expandat 10 cm (implicit)",
+          "description": "Termosistem clasic",
+          "material": "insulation",
+          "lambda": 0.038,
+          "grosime": 100
+        },
+        {
+          "group": "termoizolatie",
+          "id": "eps15",
+          "label": "Polistiren expandat 15 cm",
+          "description": "Grosime sporită",
+          "material": "insulation",
+          "lambda": 0.038,
+          "grosime": 150
+        },
+        {
+          "group": "termoizolatie",
+          "id": "eps_grafitat10",
+          "label": "Polistiren grafitat 10 cm",
+          "description": "Conductivitate mai bună la aceeași grosime",
+          "material": "insulation",
+          "lambda": 0.031,
+          "grosime": 100
+        },
+        {
+          "group": "termoizolatie",
+          "id": "vata15",
+          "label": "Vată bazaltică 15 cm",
+          "description": "Ignifugă și permeabilă la vapori",
+          "material": "insulation",
+          "lambda": 0.035,
+          "grosime": 150
+        },
+        {
+          "group": "termoizolatie",
+          "id": "fibra_lemn16",
+          "label": "Fibră lemnoasă 16 cm",
+          "description": "Biogenă, potrivită pe structuri de lemn",
+          "material": "insulation",
+          "lambda": 0.04,
+          "grosime": 160
+        }
+      ]
+    },
+    {
+      "id": "vopsitorie",
+      "label": "Vopsitorie",
+      "appliesTo": [
+        "room",
+        "shell"
+      ],
+      "defaultOption": "lavabila",
+      "defaultArticles": [
+        "0013_CN05A_02",
+        "0013_CN11A_02"
+      ],
+      "description": "Vopseaua de interior și de exterior",
+      "options": [
+        {
+          "group": "vopsitorie",
+          "id": "lavabila",
+          "label": "Lavabilă acrilică (implicit)",
+          "description": "Interior și exterior"
+        },
+        {
+          "group": "vopsitorie",
+          "id": "premium",
+          "label": "Lavabilă premium lavabilă",
+          "description": "Rezistentă la spălare"
+        },
+        {
+          "group": "vopsitorie",
+          "id": "silicatica",
+          "label": "Silicatică la exterior",
+          "description": "Permeabilă la vapori, durabilă"
+        },
+        {
+          "group": "vopsitorie",
+          "id": "fara",
+          "label": "Fără vopsitorie",
+          "description": "Pe banda placată cu faianță nu se vopsește"
+        }
+      ]
+    },
+    {
+      "id": "invelitoare",
+      "label": "Învelitoare",
+      "appliesTo": [
+        "roof"
+      ],
+      "defaultOption": "tabla",
+      "defaultArticles": [
+        "0006_CE07A_02"
+      ],
+      "description": "Materialul de acoperire al șarpantei",
+      "options": [
+        {
+          "group": "invelitoare",
+          "id": "tabla",
+          "label": "Tablă faltuită (implicit)",
+          "description": "Falț dublu pe astereală"
+        },
+        {
+          "group": "invelitoare",
+          "id": "tigla_ceramica",
+          "label": "Țiglă ceramică",
+          "description": "Grea, durabilă"
+        },
+        {
+          "group": "invelitoare",
+          "id": "tigla_metalica",
+          "label": "Țiglă metalică",
+          "description": "Ușoară, montaj rapid"
+        }
+      ]
+    },
+    {
+      "id": "sapa",
+      "label": "Șapă",
+      "appliesTo": [
+        "room"
+      ],
+      "defaultOption": "cimentata",
+      "defaultArticles": [],
+      "description": "Stratul suport al pardoselii",
+      "options": [
+        {
+          "group": "sapa",
+          "id": "cimentata",
+          "label": "Șapă cimentată 5 cm (implicit)",
+          "description": "Clasică, armată cu fibre"
+        },
+        {
+          "group": "sapa",
+          "id": "autonivelanta",
+          "label": "Șapă autonivelantă",
+          "description": "Plană, potrivită sub covor sau LVT"
+        },
+        {
+          "group": "sapa",
+          "id": "uscata",
+          "label": "Șapă uscată din plăci",
+          "description": "Fără uscare, potrivită la reabilitări"
+        },
+        {
+          "group": "sapa",
+          "id": "fara",
+          "label": "Fără șapă",
+          "description": "Placa se finisează direct"
+        }
+      ]
+    },
+    {
+      "id": "pardoseala",
+      "label": "Pardoseală",
+      "appliesTo": [
+        "room"
+      ],
+      "defaultOption": "parchet_laminat",
+      "defaultArticles": [],
+      "description": "Finisajul de călcare din camere",
+      "options": [
+        {
+          "group": "pardoseala",
+          "id": "parchet_laminat",
+          "label": "Parchet laminat (implicit)",
+          "description": "Clasa 32, cu folie și izofon"
+        },
+        {
+          "group": "pardoseala",
+          "id": "parchet_stratificat",
+          "label": "Parchet stratificat lemn",
+          "description": "Strat de uzură din lemn masiv"
+        },
+        {
+          "group": "pardoseala",
+          "id": "gresie",
+          "label": "Gresie porțelanată",
+          "description": "Rezistentă, potrivită peste încălzire în pardoseală"
+        },
+        {
+          "group": "pardoseala",
+          "id": "lvt",
+          "label": "Vinil LVT",
+          "description": "Cald la atingere, montaj lipit sau click"
+        },
+        {
+          "group": "pardoseala",
+          "id": "fara",
+          "label": "Fără pardoseală",
+          "description": "Se decontează separat"
+        }
+      ]
+    },
+    {
+      "id": "faianta",
+      "label": "Faianță pereți",
+      "appliesTo": [
+        "room"
+      ],
+      "defaultOption": "fara",
+      "defaultArticles": [],
+      "description": "Placarea ceramică a pereților, în camerele umede",
+      "options": [
+        {
+          "group": "faianta",
+          "id": "fara",
+          "label": "Fără faianță (implicit)",
+          "description": "Se pune doar în camerele umede"
+        },
+        {
+          "group": "faianta",
+          "id": "standard",
+          "label": "Faianță ceramică",
+          "description": "Format uzual; înălțimea de placare vine din banda camerei",
+          "material": "ceramic_tile",
+          "lambda": 1.3,
+          "grosime": 8
+        },
+        {
+          "group": "faianta",
+          "id": "portelanata",
+          "label": "Gresie porțelanată pe pereți",
+          "description": "Format mare, rosturi fine",
+          "material": "ceramic_tile",
+          "lambda": 1.3,
+          "grosime": 9
+        },
+        {
+          "group": "faianta",
+          "id": "mare_format",
+          "label": "Placă mare format",
+          "description": "120×60 și peste, manoperă în doi",
+          "material": "ceramic_tile",
+          "lambda": 1.3,
+          "grosime": 10
+        }
+      ]
+    },
+    {
+      "id": "rigips",
+      "label": "Pereți gips-carton",
+      "appliesTo": [
+        "wall"
+      ],
+      "defaultOption": "standard",
+      "defaultArticles": [],
+      "description": "Placarea compartimentărilor ușoare W10 și W12",
+      "options": [
+        {
+          "group": "rigips",
+          "id": "standard",
+          "label": "Gips-carton standard (implicit)",
+          "description": "Placare simplă pe schelet metalic"
+        },
+        {
+          "group": "rigips",
+          "id": "ru",
+          "label": "Gips-carton rezistent la umezeală",
+          "description": "Camere umede"
+        },
+        {
+          "group": "rigips",
+          "id": "rf",
+          "label": "Gips-carton rezistent la foc",
+          "description": "Compartimentări cu cerință de rezistență la foc"
+        },
+        {
+          "group": "rigips",
+          "id": "dubla",
+          "label": "Dublă placare pe fiecare față",
+          "description": "Rigiditate și izolare fonică sporite"
+        }
+      ]
+    }
+  ]
 }

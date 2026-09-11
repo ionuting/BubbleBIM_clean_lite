@@ -10,15 +10,20 @@
  *
  * Flow: Save Checkpoint pushes the current backend graph as a named commit
  * → the list shows every commit newest-first → Restore appends a NEW commit
- * carrying the target's content (nothing is ever deleted) and reloads it
- * into the app's local state via `onRestore`.
+ * carrying the target's content (it never rewrites history) and reloads it
+ * into the app's local state via `onRestore`. 🗑 is the one destructive
+ * action, and only ever on the version the user picked.
+ *
+ * The log is PER PROJECT in all three profiles — keyed on the cloud project
+ * id in api.cloud.ts, and on the graph's own projectName in api.ts /
+ * api.lite.ts.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/ui/toast';
 import {
-  commitHistory, listHistory, restoreHistoryCommit, gcHistory, addHistoryComment,
-  getHistoryDiff, getHistoryCommitContent,
+  commitHistory, listHistory, restoreHistoryCommit, gcHistory, addHistoryComment, amendHistoryCommit,
+  getHistoryDiff, getHistoryCommitContent, deleteHistoryCommit,
   type HistoryCommit, type HistoryCommitKind, type HistoryDiffSummary,
 } from '@/lib/api';
 import type { GraphData } from '@/lib/api';
@@ -48,6 +53,8 @@ interface HistoryPanelProps {
   /** Apply a restored graph into the app's local state (should also call breakCoalescing() on the undo stack). */
   onRestore: (data: GraphData) => void;
   onClose: () => void;
+  /** Whose history this is. The log is per-project in every profile; showing the name makes that visible. */
+  projectName?: string;
 }
 
 const KIND_META: Record<HistoryCommitKind, { icon: string; label: string; color: string }> = {
@@ -72,7 +79,7 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: HistoryPanelProps) {
+export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose, projectName }: HistoryPanelProps) {
   const [commits, setCommits] = useState<HistoryCommit[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkpointMsg, setCheckpointMsg] = useState('');
@@ -110,6 +117,41 @@ export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: History
     }
   }, [checkpointMsg, onSaveBeforeCommit, refresh]);
 
+  /**
+   * Repoint an existing version at the CURRENT model — `git commit --amend`.
+   *
+   * The commit keeps its id, its place in the log and its comments; only what
+   * it holds changes. That is the point: a checkpoint is a name for a moment in
+   * the work ("fundații gata"), and when the work moves on the user wants the
+   * NAME to follow, not a second entry competing with it.
+   */
+  const handleAmend = useCallback(async (commit: HistoryCommit) => {
+    const label = commit.message || `#${commit.id}`;
+    const newer = commits.filter((c) => c.id > commit.id).length;
+    const msg = prompt(
+      `Actualizează „${label}" cu modelul curent.\n\n`
+      + `Versiunea își păstrează locul în istoric și comentariile; se schimbă doar ce conține.\n`
+      + (newer > 0
+        ? `\n⚠ După ea mai sunt ${newer} versiun${newer === 1 ? 'e' : 'i'} — rescrii un punct pe care istoricul l-a depășit deja.\n`
+        : '')
+      + `\nMesaj (gol = îl păstrează pe cel actual):`,
+      commit.message || '',
+    );
+    if (msg === null) return;   // cancelled — not the same as an empty message
+
+    setBusyId(commit.id);
+    try {
+      await onSaveBeforeCommit();
+      const result = await amendHistoryCommit(commit.id, msg.trim());
+      if (!result) { toast.error('Actualizarea a eșuat — pornește backendul'); return; }
+      setCommits((prev) => prev.map((c) => (c.id === commit.id ? result.commit : c)));
+      toast.success(`„${result.commit.message || `#${commit.id}`}" acum arată spre modelul curent `
+        + `(${result.commit.node_count}n / ${result.commit.edge_count}e)`);
+    } finally {
+      setBusyId(null);
+    }
+  }, [commits, onSaveBeforeCommit]);
+
   const handleRestore = useCallback(async (commit: HistoryCommit) => {
     const label = commit.message || `commit #${commit.id}`;
     if (!confirm(
@@ -132,6 +174,31 @@ export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: History
       setBusyId(null);
     }
   }, [onRestore, refresh]);
+
+  const handleDelete = useCallback(async (commit: HistoryCommit) => {
+    const label = commit.message || `commit #${commit.id}`;
+    const commentCount = commit.comments?.length ?? 0;
+    if (!confirm(
+      `Delete version "${label}" permanently?\n\n` +
+      `This drops the snapshot (${commit.node_count} nodes / ${commit.edge_count} edges` +
+      `${commentCount > 0 ? `, ${commentCount} comment${commentCount > 1 ? 's' : ''}` : ''}) from the history. ` +
+      `Your current model is NOT affected.\n\nThis cannot be undone.`,
+    )) return;
+
+    setBusyId(commit.id);
+    try {
+      const result = await deleteHistoryCommit(commit.id);
+      if (!result) { toast.error('Delete failed — is the backend running?'); return; }
+      // Drop it locally instead of refetching, and clear it out of any pending
+      // compare selection so the diff bar can't reference a version that's gone.
+      setCommits((prev) => prev.filter((c) => c.id !== commit.id));
+      setCompareIds((prev) => prev.filter((id) => id !== commit.id));
+      setExpandedId((prev) => (prev === commit.id ? null : prev));
+      toast.success(`Deleted "${label}"${result.freed_bytes ? ` — freed ${(result.freed_bytes / 1024).toFixed(1)} KB` : ''}`);
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
 
   const handleGc = useCallback(async () => {
     const result = await gcHistory(50);
@@ -196,9 +263,12 @@ export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: History
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200 bg-gray-50 shrink-0">
           <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-base">🕐</div>
-          <div className="flex-1">
-            <h3 className="font-bold text-sm text-gray-900">Version History</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Checkpoints, auto-saves, and restores — nothing here is ever deleted automatically</p>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-sm text-gray-900 truncate">
+              Version History
+              {projectName ? <span className="font-normal text-gray-400"> · {projectName}</span> : null}
+            </h3>
+            <p className="text-[10px] text-gray-500 mt-0.5">Checkpoints, auto-saves and restores for this project — nothing is deleted unless you delete it</p>
           </div>
           <button className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all text-sm" onClick={onClose}>✕</button>
         </div>
@@ -259,6 +329,16 @@ export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: History
                           <span title={new Date(c.timestamp).toLocaleString()}>{formatRelativeTime(c.timestamp)}</span>
                           <span>·</span>
                           <span>{c.node_count}n / {c.edge_count}e</span>
+                          {/* Un commit amendat e mai vechi ca intrare decât conținutul
+                              pe care îl poartă — se spune, nu se ascunde. */}
+                          {c.amended_at && (
+                            <span
+                              className="text-blue-500"
+                              title={`Actualizat cu modelul de la ${new Date(c.amended_at).toLocaleString()}`}
+                            >
+                              ⤴ actualizat
+                            </span>
+                          )}
                         </div>
                       </div>
                       <button
@@ -269,11 +349,27 @@ export function HistoryPanel({ onSaveBeforeCommit, onRestore, onClose }: History
                         💬{commentCount > 0 ? ` ${commentCount}` : ''}
                       </button>
                       <button
+                        onClick={() => handleAmend(c)}
+                        disabled={busyId !== null}
+                        title="Fă versiunea asta să arate spre modelul curent, păstrându-i locul și comentariile (git commit --amend)"
+                        className="text-[10px] px-2 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 disabled:opacity-40 transition-all shrink-0"
+                      >
+                        ⤴
+                      </button>
+                      <button
                         onClick={() => handleRestore(c)}
                         disabled={busyId !== null}
                         className="text-[10px] px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 font-medium transition-all shrink-0"
                       >
                         {busyId === c.id ? '…' : 'Restore'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(c)}
+                        disabled={busyId !== null}
+                        title="Delete this version permanently (your current model is not affected)"
+                        className="text-[10px] px-2 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 disabled:opacity-40 transition-all shrink-0"
+                      >
+                        🗑
                       </button>
                     </div>
                     {expanded && (

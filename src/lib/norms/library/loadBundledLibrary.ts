@@ -9,7 +9,7 @@
  * Globul e RELATIV la acest modul (nu absolut `/data`), ca să funcționeze
  * identic indiferent de `root`-ul Vite (standalone vs clean-lite).
  */
-import { parseCategoryMdCollecting, parseCatalogMd } from './parseLibrary';
+import { parseCategoryMdCollecting, parseCatalogMd, parseSpecsMdCollecting } from './parseLibrary';
 import type { ParseIssue } from './parseLibrary';
 import type { NormLibrary } from './types';
 
@@ -42,11 +42,18 @@ export function loadBundledLibrary(): BundledLibrary {
     ? safeCatalog(catalogEntry.text, issues)
     : { id: '', version: '', currency: 'lei' };
 
+  // `_specificatii.md` declares the specification groups, not a work category —
+  // same split the compile script makes, so the editor and the build agree.
+  const specsEntry = entries.find((e) => e.file === '_specificatii.md');
+  const specGroups = specsEntry
+    ? parseSpecsMdCollecting(specsEntry.text, specsEntry.file, issues)
+    : [];
+
   const categories = entries
-    .filter((e) => e.file !== '_catalog.md')
+    .filter((e) => e.file !== '_catalog.md' && e.file !== '_specificatii.md')
     .map((e) => parseCategoryMdCollecting(e.text, e.file, issues));
 
-  return { library: { meta, categories }, issues };
+  return { library: { meta, categories, specGroups }, issues };
 }
 
 function safeCatalog(text: string, issues: ParseIssue[]): NormLibrary['meta'] {

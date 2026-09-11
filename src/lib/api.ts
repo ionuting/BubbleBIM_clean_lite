@@ -23,6 +23,8 @@ export interface BubbleGraphEdge {
   id: string;
   from: string;
   to: string;
+  /** Relation semantics — optional, inferred when absent. See lib/graph/edgeTypes.ts. */
+  type?: import('@/lib/graph/edgeTypes').EdgeType;
 }
 
 export interface BuildingAxes {
@@ -43,6 +45,10 @@ export interface GraphData {
   /** Open drawing tabs (plans/sections/elevations/…) — persisted so the drawing workspace survives a reload. */
   viewTabs?: import('@/store').ViewTab[];
   activeTabId?: string;
+  /** Project-wide structural system; individual elements may override it. See lib/systems/structuralSystem.ts. */
+  structuralSystem?: import('@/lib/systems/structuralSystem').StructuralSystem;
+  /** Project-wide material/finish choices (lib/norms/specs.ts). */
+  specs?: Record<string, string>;
 }
 
 // ─── API Functions ───────────────────────────────────────────────────────
@@ -247,6 +253,11 @@ export async function restoreBackup(backupName: string) {
 // Replaces the raw backups/ scheme above: content-addressed (dedup), real
 // commit metadata (message + kind), and an explicit retention policy
 // (historyGc) instead of unbounded growth. See the History panel.
+//
+// PER PROJECT. This profile has no project registry, so the backend keys the
+// log on the saved graph's own `projectName` (see _history_for() in main.py)
+// — which is why none of these functions take a project argument: the
+// project is whatever is currently saved, always consistent with it.
 
 export type HistoryCommitKind = 'manual' | 'auto' | 'checkpoint' | 'restore' | 'pre-ifc-import';
 
@@ -266,6 +277,8 @@ export interface HistoryCommit {
   edge_count: number;
   /** Notes added AFTER the fact — never touches the commit's own content/message/hash. Absent on commits made before this field existed. */
   comments?: HistoryComment[];
+  /** When the commit was last repointed at a newer state (`amendHistoryCommit`). Absent while it still holds its original snapshot. */
+  amended_at?: string;
 }
 
 export interface HistoryDiffSummary {
@@ -312,6 +325,23 @@ export async function getHistoryCommitContent(commitId: number): Promise<GraphDa
 }
 
 /**
+ * Permanently delete ONE version from the log. The only destructive history
+ * operation — everything else appends. Does NOT touch the live graph: this
+ * removes a snapshot, not the model you're working on.
+ */
+export async function deleteHistoryCommit(commitId: number): Promise<{ success: boolean; freed_bytes: number } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/graph/history/${commitId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return { success: true, freed_bytes: data.deleted?.freed_bytes ?? 0 };
+  } catch (err) {
+    console.error('❌ Failed to delete commit:', err);
+    return null;
+  }
+}
+
+/**
  * Restore a commit — appends a NEW "restore" commit carrying the target's
  * content (nothing in the log is ever deleted or rewritten) and applies it
  * to the live backend graph. Caller still needs to reload into the local
@@ -352,6 +382,33 @@ export async function gcHistory(keepAuto = 50): Promise<{ success: boolean; prun
   }
 }
 
+/**
+ * Repoint an existing commit at the CURRENTLY SAVED graph — `git commit --amend`.
+ *
+ * Keeps the commit's id, parent, kind and comments; replaces its content and,
+ * when `message` is given, its message. Call `saveGraph()` first: what gets
+ * captured is what the backend holds, not what is on screen.
+ *
+ * `newer_commits` says how many versions already sit after this one — amending
+ * anything but the tip rewrites a point the log has already moved past.
+ */
+export async function amendHistoryCommit(
+  commitId: number,
+  message = '',
+): Promise<{ success: boolean; commit: HistoryCommit & { newer_commits: number } } | null> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/graph/history/${commitId}/amend?message=${encodeURIComponent(message)}`,
+      { method: 'POST' },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('❌ Failed to amend history commit:', err);
+    return null;
+  }
+}
+
 /** Append a note to a commit — does NOT touch its content, message, or hash (GitHub-style commit comment). */
 export async function addHistoryComment(commitId: number, text: string): Promise<{ success: boolean; commit: HistoryCommit } | null> {
   try {
@@ -371,11 +428,19 @@ export interface ChatHistoryEntry {
   content: string;
 }
 
+export interface ChatToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  result: unknown;
+}
+
 export interface ChatApiResponse {
   reply: string;
   cypher?: string | null;
   results?: unknown[] | null;
   action?: string | null;
+  /** Tool calls the graph agent made while answering — see backend/graph_tools.py. */
+  toolCalls?: ChatToolCall[] | null;
 }
 
 /**

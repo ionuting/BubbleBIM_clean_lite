@@ -37,7 +37,7 @@ async function load(p) {
 }
 
 try {
-  const { parseCategoryMdCollecting, parseCatalogMd } = await load('src/lib/norms/library/parseLibrary.ts');
+  const { parseCategoryMdCollecting, parseCatalogMd, parseSpecsMdCollecting } = await load('src/lib/norms/library/parseLibrary.ts');
   const { compileLibrary } = await load('src/lib/norms/library/compileLibrary.ts');
   const { validateLibrary, formatValidation } = await load('src/lib/norms/library/validateLibrary.ts');
 
@@ -57,8 +57,13 @@ try {
 
   const issues = [];
   const categories = [];
+  let specGroups = [];
   for (const f of files) {
     if (f === '_catalog.md') continue;
+    if (f === '_specificatii.md') {
+      specGroups = parseSpecsMdCollecting(readFileSync(resolve(LIB_DIR, f), 'utf-8'), f, issues);
+      continue;
+    }
     const cat = parseCategoryMdCollecting(readFileSync(resolve(LIB_DIR, f), 'utf-8'), f, issues);
     categories.push(cat);
   }
@@ -69,11 +74,12 @@ try {
     process.exit(1);
   }
 
-  const library = { meta, categories };
+  const library = { meta, categories, specGroups };
   const compiled = compileLibrary(library);
   const result = validateLibrary(library, compiled);
 
-  console.log(`Librărie: ${basename(LIB_DIR)} · ${categories.length} categorii · ${compiled.articles.length} articole · ${compiled.mapping.length} reguli`);
+  const optionCount = specGroups.reduce((n, g) => n + g.options.length, 0);
+  console.log(`Librărie: ${basename(LIB_DIR)} · ${categories.length} categorii · ${compiled.articles.length} articole · ${compiled.mapping.length} reguli · ${specGroups.length} grupuri de specificații (${optionCount} opțiuni)`);
   console.log(formatValidation(result));
 
   if (!result.ok) {

@@ -262,7 +262,9 @@ export function solveRoof(input: RoofSolveInput): RoofSolveResult {
   if (level === 'framing') {
     const framing = buildRoofFraming(
       roofId,
-      roof.parentId,
+      // A roof drawn against axes has parentId null; these builders take
+      // "no parent" as undefined.
+      roof.parentId ?? undefined,
       contour,
       intent,
       skeleton,
@@ -279,7 +281,7 @@ export function solveRoof(input: RoofSolveInput): RoofSolveResult {
 
     // Optional detail layers (membrane, battens, trim, caps, drainage, …).
     const details = buildRoofDetails({
-      roofId, parentId: roof.parentId, contour, intent, skeleton, faces, baseZ: contour.baseZ,
+      roofId, parentId: roof.parentId ?? undefined, contour, intent, skeleton, faces, baseZ: contour.baseZ,
     });
     if (details.length) {
       addNodes.push(...details);

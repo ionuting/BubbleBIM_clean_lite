@@ -15,18 +15,39 @@ import { compileLibrary, compiledUnitPrices } from './compileLibrary';
 import { validateLibrary } from './validateLibrary';
 import type { NormLibrary } from './types';
 import type { NormMappingRule as EngineRule } from '../types';
+import { ANCHOR_REATTACHMENTS, reattachedFrom } from '../anchorReattachments';
 
-/** Cheie canonică pentru o regulă compilată (independentă de ordine). */
-function ruleFingerprint(rules: EngineRule[]): string[] {
+/**
+ * Cheie canonică pentru un set de reguli (independentă de ordine), cu
+ * re-atașările DELIBERATE scoase din ancoră — vezi `anchorReattachments.ts`.
+ * Ce s-a mutat e verificat separat, la noua adresă, deci o mutare greșită tot
+ * pică testul.
+ */
+function ruleFingerprint(rules: EngineRule[], applyReattachments = false): string[] {
   return rules
     .map((r) => {
+      const key = `${r.nodeType}/${r.elementTypeId}`;
+      const moved = applyReattachments ? reattachedFrom(key) : new Set<string>();
       const outs = r.outputs
+        .filter((o) => !moved.has(o.normId))
         .map((o) => `${o.normId}:${o.measure}:${o.formula ?? ''}:${o.netOfOpenings ? 1 : 0}`)
         .sort()
         .join(',');
-      return `${r.nodeType}/${r.elementTypeId} => ${outs}`;
+      return `${key} => ${outs}`;
     })
     .sort();
+}
+
+/** Fiecare re-atașare trebuie să existe efectiv la noua adresă. */
+function expectReattachmentsLanded(mapping: EngineRule[]): void {
+  for (const r of ANCHOR_REATTACHMENTS) {
+    const [nodeType, elementTypeId] = r.to.split('/');
+    const found = mapping.some(
+      (m) => m.nodeType === nodeType && m.elementTypeId === elementTypeId
+        && m.outputs.some((o) => o.normId === r.normId),
+    );
+    expect(found, `re-atașare neaplicată: ${r.normId} ar trebui să fie pe ${r.to} (${r.reason})`).toBe(true);
+  }
 }
 
 /** Reîncarcă o librărie din fișierele ei serializate (round-trip prin MD). */
@@ -39,24 +60,29 @@ function reparse(lib: NormLibrary): NormLibrary {
   return { meta, categories };
 }
 
+// Ancora e porțiunea MIGRATĂ a librăriei; MD-ul poate conține în plus
+// categorii care n-au existat niciodată în TS (lemnul). De aceea comparațiile
+// cu catalogul activ sunt de incluziune (ancora ⊆ activ), nu de egalitate —
+// vezi și catalogCompiled.fidelity.test.ts.
 describe('migrare catalog → librărie (golden)', () => {
-  it('compilat din librărie = catalogul actual (articole)', () => {
+  it('articolele ancorei apar identic în catalogul actual', () => {
     const compiled = compileLibrary(buildLibraryFromActiveCatalog());
     const cur = getActiveCatalog();
 
     const byId = (arr: { id: string }[]) => new Map(arr.map((a) => [a.id, a]));
     const a = byId(compiled.articles);
     const b = byId(cur.articles);
-    expect(a.size).toBe(b.size);
-    for (const [id, art] of b) {
-      expect(a.get(id), `articol lipsă: ${id}`).toEqual(art);
+    expect(b.size).toBeGreaterThanOrEqual(a.size);
+    for (const [id, art] of a) {
+      expect(b.get(id), `articol lipsă: ${id}`).toEqual(art);
     }
   });
 
-  it('compilat din librărie = catalogul actual (mapări, independent de ordine)', () => {
+  it('mapările ancorei apar identic în catalogul actual (independent de ordine)', () => {
     const compiled = compileLibrary(buildLibraryFromActiveCatalog());
-    const cur = getActiveCatalog();
-    expect(ruleFingerprint(compiled.mapping)).toEqual(ruleFingerprint(cur.mapping));
+    const cur = new Set(ruleFingerprint(getActiveCatalog().mapping, true));
+    for (const f of ruleFingerprint(compiled.mapping, true)) expect(cur.has(f), `mapare lipsă: ${f}`).toBe(true);
+    expectReattachmentsLanded(getActiveCatalog().mapping);
   });
 
   it('prețurile compilate = preturiDefault actuale', () => {

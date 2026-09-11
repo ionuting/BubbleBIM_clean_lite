@@ -1,10 +1,18 @@
 import type { BubbleGraphNode } from '@/store';
+import { specMaterial } from '@/lib/norms/specs';
+import { parseZoneSpecs } from '@/lib/zones/heightZones';
 
 export const DEFAULT_ROOM_HEIGHT_MM = 2800;
 export const DEFAULT_COVERING_HEIGHT_MM = 2800;
 export const DEFAULT_COVERING_THICKNESS_MM = 15;
 
 export interface RoomCoveringLayer {
+  /**
+   * Ce lucrare se decontează pe banda asta: `grup:opțiune` separate prin
+   * virgulă (`faianta:standard, tencuiala_int:fara`). Citit de
+   * `lib/zones/heightZones.ts`; absent = banda moștenește elementul.
+   */
+  spec?: string;
   from_mm: number;
   to_mm: number;
   material?: string;
@@ -31,14 +39,14 @@ export const COVERING_PRESETS: Record<string, { label: string; layers: RoomCover
   bathroom: {
     label: 'Baie (faianta + tencuiala)',
     layers: [
-      { from_mm: 0, to_mm: 1500, material: 'ceramic_tile', thickness_mm: 15, color_3d: '#E8E8E8' },
+      { from_mm: 0, to_mm: 1500, material: 'ceramic_tile', thickness_mm: 15, color_3d: '#E8E8E8', spec: 'faianta:standard, tencuiala_int:fara, vopsitorie:fara' },
       { from_mm: 1500, to_mm: DEFAULT_COVERING_HEIGHT_MM, material: 'plaster', thickness_mm: 15, color_3d: '#F5F5DC' },
     ],
   },
   kitchen: {
     label: 'Bucatarie (faianta + tencuiala)',
     layers: [
-      { from_mm: 0, to_mm: 600, material: 'ceramic_tile', thickness_mm: 15, color_3d: '#FFFFFF' },
+      { from_mm: 0, to_mm: 600, material: 'ceramic_tile', thickness_mm: 15, color_3d: '#FFFFFF', spec: 'faianta:standard, tencuiala_int:fara, vopsitorie:fara' },
       { from_mm: 600, to_mm: DEFAULT_COVERING_HEIGHT_MM, material: 'plaster', thickness_mm: 15, color_3d: '#F5F5DC' },
     ],
   },
@@ -121,7 +129,10 @@ export function resolveCoveringLayers(props: Record<string, unknown>): ResolvedC
       const toMm = Math.min(roomH, Number(l.to_mm ?? roomH));
       const heightMm = toMm - fromMm;
       const thicknessMm = Number(l.thickness_mm ?? defaultThick);
-      const material = String(l.material ?? defaultMat);
+      // Ce se decontează pe bandă decide și cum arată: o bandă cu
+      // `faianta:standard` se desenează ca faianță fără să i se mai spună.
+      // Materialul scris explicit rămâne mai tare — e o alegere, nu o deducție.
+      const material = String(l.material || specMaterial(parseZoneSpecs(l.spec, 'room')) || defaultMat);
       const color3d = String(l.color_3d ?? '').trim() || undefined;
       const color2d = String(l.color_2d ?? '').trim() || undefined;
       return { fromMm, toMm, heightMm, thicknessMm, material, color3d, color2d };

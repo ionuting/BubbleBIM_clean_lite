@@ -37,6 +37,35 @@ function wallRules(ids: string[], outputs: NormMappingRule['outputs']): NormMapp
 }
 
 export const ZIDARIE_CONFINATA_MAPPING: NormMappingRule[] = [
+  // ── Scări (beton armat) ────────────────────────────────────────────────────
+  // Volumul vine exact din geometria rezolvată (rampă + trepte + podeste), deci
+  // fără coeficient. Cofrajul e intradosul: lungimea desfășurată × lățimea.
+  // Raportul de armare e MOȘTENIT de la centuri, nu dedus pentru scări.
+  {
+    nodeType: 'stairwell',
+    elementTypeId: '*',
+    outputs: [
+      { normId: '0017_CA01D_02', measure: 'volume' },
+      { normId: '0017_CB01C_02', measure: 'formula', formula: 'length_m * width_m' },
+      { normId: '0017_CC01A4_02', measure: 'formula', formula: 'volume_m3 * 61.5' },
+    ],
+  },
+
+  // ── Profile liniare (`sweep`) ─────────────────────────────────────────────
+  // Volumul vine din mesh-ul real, deci include îmbinările în unghi de la
+  // colțuri. Cofrajul e suprafața laterală desfășurată (`area_m2`). Maparea e
+  // pe `*`, ca la scări: orice sweep primește articole de beton, indiferent de
+  // material — corectează prin suprascrierile de proiect.
+  {
+    nodeType: 'sweep',
+    elementTypeId: '*',
+    outputs: [
+      { normId: '0018_CA01D_02', measure: 'volume' },
+      { normId: '0018_CB01C_02', measure: 'area' },
+      { normId: '0018_CC01A4_02', measure: 'formula', formula: 'volume_m3 * 61.5' },
+    ],
+  },
+
   // ── Zidărie — pereți structurali Porotherm (mc) ───────────────────────────
   ...wallRules(MASONRY_WALL_IDS, [
     { normId: '0001_00201A01_02', measure: 'volume' },

@@ -10,7 +10,7 @@
  */
 
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
-import { WINDOW_TYPES } from '@/lib/elementLibrary';
+import { WINDOW_TYPES, WALL_TYPE_MAP, SLAB_TYPE_MAP } from '@/lib/elementLibrary';
 import { parseAxes } from '@/lib/utils';
 import { evalProp, resolveFormulaContext } from '@/lib/formulaUtils';
 import type { FormulaContext } from '@/lib/formulaUtils';
@@ -162,6 +162,10 @@ export function parseBeamDims(t: string): { bw: number; bh: number } {
 
 export function parseWallThickness(t: string): number {
   if (/separator/i.test(t ?? '')) return 0.01; // 1 cm visual thickness for separator
+  // The element library is the source of truth — a timber-frame `TF20` has no
+  // W-digit code to read. The regex stays for ad-hoc codes like `W18`.
+  const lib = WALL_TYPE_MAP.get(t ?? '');
+  if (lib) return lib.thickness_mm / 1000;
   const m = t?.match(/[Ww](\d+)/);
   return m ? +m[1] * 0.01 : 0.20;
 }
@@ -169,6 +173,25 @@ export function parseWallThickness(t: string): number {
 /** True when the wall type is a zero-thickness logical separator. */
 export function isWallSeparator(t: string): boolean {
   return /separator/i.test(t ?? '');
+}
+
+/**
+ * Grosimea unui perete, în METRI, pentru un NOD.
+ *
+ * `wall_custom_mm` bate tipul: catalogul de tipuri acoperă cazurile uzuale, dar
+ * un perete de 60 cm — soclu masiv, zid de sprijin, zidărie veche — e o
+ * realitate care n-are de ce să ceară un tip nou în librărie. Aceeași soluție
+ * pe care plăcile o aveau deja prin `slab_custom_mm`.
+ *
+ * Separatorul rămâne separator: e un perete logic, fără grosime, iar o valoare
+ * custom pe el ar fi o contradicție.
+ */
+export function getNodeWallThickness(n: BubbleGraphNode): number {
+  const type = String(n.properties?.wall_type ?? 'W20');
+  if (isWallSeparator(type)) return parseWallThickness(type);
+  const customMm = Number(n.properties?.wall_custom_mm ?? 0);
+  if (customMm > 0) return customMm * 0.001;
+  return parseWallThickness(type);
 }
 
 /**
@@ -196,7 +219,7 @@ export function getEndpointAutoOffset(
     }
   }
   if (endNode.type === 'wall') {
-    const th = parseWallThickness(String(endNode.properties.wall_type ?? 'W20'));
+    const th = getNodeWallThickness(endNode);
     return th / 2 * 1000;
   }
   void nodeMap;
@@ -204,6 +227,8 @@ export function getEndpointAutoOffset(
 }
 
 export function parseSlabThickness(t: string): number {
+  const lib = SLAB_TYPE_MAP.get(t ?? '');
+  if (lib) return lib.thickness_mm / 1000;
   const m = t?.match(/(?:[Ss][Ll][Aa][Bb]|[Ss])(\d+)/);
   return m ? +m[1] * 0.01 : 0.15;
 }
@@ -270,11 +295,15 @@ export function getAxRealPos(
     return { x: Number(n.properties.bimX), y: Number(n.properties.bimY) };
   }
   const storey = n.parentId ? map.get(n.parentId) : undefined;
-  const axesX = parseAxes(storey?.properties?.axesX).slice().sort((a, b) => a - b);
-  const axesY = parseAxes(storey?.properties?.axesY).slice().sort((a, b) => a - b);
+  const axesX = parseAxes(storey?.properties?.axesX).sort((a, b) => a - b);
+  const axesY = parseAxes(storey?.properties?.axesY).sort((a, b) => a - b);
+  // A grid point pulled off its axis (grid-mode "extend a cell") carries a
+  // relative offset, so a later move of the whole axis still takes it along.
+  const dx = Number(n.properties.ax_dx_mm ?? 0) || 0;
+  const dy = Number(n.properties.ax_dy_mm ?? 0) || 0;
   return {
-    x: axesX[Number(n.properties.gridX ?? 0)] ?? 0,
-    y: axesY[Number(n.properties.gridY ?? 0)] ?? 0,
+    x: (axesX[Number(n.properties.gridX ?? 0)] ?? 0) + dx,
+    y: (axesY[Number(n.properties.gridY ?? 0)] ?? 0) + dy,
   };
 }
 
@@ -685,7 +714,7 @@ function calcCircularWallGeometry(
   edges: BubbleGraphEdge[],
 ): WallGeometry | null {
   const R = Math.abs(arcRadiusMm);
-  const th = parseWallThickness(String(wn.properties.wall_type ?? 'W20'));
+  const th = getNodeWallThickness(wn);
   const hwMm = th * 1000 / 2; // half-thickness in mm
   const { bot, top } = getStoreyBand(wn, nodeMap);
   // Masonry stops under its ring beam (see calcWallGeometry) — height = storey − beam.
@@ -976,7 +1005,7 @@ export function calcWallGeometry(
   const startOffsetMm = (innerSxMm - sxMm) * ux + (innerSzMm - szMm) * uy;
 
   const { bot, top } = getStoreyBand(wn, nodeMap);
-  const th    = parseWallThickness(String(wn.properties.wall_type ?? 'W20'));
+  const th    = getNodeWallThickness(wn);
   // A ring beam sits at the top of the storey; the masonry below it is therefore
   // (storey height − beam height) tall, so wall + beam fill the storey exactly
   // and don't overlap. An explicit `height` still wins if the user set one.
@@ -1339,7 +1368,7 @@ export function calcWallJoins(
     const oeRaw = wn.properties.offsetEnd   ?? wn.properties.offset_end;
     const os = osRaw != null ? Number(osRaw) : (ax.gripA ? 0 : getEndpointAutoOffset(endNodesRaw[0]?.node ?? wn, nodeMap));
     const oe = oeRaw != null ? Number(oeRaw) : (ax.gripB ? 0 : getEndpointAutoOffset(endNodesRaw[1]?.node ?? wn, nodeMap));
-    const th = parseWallThickness(String(wn.properties.wall_type ?? 'W20'));
+    const th = getNodeWallThickness(wn);
     const hw = th * 1000 / 2; // half-thickness in mm
     const nAx = -ax.uy, nAy = ax.ux; // wall normal (perpendicular, right side)
 
@@ -1395,7 +1424,7 @@ export function calcWallJoins(
     for (const wn of wallsAtNode) {
       const ax = wallAxisEndpoints(wn, nodeMap, edges);
       if (!ax) continue;
-      const th = parseWallThickness(String(wn.properties.wall_type ?? 'W20'));
+      const th = getNodeWallThickness(wn);
       const hw = th * 1000 / 2;
       const distA = Math.hypot(ax.pA.x - jCenter.x, ax.pA.y - jCenter.y);
       const distB = Math.hypot(ax.pB.x - jCenter.x, ax.pB.y - jCenter.y);

@@ -34,6 +34,7 @@ import { wallHorizontalProfileLayerMesh, wallSolidLayerMesh, applyOpeningVoids, 
 import { resolveVisuals, applyNodeColorOverrides, hexToRgb01 } from './materialConfig';
 import { resolveCoveringLayers } from './roomCovering';
 import { resolveWallLayers, syntheticWallNodeForLayer } from './wallLayers';
+import { renderBandsOf } from '@/lib/zones/heightZones';
 import { getNodeLocalTransform } from './bimGeometry';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -465,15 +466,21 @@ export async function buildBimFragmentsModel(
     const inward    = offsets.map((o) => -o);
     const outer     = insetPolygon(poly, inward);
     const inner     = insetPolygon(poly, inward.map((v) => v + thickMm));
-    const geo       = ringGeo(outer, inner, shellH);
-    if (!geo) continue;
-    geo.translate(0, bot * MM, 0);
-    // Apply window/door opening cuts (CSG) — same as WebIfcViewer
-    let ringMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial());
-    if (allCutters.length) ringMesh = applyOpeningVoids(ringMesh, allCutters);
     const cat = n.type === 'shell' ? 'IFCROOF' : 'IFCCOVERING';
-    const mat = lambertMat(n.type, matConfig, String(n.properties.material ?? ''));
-    elements.push(el(n, cat, ringMesh.geometry, mat, identity));
+    // Benzile anvelopei: soclul și câmpul sunt lucrări diferite, deci se
+    // exportă ca elemente distincte. Fără benzi, un singur inel, ca până acum.
+    const bands = renderBandsOf(n, shellH)
+      ?? [{ fromM: 0, heightM: shellH, material: undefined, label: '' }];
+    for (const band of bands) {
+      const geo = ringGeo(outer, inner, band.heightM);
+      if (!geo) continue;
+      geo.translate(0, bot * MM + band.fromM, 0);
+      // Apply window/door opening cuts (CSG) — same as WebIfcViewer
+      let ringMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial());
+      if (allCutters.length) ringMesh = applyOpeningVoids(ringMesh, allCutters);
+      const mat = lambertMat(n.type, matConfig, band.material ?? String(n.properties.material ?? ''));
+      elements.push(el(n, cat, ringMesh.geometry, mat, identity));
+    }
   }
 
   // ── Push to model ─────────────────────────────────────────────────────────

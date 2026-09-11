@@ -26,6 +26,8 @@ export interface BubbleGraphEdge {
   id: string;
   from: string;
   to: string;
+  /** Relation semantics — optional, inferred when absent. See lib/graph/edgeTypes.ts. */
+  type?: import('@/lib/graph/edgeTypes').EdgeType;
 }
 
 export interface BuildingAxes {
@@ -46,6 +48,10 @@ export interface GraphData {
   /** Open drawing tabs (plans/sections/elevations/…) — persisted so the drawing workspace survives a reload. */
   viewTabs?: import('@/store').ViewTab[];
   activeTabId?: string;
+  /** Project-wide structural system; individual elements may override it. See lib/systems/structuralSystem.ts. */
+  structuralSystem?: import('@/lib/systems/structuralSystem').StructuralSystem;
+  /** Project-wide material/finish choices (lib/norms/specs.ts). */
+  specs?: Record<string, string>;
 }
 
 // ─── Graph persistence (localStorage) ─────────────────────────────────────
@@ -246,8 +252,15 @@ export async function getGeometryStatus(): Promise<{ shapely: boolean } | null> 
 // dedup either; commits store their content inline, capped to LITE_HISTORY_MAX
 // entries with the oldest 'auto' commit evicted first once full, same
 // durable-kinds-never-pruned rule as backend/version_history.py). ──────────
+//
+// PER PROJECT: one log per key `bubblebim_lite_history:<slug>`, where the
+// slug comes from the stored graph's own `projectName` — the same rule the
+// full profile's backend uses (_history_for() in main.py), so switching
+// project switches history identically in both.
 
-const LS_HISTORY_KEY = 'bubblebim_lite_history';
+const LS_HISTORY_PREFIX = 'bubblebim_lite_history';
+/** The pre-per-project single log. Migrated on first access, then removed. */
+const LS_HISTORY_LEGACY_KEY = 'bubblebim_lite_history';
 const LITE_HISTORY_MAX = 30;
 
 export type HistoryCommitKind = 'manual' | 'auto' | 'checkpoint' | 'restore' | 'pre-ifc-import';
@@ -264,6 +277,8 @@ export interface HistoryCommit {
   node_count: number;
   edge_count: number;
   comments?: HistoryComment[];
+  /** When the commit was last repointed at a newer state (`amendHistoryCommit`). */
+  amended_at?: string;
 }
 
 export interface HistoryDiffSummary {
@@ -280,9 +295,33 @@ function stripContent(e: LiteHistoryEntry): HistoryCommit {
   return rest;
 }
 
+function projectSlug(): string {
+  let name = '';
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    name = raw ? (JSON.parse(raw).projectName ?? '') : '';
+  } catch {
+    // Corrupt graph JSON — fall through to 'default' rather than throwing here.
+  }
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'default';
+}
+
+/** Storage key for the ACTIVE project's log, migrating the old single log into it once. */
+function historyKey(): string {
+  const key = `${LS_HISTORY_PREFIX}:${projectSlug()}`;
+  const legacy = localStorage.getItem(LS_HISTORY_LEGACY_KEY);
+  if (legacy !== null) {
+    // Same rule as the backend's _migrate_global_history(): the old global log
+    // belongs to whichever project is loaded now. Never clobber a real one.
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, legacy);
+    localStorage.removeItem(LS_HISTORY_LEGACY_KEY);
+  }
+  return key;
+}
+
 function loadLiteHistory(): LiteHistoryEntry[] {
   try {
-    const raw = localStorage.getItem(LS_HISTORY_KEY);
+    const raw = localStorage.getItem(historyKey());
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -291,7 +330,7 @@ function loadLiteHistory(): LiteHistoryEntry[] {
 
 function saveLiteHistory(log: LiteHistoryEntry[]): void {
   try {
-    localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(log));
+    localStorage.setItem(historyKey(), JSON.stringify(log));
   } catch {
     // Quota exceeded — drop the oldest entry and retry once rather than losing the whole log.
     if (log.length > 1) saveLiteHistory(log.slice(1));
@@ -337,6 +376,17 @@ export async function getHistoryCommitContent(commitId: number): Promise<GraphDa
   return loadLiteHistory().find((e) => e.id === commitId)?.content ?? null;
 }
 
+/** Permanently delete ONE version. Re-parents its children so the chain stays valid; never touches the live graph. */
+export async function deleteHistoryCommit(commitId: number): Promise<{ success: boolean; freed_bytes: number } | null> {
+  const log = loadLiteHistory();
+  const idx = log.findIndex((e) => e.id === commitId);
+  if (idx < 0) return null;
+  const [removed] = log.splice(idx, 1);
+  for (const e of log) if (e.parent === commitId) e.parent = removed.parent;
+  saveLiteHistory(log);
+  return { success: true, freed_bytes: JSON.stringify(removed).length };
+}
+
 export async function restoreHistoryCommit(commitId: number): Promise<{ success: boolean; commit: HistoryCommit; nodes_restored: number; edges_restored: number } | null> {
   const entry = loadLiteHistory().find((e) => e.id === commitId);
   if (!entry) return null;
@@ -376,6 +426,35 @@ export async function gcHistory(keepAuto = 50): Promise<{ success: boolean; prun
   const next = log.filter((e) => !dropIds.has(e.id));
   saveLiteHistory(next);
   return { success: true, pruned_commits: dropIds.size, freed_count: dropIds.size, freed_bytes: Math.max(0, beforeSize - JSON.stringify(next).length) };
+}
+
+/**
+ * Repoint a version at the CURRENT model — `git commit --amend`.
+ *
+ * Lite keeps the content inline in the log entry, so amending is a matter of
+ * swapping it; the entry keeps its id, parent, kind and comments, exactly as
+ * on the backend.
+ */
+export async function amendHistoryCommit(
+  commitId: number,
+  message = '',
+): Promise<{ success: boolean; commit: HistoryCommit & { newer_commits: number } } | null> {
+  const log = loadLiteHistory();
+  const idx = log.findIndex((e) => e.id === commitId);
+  if (idx < 0) return null;
+  const entry = log[idx];
+  const raw = localStorage.getItem(LS_KEY);
+  const content = raw ? JSON.parse(raw) : { nodes: [], edges: [] };
+  entry.content = content;
+  entry.node_count = content.nodes?.length ?? 0;
+  entry.edge_count = content.edges?.length ?? 0;
+  entry.amended_at = new Date().toISOString();
+  if (message.trim()) entry.message = message.trim();
+  saveLiteHistory(log);
+  return {
+    success: true,
+    commit: { ...stripContent(entry), newer_commits: log.length - idx - 1 },
+  };
 }
 
 export async function addHistoryComment(commitId: number, text: string): Promise<{ success: boolean; commit: HistoryCommit } | null> {

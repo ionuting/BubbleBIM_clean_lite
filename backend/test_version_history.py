@@ -166,6 +166,55 @@ class VersionHistoryTest(unittest.TestCase):
         c1 = self.vh.commit({"nodes": [], "edges": []}, "a", "manual")
         self.assertIsNone(self.vh.diff_summary(c1["id"], 9999))
 
+    # ── delete_commit — the one destructive operation ──────────────────────
+
+    def test_delete_commit_removes_it_from_the_log(self):
+        c1 = self.vh.commit({"nodes": [{"id": "a"}], "edges": []}, "a", "manual")
+        c2 = self.vh.commit({"nodes": [{"id": "b"}], "edges": []}, "b", "manual")
+        removed = self.vh.delete_commit(c1["id"])
+        self.assertEqual(removed["id"], c1["id"])
+        self.assertEqual([c["id"] for c in self.vh.list_commits()], [c2["id"]])
+        self.assertIsNone(self.vh.get_commit(c1["id"]))
+
+    def test_delete_commit_reparents_children_so_the_chain_stays_valid(self):
+        c1 = self.vh.commit({"nodes": [{"id": "a"}], "edges": []}, "a", "manual")
+        c2 = self.vh.commit({"nodes": [{"id": "b"}], "edges": []}, "b", "manual")
+        c3 = self.vh.commit({"nodes": [{"id": "c"}], "edges": []}, "c", "manual")
+        self.vh.delete_commit(c2["id"])
+        # c3 used to point at the now-deleted c2 — it must inherit c2's parent,
+        # never keep a dangling id.
+        self.assertEqual(self.vh.get_commit(c3["id"])["parent"], c1["id"])
+
+    def test_delete_commit_frees_its_blob(self):
+        c1 = self.vh.commit({"nodes": [{"id": "a"}], "edges": []}, "a", "manual")
+        self.vh.commit({"nodes": [{"id": "b"}], "edges": []}, "b", "manual")
+        self.assertEqual(len(list(self.vh.objects_path.glob("*/*.json"))), 2)
+        removed = self.vh.delete_commit(c1["id"])
+        self.assertGreater(removed["freed_bytes"], 0)
+        self.assertEqual(len(list(self.vh.objects_path.glob("*/*.json"))), 1)
+
+    def test_delete_commit_keeps_a_blob_another_commit_still_shares(self):
+        # A restore reuses its target's blob — deleting one must not break the other.
+        c1 = self.vh.commit({"nodes": [{"id": "a"}], "edges": []}, "a", "manual")
+        self.vh.commit({"nodes": [{"id": "b"}], "edges": []}, "b", "manual")
+        restored = self.vh.restore(c1["id"])["commit"]
+        self.assertEqual(restored["hash"], c1["hash"])
+
+        removed = self.vh.delete_commit(c1["id"])
+        self.assertEqual(removed["freed_bytes"], 0)  # blob kept — still referenced
+        self.assertIsNotNone(self.vh.get_content(restored["id"]))
+
+    def test_delete_commit_returns_none_for_unknown_id(self):
+        self.vh.commit({"nodes": [], "edges": []}, "a", "manual")
+        self.assertIsNone(self.vh.delete_commit(9999))
+
+    def test_delete_head_then_commit_again_still_increments_ids(self):
+        self.vh.commit({"nodes": [{"id": "a"}], "edges": []}, "a", "manual")
+        c2 = self.vh.commit({"nodes": [{"id": "b"}], "edges": []}, "b", "manual")
+        self.vh.delete_commit(c2["id"])
+        c3 = self.vh.commit({"nodes": [{"id": "c"}], "edges": []}, "c", "manual")
+        self.assertEqual(c3["id"], 2)  # ids come from the log's tail, which is now c1
+
     def test_history_json_is_small_metadata_only_not_full_graph_content(self):
         big_data = {"nodes": [{"id": str(i), "blob": "x" * 1000} for i in range(50)], "edges": []}
         self.vh.commit(big_data, "big", "manual")
@@ -176,3 +225,86 @@ class VersionHistoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AmendTest(unittest.TestCase):
+    """`amend` is git's --amend: the commit keeps its identity, its content moves."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vh = VersionHistory(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _graph(self, n):
+        return {"nodes": [{"id": f"n{i}"} for i in range(n)], "edges": []}
+
+    def test_amend_repoints_the_commit_at_the_current_state(self):
+        c = self.vh.commit(self._graph(1), "foundations", "checkpoint")
+        amended = self.vh.amend(c["id"], self._graph(5))
+        self.assertEqual(amended["node_count"], 5)
+        self.assertNotEqual(amended["hash"], c["hash"])
+        self.assertEqual(len(self.vh.get_content(c["id"])["nodes"]), 5)
+
+    def test_amend_does_not_add_a_commit(self):
+        self.vh.commit(self._graph(1), "a", "checkpoint")
+        before = len(self.vh.list_commits())
+        self.vh.amend(1, self._graph(3))
+        self.assertEqual(len(self.vh.list_commits()), before)
+
+    def test_identity_survives_id_parent_and_kind_are_untouched(self):
+        self.vh.commit(self._graph(1), "first", "manual")
+        c2 = self.vh.commit(self._graph(2), "checkpoint", "checkpoint")
+        amended = self.vh.amend(c2["id"], self._graph(9))
+        self.assertEqual(amended["id"], c2["id"])
+        self.assertEqual(amended["parent"], c2["parent"])
+        self.assertEqual(amended["kind"], "checkpoint")
+
+    def test_comments_left_on_the_commit_survive(self):
+        c = self.vh.commit(self._graph(1), "a", "checkpoint")
+        self.vh.add_comment(c["id"], "aici am trecut pe planșee de beton")
+        amended = self.vh.amend(c["id"], self._graph(4))
+        self.assertEqual(len(amended["comments"]), 1)
+        self.assertIn("planșee", amended["comments"][0]["text"])
+
+    def test_message_is_replaced_only_when_one_is_given(self):
+        c = self.vh.commit(self._graph(1), "fundatii gata", "checkpoint")
+        self.assertEqual(self.vh.amend(c["id"], self._graph(2))["message"], "fundatii gata")
+        self.assertEqual(self.vh.amend(c["id"], self._graph(3), "fundatii + soclu")["message"], "fundatii + soclu")
+        self.assertEqual(self.vh.amend(c["id"], self._graph(4), "   ")["message"], "fundatii + soclu")
+
+    def test_amended_at_is_stamped_so_the_log_does_not_lie_about_the_age(self):
+        c = self.vh.commit(self._graph(1), "a", "checkpoint")
+        self.assertNotIn("amended_at", c)
+        amended = self.vh.amend(c["id"], self._graph(2))
+        self.assertIn("amended_at", amended)
+        self.assertEqual(amended["timestamp"], c["timestamp"])
+
+    def test_the_orphaned_blob_is_reclaimed(self):
+        c = self.vh.commit(self._graph(1), "a", "checkpoint")
+        self.assertGreater(self.vh.amend(c["id"], self._graph(2))["freed_bytes"], 0)
+
+    def test_a_blob_another_commit_still_uses_is_kept(self):
+        self.vh.commit(self._graph(2), "a", "manual")
+        c2 = self.vh.commit(self._graph(2), "b", "checkpoint")  # same content, shared blob
+        self.assertEqual(self.vh.amend(c2["id"], self._graph(7))["freed_bytes"], 0)
+        self.assertEqual(len(self.vh.get_content(1)["nodes"]), 2)
+
+    def test_newer_commits_is_reported_so_the_ui_can_warn(self):
+        c1 = self.vh.commit(self._graph(1), "a", "checkpoint")
+        self.vh.commit(self._graph(2), "b", "auto")
+        self.vh.commit(self._graph(3), "c", "auto")
+        self.assertEqual(self.vh.amend(c1["id"], self._graph(9))["newer_commits"], 2)
+        self.assertEqual(self.vh.amend(3, self._graph(9))["newer_commits"], 0)
+
+    def test_amending_a_commit_that_does_not_exist_is_none(self):
+        self.assertIsNone(self.vh.amend(42, self._graph(1)))
+
+    def test_the_log_survives_a_reload(self):
+        c = self.vh.commit(self._graph(1), "a", "checkpoint")
+        self.vh.amend(c["id"], self._graph(6), "updated")
+        fresh = VersionHistory(Path(self._tmp.name))
+        entry = fresh.get_commit(c["id"])
+        self.assertEqual(entry["message"], "updated")
+        self.assertEqual(entry["node_count"], 6)

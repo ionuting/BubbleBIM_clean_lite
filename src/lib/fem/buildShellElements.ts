@@ -36,7 +36,7 @@ import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import {
   getNodeBimPos,
   getConnectedNodes,
-  parseWallThickness,
+  getNodeWallThickness,
   getNodeSlabThickness,
   calcRoomPolygon,
   MM,
@@ -120,7 +120,7 @@ export function addWallShell(
   const a = anchorPair(acc, eA.id, anchorIndex, posA.x * MM, posA.y * MM, baseZ, topZ);
   const b = anchorPair(acc, eB.id, anchorIndex, posB.x * MM, posB.y * MM, baseZ, topZ);
 
-  const thickness = parseWallThickness(String(wallNode.properties.wall_type ?? 'W20'));
+  const thickness = getNodeWallThickness(wallNode);
   const props = shellElementProps(thickness);
 
   const corners = [a.base, b.base, b.top, a.top];

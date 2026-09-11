@@ -1,8 +1,16 @@
 import type { BubbleGraphNode } from '@/store';
+import { specMaterial } from '@/lib/norms/specs';
+import { parseZoneSpecs } from '@/lib/zones/heightZones';
 
 export const DEFAULT_WALL_HEIGHT_MM = 3000;
 
 export interface WallLayer {
+  /**
+   * Ce lucrare se decontează pe banda asta: `grup:opțiune` separate prin
+   * virgulă (`faianta:standard, tencuiala_int:fara`). Citit de
+   * `lib/zones/heightZones.ts`; absent = banda moștenește elementul.
+   */
+  spec?: string;
   from_mm: number;
   to_mm: number;
   material?: string;
@@ -29,14 +37,14 @@ export const WALL_LAYER_PRESETS: Record<string, { label: string; layers: WallLay
   bca_socle: {
     label: 'Soc BCA + zidarie',
     layers: [
-      { from_mm: 0, to_mm: 600, material: 'aac_block', wall_type: 'W20', color_3d: '#D8D8D8' },
+      { from_mm: 0, to_mm: 600, material: 'aac_block', wall_type: 'W20', color_3d: '#D8D8D8', spec: 'zidarie:bca25' },
       { from_mm: 600, to_mm: DEFAULT_WALL_HEIGHT_MM, material: 'brick', wall_type: 'W20', color_3d: '#C0614A' },
     ],
   },
   bca_socle_tall: {
     label: 'Soc BCA inalt + zidarie',
     layers: [
-      { from_mm: 0, to_mm: 1000, material: 'aac_block', wall_type: 'W25', color_3d: '#D8D8D8' },
+      { from_mm: 0, to_mm: 1000, material: 'aac_block', wall_type: 'W25', color_3d: '#D8D8D8', spec: 'zidarie:bca25' },
       { from_mm: 1000, to_mm: DEFAULT_WALL_HEIGHT_MM, material: 'brick', wall_type: 'W20', color_3d: '#C0614A' },
     ],
   },
@@ -113,7 +121,10 @@ export function resolveWallLayers(
       const fromMm = Math.max(0, Number(l.from_mm ?? 0));
       const toMm = Math.min(wallH, Number(l.to_mm ?? wallH));
       const heightMm = toMm - fromMm;
-      const material = String(l.material ?? defaultMat);
+      // Ce se decontează pe bandă decide și cum arată: o bandă cu
+      // `zidarie:bca25` se desenează ca BCA fără să i se mai spună separat.
+      // Materialul scris explicit rămâne mai tare — e o alegere, nu o deducție.
+      const material = String(l.material || specMaterial(parseZoneSpecs(l.spec, 'wall')) || defaultMat);
       const wallType = String(l.wall_type ?? defaultType) || undefined;
       const color3d = String(l.color_3d ?? '').trim() || undefined;
       const color2d = String(l.color_2d ?? '').trim() || undefined;

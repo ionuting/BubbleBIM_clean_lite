@@ -15,7 +15,7 @@
  */
 
 import * as THREE from 'three';
-import { Vector3, Cuboid, Polygon, Opening, executeBooleanSubtractionMany } from 'opengeometry';
+import { Vector3, Cuboid, Polygon, Opening, executeBooleanSubtractionMany, booleanIntersection } from 'opengeometry';
 import type { Solid, BooleanResult as OGBooleanResult } from 'opengeometry';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import {
@@ -27,6 +27,10 @@ import {
   getNodeLocalTransform,
 } from '@/lib/bimGeometry';
 import { expandArrayNodes } from '@/lib/formulaUtils';
+import { yawForPlanDir, yawForPlanDirX } from '@/lib/geom/plan2d';
+import { flightProfile, invertedTeeProfile } from '@/lib/stair/profile';
+import { buildHelixGeometry } from '@/lib/stair/helixMesh';
+import { computeSweep, sweepBufferGeometry } from '@/lib/sweep';
 import { resolveVisuals, applyNodeColorOverrides, resolveWindowGlazing } from '@/lib/materialConfig';
 import type { MaterialConfig } from '@/lib/materialConfig';
 import { buildOpeningMeshes3, applyNodeLocalTransformThree } from '@/lib/bimGeometryThree';
@@ -34,11 +38,24 @@ import {
   resolveCoveringLayers, roomHasCovering, syntheticCoveringNodeForLayer,
 } from '@/lib/roomCovering';
 import { resolveWallLayers, syntheticWallNodeForLayer } from '@/lib/wallLayers';
+import { renderBandsOf } from '@/lib/zones/heightZones';
 import {
   computeFaceBasis, computeRoofFaces, orientPointsToward, parseTimberSection, placeDormer, placeSkylight,
   ROOF_LINEAR_DETAIL_TYPES, ROOF_ROUND_DETAIL_TYPES, ROOF_SHEET_DETAIL_TYPES,
   type DormerPlacement, type Pt3, type RoofFace3D, type SkylightPlacement, type WallPane,
 } from '@/lib/roof';
+import {
+  attachHeightAlong, attachesToRoof, isTrimmed, nodesCuttingRoof, planeZ, roofTrim, roofTrimsNode,
+  trimmedTopAlong, type RoofTrim, type TrimPlane,
+} from '@/lib/roof/trim';
+import { gableFootprintMm, gableMaterial, gableSpec, wallThicknessMm } from '@/lib/roof/gable';
+import { computeWallFraming, placeMember } from '@/lib/framing/wallFraming';
+import { computeCltPanels, isCltWallType } from '@/lib/framing/cltPanels';
+import { cltInputForWall, framingInputForWall } from '@/lib/framing/framingInput';
+import { classifyWallSides, type WallSide } from '@/lib/walls/wallSides';
+import { UNIVERSAL_WALL_TYPES } from '@/lib/systems/profiles';
+import { resolveStructuralSystem } from '@/lib/systems/structuralSystem';
+import { getTakeoffContext } from '@/lib/quantityTakeoff/takeoffContext';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -282,6 +299,77 @@ function dormerNotchSolid(footprint: Pt3[], fromZ: number, toZ: number): Solid |
   }
 }
 
+/** A rectangular column's plan outline in BIM mm, from its centre and section (metres). */
+const columnFootprintMm = (pos: { x: number; y: number }, w: number, d: number) => {
+  const hw = w * 1000 / 2, hd = d * 1000 / 2;
+  return [
+    { x: pos.x - hw, y: pos.y - hd }, { x: pos.x + hw, y: pos.y - hd },
+    { x: pos.x + hw, y: pos.y + hd }, { x: pos.x - hw, y: pos.y + hd },
+  ];
+};
+
+/**
+ * The plan outline (BIM mm) a node punches through a roof when its
+ * `trim_priority` outranks it — a chimney, a shaft, a stair tower. Only shapes
+ * whose footprint is unambiguous qualify; anything else declines rather than
+ * guessing a hole.
+ */
+function roofPunchFootprint(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+  wallJoins: ReturnType<typeof calcWallJoins>,
+): Array<{ x: number; y: number }> | null {
+  if (node.type === 'wall') return calcWallGeometry(node, nodeMap, edges, wallJoins)?.footprint ?? null;
+  if (node.type === 'column') {
+    const p = getNodeBimPos(node, nodeMap);
+    const d = parseColumnDims(String(node.properties.column_type ?? 'C30x30'));
+    return columnFootprintMm(p, d.w, d.d);
+  }
+  return null;
+}
+
+/**
+ * Everything above ONE roof slope, as a boolean cutter: the volume between that
+ * face and the sky, bounded to the face's own plan footprint.
+ *
+ * Built as an intersection rather than a single sweep on purpose. `Polygon
+ * .extrude()` always extrudes along the polygon's own normal, so sweeping a
+ * pitched face "upward" also drags it sideways — on a 30° roof, metres of drift
+ * over a few metres of rise, which would cut the wrong walls. Intersecting a
+ * VERTICAL prism over the footprint with a half-space above the plane gives the
+ * exact wedge: the prism fixes the plan extent, the half-space fixes the cut
+ * surface. The half-space rectangle is deliberately huge so the same drift
+ * cannot pull it out from under the prism.
+ */
+function roofTrimWedge(plane: TrimPlane, ceilingMm: number): OGBooleanResult | null {
+  try {
+    const { minX, minY, maxX, maxY } = plane.bbox;
+    const floorMm = plane.minZ - 10000;
+    const prism = dormerNotchSolid(
+      plane.footprint.map((p) => ({ x: p.x, y: p.y, z: 0 })), floorMm, ceilingMm);
+    if (!prism) return null;
+
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const R = 3 * Math.hypot(maxX - minX, maxY - minY) + 10000;
+    const quad = [
+      { x: cx - R, y: cy - R }, { x: cx + R, y: cy - R },
+      { x: cx + R, y: cy + R }, { x: cx - R, y: cy + R },
+    ].map((p) => ({ ...p, z: planeZ(plane, p.x, p.y) }));
+    const oriented = orientPointsToward(quad, { x: 0, y: 0, z: 1 });
+    const half = new Polygon({
+      vertices: oriented.map((p) => new Vector3(p.x * MM, p.z * MM, -p.y * MM)),
+      color: 0xffffff,
+    // The sweep covers `h / nz` of vertical rise, so `h` alone always suffices.
+    }).extrude((ceilingMm - plane.minZ + 20000) * MM);
+
+    return booleanIntersection(prism, half, { kernel: { mergeCoplanarFaces: true, tolerance: undefined } });
+  } catch (err) {
+    console.warn('[ogBimMapper] roofTrimWedge failed:', err);
+    return null;
+  }
+}
+
 /** One dormer wall pane (front or a cheek), extruded by `thicknessMm` toward `outward`. */
 function wallPaneSolid(pane: WallPane, thicknessMm: number, outward: Pt3): Solid | null {
   if (thicknessMm <= 0) return null;
@@ -338,6 +426,236 @@ function timberMemberMesh(n: BubbleGraphNode): THREE.Mesh | null {
   return mesh;
 }
 
+/**
+ * Box aligned to an explicit horizontal direction, rather than to the minimal
+ * rotation from +Z.
+ *
+ * Stair parts need this: a tread must stay level and square to its flight no
+ * matter how the flight is angled in plan, and the shortest rotation onto a
+ * sloping axis would roll it. Local axes are (width across, height up, depth
+ * along `dir`).
+ */
+function orientedBox(
+  centreMm: { x: number; y: number; z: number },
+  dirPlan: { x: number; y: number },
+  widthMm: number,
+  heightMm: number,
+  depthMm: number,
+): THREE.Mesh | null {
+  if (!(widthMm > 0 && heightMm > 0 && depthMm > 0)) return null;
+  const len = Math.hypot(dirPlan.x, dirPlan.y);
+  if (len < 1e-9) return null;
+
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(widthMm * MM, heightMm * MM, depthMm * MM),
+    new THREE.MeshStandardMaterial({ roughness: 0.7 }),
+  );
+  mesh.position.copy(v3(centreMm.x, centreMm.y, centreMm.z));
+  mesh.rotation.y = yawForPlanDir(dirPlan.x, dirPlan.y);
+  return mesh;
+}
+
+/**
+ * A flight as a stepped solid: the sawtooth of risers and treads over a sloping
+ * waist, the way Revit and ArchiCAD draw a stair at every detail level. The
+ * cross-section comes from `flightProfile` and is extruded across the width,
+ * centred on the walking line.
+ */
+function stairFlightMesh(n: BubbleGraphNode): THREE.Mesh | null {
+  const p = n.properties;
+  const a = { x: Number(p.ax), y: Number(p.ay), z: Number(p.az) };
+  const b = { x: Number(p.bx), y: Number(p.by), z: Number(p.bz) };
+  if (![a.x, a.y, a.z, b.x, b.y, b.z].every(Number.isFinite)) return null;
+
+  const steps = Math.max(1, Math.round(Number(p.steps ?? 1)));
+  const widthMm = Number(p.width_mm ?? 1000);
+  const riserMm = Number(p.riser_mm ?? 170);
+  const treadMm = Number(p.tread_mm ?? 280);
+  const thickMm = Number(p.thickness_mm ?? 150);
+
+  const runMm = Math.hypot(b.x - a.x, b.y - a.y);
+  const dir = runMm > 1e-6
+    ? { x: (b.x - a.x) / runMm, y: (b.y - a.y) / runMm }
+    : { x: 1, y: 0 };
+
+  const profile = flightProfile(steps, riserMm, treadMm, thickMm, {
+    footDropMm: Number(p.foot_drop_mm ?? 0),
+    headDropMm: Number(p.head_drop_mm ?? thickMm),
+    ...(p.tail_mm != null ? { tailMm: Number(p.tail_mm) } : {}),
+  });
+  if (!profile) {
+    // A single riser has no run to extrude along — draw it as the block it is.
+    return orientedBox({ x: a.x, y: a.y, z: a.z + riserMm / 2 }, dir, widthMm, riserMm, Math.max(treadMm, 10));
+  }
+
+  const shape = new THREE.Shape();
+  shape.moveTo(profile[0].x * MM, profile[0].y * MM);
+  for (let i = 1; i < profile.length; i++) shape.lineTo(profile[i].x * MM, profile[i].y * MM);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: widthMm * MM, bevelEnabled: false });
+  geo.translate(0, 0, -widthMm * MM / 2); // centre the width on the walking line
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.7 }));
+  // The profile's s-axis is the mesh's local +X; point it up the run.
+  mesh.position.copy(v3(a.x, a.y, a.z));
+  mesh.rotation.y = yawForPlanDirX(dir.x, dir.y);
+  return mesh;
+}
+
+/**
+ * The foundation beam at the flight's base: the inverted-T section from
+ * `invertedTeeProfile`, extruded across the flight width, its web topping out
+ * at floor level under the first riser.
+ */
+function stairBaseBeamMesh(n: BubbleGraphNode): THREE.Mesh | null {
+  const p = n.properties;
+  const a = { x: Number(p.ax), y: Number(p.ay), z: Number(p.az) };
+  if (![a.x, a.y, a.z].every(Number.isFinite)) return null;
+
+  const profile = invertedTeeProfile(
+    Number(p.web_mm ?? 300),
+    Number(p.flange_mm ?? 600),
+    Number(p.flange_h_mm ?? 150),
+    Number(p.depth_mm ?? 400),
+  );
+  if (!profile) return null;
+
+  const widthMm = Number(p.width_mm ?? 1000);
+  const dir = { x: Number(p.dir_x ?? 1), y: Number(p.dir_y ?? 0) };
+
+  const shape = new THREE.Shape();
+  shape.moveTo(profile[0].x * MM, profile[0].y * MM);
+  for (let i = 1; i < profile.length; i++) shape.lineTo(profile[i].x * MM, profile[i].y * MM);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: widthMm * MM, bevelEnabled: false });
+  geo.translate(0, 0, -widthMm * MM / 2);
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.8 }));
+  mesh.position.copy(v3(a.x, a.y, a.z));
+  mesh.rotation.y = yawForPlanDirX(dir.x, dir.y);
+  return mesh;
+}
+
+/**
+ * The pre-stepped rendering of a flight — the plain sloping waist. Kept for the
+ * `steps` detail level, where the sawtooth is built from real `stair_tread`
+ * nodes sitting on this slab; drawing the stepped solid underneath them too
+ * would duplicate every step's geometry in place.
+ */
+function stairWaistMesh(n: BubbleGraphNode): THREE.Mesh | null {
+  const p = n.properties;
+  const a = { x: Number(p.ax), y: Number(p.ay), z: Number(p.az) };
+  const b = { x: Number(p.bx), y: Number(p.by), z: Number(p.bz) };
+  if (![a.x, a.y, a.z, b.x, b.y, b.z].every(Number.isFinite)) return null;
+
+  const runMm = Math.hypot(b.x - a.x, b.y - a.y);
+  const riseMm = b.z - a.z;
+  const slopeLenMm = Math.hypot(runMm, riseMm);
+  if (slopeLenMm < 1) return null;
+
+  const widthMm = Number(p.width_mm ?? 1000);
+  const thickMm = Number(p.thickness_mm ?? 150);
+  const dir = runMm > 1e-6
+    ? { x: (b.x - a.x) / runMm, y: (b.y - a.y) / runMm }
+    : { x: 1, y: 0 };
+
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(widthMm * MM, thickMm * MM, slopeLenMm * MM),
+    new THREE.MeshStandardMaterial({ roughness: 0.7 }),
+  );
+  // Sit the slab's top face on the walking line, then tilt it up the slope.
+  // The drop is along the slab's own normal, not straight down: a waist is
+  // measured perpendicular to the flight, and dropping vertically would sink the
+  // walking surface further the steeper the stair gets.
+  const midMm = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+  const half = thickMm / 2;
+  const nx = (-riseMm * dir.x) / slopeLenMm;
+  const ny = (-riseMm * dir.y) / slopeLenMm;
+  const nz = runMm / slopeLenMm;
+  mesh.position.copy(v3(midMm.x - nx * half, midMm.y - ny * half, midMm.z - nz * half));
+  mesh.rotation.order = 'YXZ';
+  mesh.rotation.y = yawForPlanDir(dir.x, dir.y);
+  mesh.rotation.x = -Math.atan2(riseMm, runMm);
+  return mesh;
+}
+
+/**
+ * A railing as a handrail with posts, not a floating line.
+ *
+ * The node's a→b axis runs along the flight EDGE at walking-surface level;
+ * `rail_height_mm` lifts the handrail above it and the posts span the gap. A
+ * legacy node without that property carries its axis already at rail height, so
+ * it falls back to the single-member rendering it was built for.
+ */
+function stairRailingMeshes(n: BubbleGraphNode): THREE.Mesh[] {
+  const p = n.properties;
+  if (p.rail_height_mm == null) {
+    const legacy = timberMemberMesh(n);
+    return legacy ? [legacy] : [];
+  }
+
+  const a = { x: Number(p.ax), y: Number(p.ay), z: Number(p.az) };
+  const b = { x: Number(p.bx), y: Number(p.by), z: Number(p.bz) };
+  if (![a.x, a.y, a.z, b.x, b.y, b.z].every(Number.isFinite)) return [];
+  const railH = Number(p.rail_height_mm);
+  if (!(railH > 0)) return [];
+
+  const meshes: THREE.Mesh[] = [];
+
+  // Handrail: a 60×50 section following the slope at rail height.
+  const top0 = v3(a.x, a.y, a.z + railH);
+  const top1 = v3(b.x, b.y, b.z + railH);
+  const along = new THREE.Vector3().subVectors(top1, top0);
+  const len = along.length();
+  if (len < 1e-4) return [];
+  const rail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.05, len),
+    new THREE.MeshStandardMaterial({ roughness: 0.4 }),
+  );
+  rail.position.copy(new THREE.Vector3().addVectors(top0, top1).multiplyScalar(0.5));
+  rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), along.clone().normalize());
+  meshes.push(rail);
+
+  // Posts: verticals from the walking surface up to the rail, one per ~1100 mm.
+  const posts = Math.max(2, Math.ceil(len / 1.1) + 1);
+  for (let i = 0; i < posts; i++) {
+    const u = i / (posts - 1);
+    const x = a.x + (b.x - a.x) * u;
+    const y = a.y + (b.y - a.y) * u;
+    const z = a.z + (b.z - a.z) * u;
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, railH * MM, 0.04),
+      new THREE.MeshStandardMaterial({ roughness: 0.4 }),
+    );
+    post.position.copy(v3(x, y, z + railH / 2));
+    meshes.push(post);
+  }
+  return meshes;
+}
+
+/**
+ * One step as a solid block from its tread down to the step below — the way a
+ * cast stair actually reads, rather than a floating plate.
+ */
+function stairTreadMesh(n: BubbleGraphNode): THREE.Mesh | null {
+  const p = n.properties;
+  const widthMm = Number(p.width_mm ?? 1000);
+  const treadMm = Number(p.tread_mm ?? 280);
+  const riserMm = Number(p.riser_mm ?? 170);
+  const dir = { x: Number(p.dir_x ?? 1), y: Number(p.dir_y ?? 0) };
+  if (![widthMm, treadMm, riserMm].every(Number.isFinite)) return null;
+
+  // n.z is the walking surface; the block fills the riser beneath it.
+  return orientedBox(
+    { x: n.x, y: n.y, z: n.z - riserMm / 2 },
+    dir, widthMm, riserMm, treadMm,
+  );
+}
+
 /** Round member (gutter / downpipe) from ax..bz + diameter_mm → cylinder mesh. */
 function roundMemberMesh(n: BubbleGraphNode): THREE.Mesh | null {
   const ax = Number(n.properties.ax), ay = Number(n.properties.ay), az = Number(n.properties.az);
@@ -379,19 +697,80 @@ function detailSheetMesh(n: BubbleGraphNode): THREE.Mesh | null {
  * Build all OG shapes for the BIM model and add them to the Three.js scene.
  * Must be called AFTER `ensureOpenGeoReady()` has resolved.
  */
+export interface OGSceneOptions {
+  /**
+   * Draw every wall as what it is BUILT of — studs, plates, headers and the
+   * sheathing layers for timber framing; panel joints for CLT — instead of a
+   * plain solid. A per-wall `show_framing = True` does the same for one wall.
+   */
+  structureView?: boolean;
+}
+
 export function buildOGScene(
   scene: THREE.Scene,
   nodes: BubbleGraphNode[],
   edges: BubbleGraphEdge[],
   matConfig: MaterialConfig | null = null,
+  opts: OGSceneOptions = {},
 ): void {
   nodes = expandArrayNodes(nodes);
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const wallJoins = calcWallJoins(nodes, edges);
+  // Wall sides (exterior ring) — only the structure view needs them, and only once.
+  let wallSides: Map<string, WallSide> | null = null;
+  const sideOf = (id: string): WallSide | undefined => {
+    if (!wallSides) wallSides = classifyWallSides(nodes, edges);
+    return wallSides.get(id);
+  };
+  // Centroid of a storey's anchors, to tell which face of an exterior wall looks out.
+  const centroidCache = new Map<string, { x: number; y: number }>();
+  const storeyCentroid = (storeyId: string | undefined): { x: number; y: number } => {
+    const key = storeyId ?? '';
+    const hit = centroidCache.get(key);
+    if (hit) return hit;
+    let sx = 0, sy = 0, k = 0;
+    for (const a of nodes) {
+      if (a.type !== 'ax' || (a.parentId ?? undefined) !== storeyId) continue;
+      const p = getNodeBimPos(a, nodeMap);
+      sx += p.x; sy += p.y; k++;
+    }
+    const c = k ? { x: sx / k, y: sy / k } : { x: 0, y: 0 };
+    centroidCache.set(key, c);
+    return c;
+  };
 
   // Openings from all walls, stored with their world-space vertical centre (metres).
   // Used by applyOpeningCuts() to punch holes in same-storey ring solids.
   const allOgOpenings: { opening: Opening; centerY: number }[] = [];
+
+  // ── Roof trim: the planes every roof imposes on what stands under it ───────
+  const roofFaceCache = new Map<string, RoofFace3D[]>();
+  const roofFacesOf = (rn: BubbleGraphNode): RoofFace3D[] => {
+    let f = roofFaceCache.get(rn.id);
+    if (!f) { f = computeRoofFaces(rn, nodes, edges).faces; roofFaceCache.set(rn.id, f); }
+    return f;
+  };
+  const roofTrims: RoofTrim[] = [];
+  for (const rn of nodes) {
+    if (rn.type !== 'roof') continue;
+    const t = roofTrim(rn, roofFacesOf(rn));
+    if (t) roofTrims.push(t);
+  }
+  // Headroom above the tallest roof — a wedge must reach past whatever it cuts.
+  const trimCeilingMm = roofTrims.length
+    ? Math.max(...roofTrims.flatMap((t) => t.planes.map((p) => p.maxZ))) + 30000
+    : 0;
+  const wedgeCache = new Map<string, OGBooleanResult[]>();
+  const roofWedges = (t: RoofTrim): OGBooleanResult[] => {
+    const hit = wedgeCache.get(t.roof.id);
+    if (hit) return hit;
+    const built = t.planes
+      .map((p) => roofTrimWedge(p, trimCeilingMm))
+      .filter((w): w is OGBooleanResult => !!w);
+    wedgeCache.set(t.roof.id, built);
+    return built;
+  };
+
 
   // ── Columns ─────────────────────────────────────────────────────────────────
 
@@ -413,18 +792,40 @@ export function buildOGScene(
         applyMat(mesh as unknown as THREE.Mesh, 'column', n, matConfig);
         scene.add(mesh);
       } else {
+        // A roof above cuts the column back, and can raise it first when the
+        // column is set to attach. Round columns are plain Three meshes with no
+        // boolean path, so they stay untrimmed.
+        const fp = columnFootprintMm(pos, w, d);
+        const trims = roofTrims.filter((t) => roofTrimsNode(t, n, fp));
+        let colTop = top;
+        if (trims.length > 0 && attachesToRoof(n)) {
+          const reach = attachHeightAlong(trims.flatMap((t) => t.planes), fp[0], fp[2]);
+          if (reach != null && reach > colTop) colTop = reach;
+        }
+        const colH = (colTop - bot) * MM;
+
         // OG Cuboid — bake translation into center (OG rebakes vertices, mesh.position stays 0)
         const cuboid = new Cuboid({
-          center: v3(pos.x + ltr.tx, pos.y + ltr.ty, bot + (top - bot) / 2 + ltr.tz),
+          center: v3(pos.x + ltr.tx, pos.y + ltr.ty, bot + (colTop - bot) / 2 + ltr.tz),
           width:  w,
-          height,
+          height: colH,
           depth:  d,
           color:  nodeHex('column'),
         });
-        const mesh = cuboid as unknown as THREE.Mesh;
+        const wedges = trims.flatMap(roofWedges);
+        let mesh = cuboid as unknown as THREE.Mesh;
+        if (wedges.length > 0) {
+          try {
+            mesh = executeBooleanSubtractionMany(cuboid, wedges, {
+              kernel: { mergeCoplanarFaces: true, tolerance: undefined },
+            }) as unknown as THREE.Mesh;
+          } catch (cutErr) {
+            console.warn('[ogBimMapper] column roof trim failed, using the full column:', cutErr);
+          }
+        }
         tag(mesh, 'column', n.id, resolveStoreyId(n, nodeMap));
         applyMat(mesh, 'column', n, matConfig);
-        scene.add(cuboid as unknown as THREE.Object3D);
+        scene.add(mesh as unknown as THREE.Object3D);
       }
     } catch (err) {
       console.warn('[ogBimMapper] column failed:', err);
@@ -451,17 +852,36 @@ export function buildOGScene(
         applyMat(mesh as unknown as THREE.Mesh, 'column', n, matConfig);
         scene.add(mesh);
       } else {
+        // Same roof trim as a standalone column — these are the ones that
+        // actually stand in an attic, on the grid points under the slopes.
+        const fp = columnFootprintMm(pos, w, d);
+        const trims = roofTrims.filter((t) => roofTrimsNode(t, n, fp));
+        let colTop = top;
+        if (trims.length > 0 && attachesToRoof(n)) {
+          const reach = attachHeightAlong(trims.flatMap((t) => t.planes), fp[0], fp[2]);
+          if (reach != null && reach > colTop) colTop = reach;
+        }
         const cuboid = new Cuboid({
-          center: v3(pos.x + ltrAx.tx, pos.y + ltrAx.ty, bot + (top - bot) / 2 + ltrAx.tz),
+          center: v3(pos.x + ltrAx.tx, pos.y + ltrAx.ty, bot + (colTop - bot) / 2 + ltrAx.tz),
           width:  w,
-          height,
+          height: (colTop - bot) * MM,
           depth:  d,
           color:  nodeHex('column'),
         });
-        const mesh = cuboid as unknown as THREE.Mesh;
+        const wedges = trims.flatMap(roofWedges);
+        let mesh = cuboid as unknown as THREE.Mesh;
+        if (wedges.length > 0) {
+          try {
+            mesh = executeBooleanSubtractionMany(cuboid, wedges, {
+              kernel: { mergeCoplanarFaces: true, tolerance: undefined },
+            }) as unknown as THREE.Mesh;
+          } catch (cutErr) {
+            console.warn('[ogBimMapper] ax-column roof trim failed, using the full column:', cutErr);
+          }
+        }
         tag(mesh, 'column', n.id, resolveStoreyId(n, nodeMap));
         applyMat(mesh, 'column', n, matConfig);
-        scene.add(cuboid as unknown as THREE.Object3D);
+        scene.add(mesh as unknown as THREE.Object3D);
       }
     } catch (err) {
       console.warn('[ogBimMapper] ax-column failed:', err);
@@ -490,6 +910,124 @@ export function buildOGScene(
     const wallLen = Math.sqrt(wdx * wdx + wdz * wdz);
     if (wallLen < 0.001) continue;
 
+    // ── Structure view ────────────────────────────────────────────────────
+    //
+    // A timber-frame wall is drawn as what it is built of: the studs, plates
+    // and headers the takeoff counts (lib/framing, through the SAME input
+    // builder), the OSB on the outer face of an exterior wall, the gypsum
+    // lining on the inner face(s). A CLT wall keeps its solid and shows the
+    // panel joints. Openings keep their frames from the loop below.
+    const wallSystem = resolveStructuralSystem(n, getTakeoffContext().structuralSystem);
+    const wallType = String(n.properties.wall_type ?? '');
+    const universal = UNIVERSAL_WALL_TYPES.includes(wallType);
+    const isTimber = /^TF/i.test(wallType) || (wallSystem === 'timber_frame' && !isCltWallType(wallType));
+    const isClt = isCltWallType(wallType) || (wallSystem === 'clt' && !universal && !/^TF/i.test(wallType));
+    const showStructure = !!opts.structureView || String(n.properties.show_framing ?? 'False').toLowerCase() === 'true';
+    const thickMm = wg.wallThick * 1000;
+    const start = { x: wg.sxM * 1000, y: -wg.szM * 1000 };
+    const dir = { x: wdx / wallLen, y: -wdz / wallLen };
+    const fg = {
+      lengthMm: wallLen * 1000,
+      heightMm: wg.wallH * 1000,
+      thicknessMm: thickMm,
+      openings: wg.openings.map((op) => ({
+        x0Mm: op.tS * 1000, widthMm: op.oW * 1000, sillMm: op.sill * 1000, heightMm: op.oH * 1000,
+      })),
+    };
+    const storeyId = resolveStoreyId(n, nodeMap);
+    // Outward normal: the side of the wall that faces away from the storey's centre.
+    const outward = (() => {
+      const nrm = { x: dir.y, y: -dir.x };
+      const c = storeyCentroid(storeyId);
+      const mid = { x: start.x + dir.x * fg.lengthMm / 2, y: start.y + dir.y * fg.lengthMm / 2 };
+      return (c.x - mid.x) * nrm.x + (c.y - mid.y) * nrm.y < 0 ? nrm : { x: -nrm.x, y: -nrm.y };
+    })();
+    const faceRects = (): { x0: number; x1: number; z0: number; z1: number }[] => {
+      const L = fg.lengthMm, H = fg.heightMm;
+      const ops = fg.openings
+        .map((o) => ({ x0: Math.max(0, o.x0Mm), x1: Math.min(L, o.x0Mm + o.widthMm), z0: Math.max(0, o.sillMm), z1: Math.min(H, o.sillMm + o.heightMm) }))
+        .filter((o) => o.x1 - o.x0 > 1 && o.z1 - o.z0 > 1)
+        .sort((a, b) => a.x0 - b.x0);
+      const rects: { x0: number; x1: number; z0: number; z1: number }[] = [];
+      let x = 0;
+      for (const o of ops) {
+        if (o.x0 - x > 1) rects.push({ x0: x, x1: o.x0, z0: 0, z1: H });
+        if (o.z0 > 1) rects.push({ x0: o.x0, x1: o.x1, z0: 0, z1: o.z0 });
+        if (H - o.z1 > 1) rects.push({ x0: o.x0, x1: o.x1, z0: o.z1, z1: H });
+        x = Math.max(x, o.x1);
+      }
+      if (L - x > 1) rects.push({ x0: x, x1: L, z0: 0, z1: H });
+      return rects;
+    };
+    const faceLayer = (sideSign: 1 | -1, layerMm: number, color: number, opacity: number, label: string) => {
+      const off = sideSign * (thickMm / 2 - layerMm / 2);
+      for (const r of faceRects()) {
+        const cx = start.x + dir.x * (r.x0 + r.x1) / 2 + outward.x * off;
+        const cy = start.y + dir.y * (r.x0 + r.x1) / 2 + outward.y * off;
+        const mesh = orientedBox(
+          { x: cx, y: cy, z: wg.botM * 1000 + (r.z0 + r.z1) / 2 },
+          dir, layerMm, r.z1 - r.z0, r.x1 - r.x0,
+        );
+        if (!mesh) continue;
+        mesh.material = new THREE.MeshStandardMaterial({ color, roughness: 0.8, transparent: opacity < 1, opacity });
+        tag(mesh, 'wall', n.id, storeyId);
+        mesh.userData.layer = label;
+        scene.add(mesh);
+      }
+    };
+
+    if (isTimber && showStructure) {
+      const framing = computeWallFraming(framingInputForWall(n, edges, nodeMap, fg));
+      for (const m of framing.members) {
+        const { a, b } = placeMember(m, start, dir, wg.botM * 1000);
+        const mesh = timberMemberMesh({
+          ...n, id: `${n.id}:${m.kind}`, type: 'stud',
+          properties: {
+            ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z,
+            section: `T${(m.section.wMm * (m.plies ?? 1)) / 10}x${m.section.dMm / 10}`,
+          },
+        });
+        if (!mesh) continue;
+        applyMat(mesh, 'beam', { ...n, properties: { ...n.properties, material: 'timber_structural' } }, matConfig);
+        tag(mesh, 'wall', n.id, storeyId);
+        scene.add(mesh);
+      }
+      // Layers: OSB outside an exterior wall, gypsum on the inner face(s).
+      const exterior = sideOf(n.id) === 'exterior';
+      if (exterior) faceLayer(1, 12, 0xd9a066, 0.85, 'osb');
+      faceLayer(-1, 12.5, 0xf3f4f6, 0.55, 'gypsum');
+      if (!exterior) faceLayer(1, 12.5, 0xf3f4f6, 0.55, 'gypsum');
+      // Openings still get their frames and glass.
+      for (const op of wg.openings) {
+        const nodeType = op.isDoor ? 'door' : 'window';
+        const vis = resolveVisuals(nodeType, String(op.node?.properties?.material ?? ''), matConfig);
+        for (const mm of buildOpeningMeshes3(op, new Map(), nodeType, vis, glazingCfg)) {
+          mm.userData.nodeType = nodeType;
+          mm.userData.nodeId = op.node?.id;
+          mm.userData.storeyId = op.node ? resolveStoreyId(op.node, nodeMap) : undefined;
+          scene.add(mm);
+        }
+      }
+      continue;
+    }
+
+    if (isClt && showStructure) {
+      // Panel joints as dark strips through the solid; the solid itself follows.
+      const clt = computeCltPanels(cltInputForWall(n, fg));
+      for (let i = 1; i < clt.panels.length; i++) {
+        const x = clt.panels[i].x0Mm;
+        const mesh = orientedBox(
+          { x: start.x + dir.x * x, y: start.y + dir.y * x, z: wg.botM * 1000 + fg.heightMm / 2 },
+          dir, thickMm + 4, fg.heightMm, 8,
+        );
+        if (!mesh) continue;
+        mesh.material = new THREE.MeshStandardMaterial({ color: 0x3f2a14, roughness: 0.9 });
+        tag(mesh, 'wall', n.id, storeyId);
+        mesh.userData.layer = 'clt_joint';
+        scene.add(mesh);
+      }
+    }
+
     const wallTopM = wg.solidSegs.reduce((mx, s) => Math.max(mx, s.baseY + s.height), wg.botM);
     const wallH    = wallTopM - wg.botM;
     if (wallH < 0.001) continue;
@@ -501,6 +1039,20 @@ export function buildOGScene(
     );
 
     const layers = resolveWallLayers(n.properties, wg.wallH);
+
+    // Roofs above this wall: cut it back to their underside, and — when the wall
+    // is set to attach — grow its top layer up to them first.
+    const trims = roofTrims.filter((t) => roofTrimsNode(t, n, wg.footprint));
+    const wedges = trims.flatMap(roofWedges);
+    let attachRiseMm = 0;
+    if (wedges.length > 0 && attachesToRoof(n)) {
+      const reach = attachHeightAlong(
+        trims.flatMap((t) => t.planes),
+        { x: wg.sxM * 1000, y: -wg.szM * 1000 },
+        { x: wg.exM * 1000, y: -wg.ezM * 1000 },
+      );
+      if (reach != null) attachRiseMm = Math.max(0, reach - wallTopM * 1000);
+    }
 
     const ogOpenings: Opening[] = [];
     if (wg.openings.length > 0) {
@@ -525,55 +1077,103 @@ export function buildOGScene(
     }
     const _ogKernel = { mergeCoplanarFaces: true, tolerance: undefined } as const;
 
-    for (const layer of layers) {
-      const layerBaseM = wg.botM + layer.fromMm * MM;
-      const layerHM    = layer.heightMm * MM;
-      if (layerHM < 0.001) continue;
+    // Openings and roof wedges go in one batch: the kernel resolves them
+    // against one another instead of re-meshing the wall for each.
+    const cutters: Array<Opening | OGBooleanResult> = wedges.length > 0
+      ? [...ogOpenings, ...wedges]
+      : ogOpenings;
 
-      let wallMesh: THREE.Mesh | null = null;
+    /** One extruded band of the wall, with every cutter subtracted from it. */
+    const buildBand = (fp: Vector3[], baseM: number, hM: number): THREE.Mesh | null => {
       try {
-        const wallPolygon = new Polygon({ vertices: corners, color });
-        const wallSolid   = wallPolygon.extrude(layerHM);
-        wallSolid.setTranslation(new Vector3(0, layerBaseM, 0));
-
-        if (ogOpenings.length > 0) {
-          try {
-            const result = executeBooleanSubtractionMany(
-              wallSolid,
-              ogOpenings,
-              { kernel: _ogKernel },
-            );
-            wallMesh = result as unknown as THREE.Mesh;
-          } catch (boolErr) {
-            if (ogOpenings.length === 1) {
-              console.warn('[ogBimMapper] wall boolean cut failed, using solid fallback:', boolErr);
-              wallMesh = wallSolid as unknown as THREE.Mesh;
-            } else {
-              console.warn('[ogBimMapper] multi-opening cut failed, retrying one-by-one:', boolErr);
-              let current: OGBooleanResult | null = null;
-              for (const opening of ogOpenings) {
-                try {
-                  const lhs = current ?? wallSolid;
-                  current = executeBooleanSubtractionMany(lhs, [opening], { kernel: _ogKernel });
-                } catch (singleErr) {
-                  console.warn('[ogBimMapper] single wall opening skipped:', singleErr);
-                }
-              }
-              wallMesh = current ? current as unknown as THREE.Mesh : wallSolid as unknown as THREE.Mesh;
+        const wallPolygon = new Polygon({ vertices: fp, color });
+        const wallSolid   = wallPolygon.extrude(hM);
+        wallSolid.setTranslation(new Vector3(0, baseM, 0));
+        if (cutters.length === 0) return wallSolid as unknown as THREE.Mesh;
+        try {
+          return executeBooleanSubtractionMany(wallSolid, cutters, { kernel: _ogKernel }) as unknown as THREE.Mesh;
+        } catch (boolErr) {
+          if (cutters.length === 1) {
+            console.warn('[ogBimMapper] wall boolean cut failed, using solid fallback:', boolErr);
+            return wallSolid as unknown as THREE.Mesh;
+          }
+          console.warn('[ogBimMapper] multi-cutter wall cut failed, retrying one-by-one:', boolErr);
+          let current: OGBooleanResult | null = null;
+          for (const cutter of cutters) {
+            try {
+              const lhs = current ?? wallSolid;
+              current = executeBooleanSubtractionMany(lhs, [cutter], { kernel: _ogKernel });
+            } catch (singleErr) {
+              console.warn('[ogBimMapper] single wall cutter skipped:', singleErr);
             }
           }
-        } else {
-          wallMesh = wallSolid as unknown as THREE.Mesh;
+          return (current ?? wallSolid) as unknown as THREE.Mesh;
         }
       } catch (err) {
         console.warn('[ogBimMapper] wall solid failed:', err);
+        return null;
       }
+    };
 
+    // ── Gable built separately ────────────────────────────────────────────
+    //
+    // When the wall says its gable is another construction — thinner, in
+    // another material, off the axis — the solid splits at the lowest point of
+    // the roof's cut: the layers below stop there, and one extra body carries
+    // the triangle above on its own footprint. `splitM` stays null for a wall
+    // nobody configured, and then this whole branch costs nothing.
+    const gable = gableSpec(n, wallThicknessMm(n));
+    let splitM: number | null = null;
+    let gableCorners: Vector3[] = corners;
+    if (wedges.length > 0 && gable.distinct) {
+      const A = { x: wg.sxM * 1000, y: -wg.szM * 1000 };
+      const B = { x: wg.exM * 1000, y: -wg.ezM * 1000 };
+      const topAbsMm = wallTopM * 1000 + attachRiseMm;
+      const segs = trimmedTopAlong(trims.flatMap((t) => t.planes), A, B, topAbsMm);
+      if (isTrimmed(segs, topAbsMm)) {
+        const cutMm = Math.min(...segs.flatMap((s) => [s.z0, s.z1]));
+        if (cutMm * MM > wg.botM + 0.001 && cutMm < topAbsMm) {
+          splitM = cutMm * MM;
+          if (gable.reshaped) {
+            gableCorners = gableFootprintMm(A, B, gable).map(
+              (p) => new Vector3(p.x * MM, 0, -p.y * MM),
+            );
+          }
+        }
+      }
+    }
+
+    for (const layer of layers) {
+      const layerBaseM = wg.botM + layer.fromMm * MM;
+      // Only the topmost layer grows to meet the roof; the ones below keep their band.
+      const isTopLayer = layer === layers[layers.length - 1];
+      let layerHM      = (layer.heightMm + (isTopLayer ? attachRiseMm : 0)) * MM;
+      // A separately built gable takes over above the split.
+      if (splitM != null) layerHM = Math.min(layerHM, splitM - layerBaseM);
+      if (layerHM < 0.001) continue;
+
+      const wallMesh = buildBand(corners, layerBaseM, layerHM);
       if (wallMesh) {
         tag(wallMesh, 'wall', n.id, resolveStoreyId(n, nodeMap));
         applyMat(wallMesh, 'wall', syntheticWallNodeForLayer(n, layer), matConfig);
         applyNodeLocalTransformThree(wallMesh as THREE.Mesh, getNodeLocalTransform(n));
         scene.add(wallMesh as THREE.Object3D);
+      }
+    }
+
+    if (splitM != null && gableCorners.length >= 3) {
+      // Extruded past the roof and cut back by the same wedges the wall used,
+      // so the two bodies meet the underside on exactly the same planes.
+      const gableMesh = buildBand(gableCorners, splitM, wallTopM + attachRiseMm * MM - splitM);
+      if (gableMesh) {
+        tag(gableMesh, 'wall', n.id, resolveStoreyId(n, nodeMap));
+        applyMat(
+          gableMesh, 'wall',
+          { ...n, properties: { ...n.properties, material: gableMaterial(n, gable) } },
+          matConfig,
+        );
+        applyNodeLocalTransformThree(gableMesh as THREE.Mesh, getNodeLocalTransform(n));
+        scene.add(gableMesh as THREE.Object3D);
       }
     }
 
@@ -872,10 +1472,20 @@ export function buildOGScene(
     const poly    = calcShellPolygon(n, nodeMap, edges);
     if (!poly) continue;
     const baseM = bot * MM;
-    const ring = buildOGRing(poly, offsets, thickMm, shellH, baseM, nodeHex('shell'));
-    if (ring) {
-      const mesh = applyOpeningCuts(ring, baseM, shellH);
-      applyMat(mesh, 'shell', n, matConfig);
+    // Anvelopa se desenează pe BENZI când are: soclul și câmpul sunt lucrări
+    // diferite, deci nici nu arată la fel. Fără benzi, un singur inel, ca până
+    // acum.
+    const bands = renderBandsOf(n, shellH)
+      ?? [{ fromM: 0, heightM: shellH, material: undefined, label: '' }];
+    for (const band of bands) {
+      const bandBase = baseM + band.fromM;
+      const ring = buildOGRing(poly, offsets, thickMm, band.heightM, bandBase, nodeHex('shell'));
+      if (!ring) continue;
+      const mesh = applyOpeningCuts(ring, bandBase, band.heightM);
+      const bandNode = band.material
+        ? { ...n, properties: { ...n.properties, material: band.material } }
+        : n;
+      applyMat(mesh, 'shell', bandNode, matConfig);
       tag(mesh, 'shell', n.id, resolveStoreyId(n, nodeMap));
       scene.add(mesh as THREE.Object3D);
     }
@@ -903,8 +1513,16 @@ export function buildOGScene(
   const skylightNodes = nodes.filter((n) => n.type === 'skylight');
   const dormerNodes = nodes.filter((n) => n.type === 'dormer');
   for (const n of nodes.filter((n) => n.type === 'roof')) {
-    const { faces } = computeRoofFaces(n, nodes, edges);
+    const faces = roofFacesOf(n);
     const coveringThicknessM = Math.max(0.01, Number(n.properties.covering_thickness_mm ?? 40) * MM);
+
+    // Bodies that outrank this roof punch through it instead of being cut by it.
+    const thisTrim = roofTrims.find((t) => t.roof.id === n.id);
+    const punchFootprints = thisTrim
+      ? nodesCuttingRoof(thisTrim, nodes)
+          .map((p) => roofPunchFootprint(p, nodeMap, edges, wallJoins))
+          .filter((fp): fp is Array<{ x: number; y: number }> => !!fp && fp.length >= 3)
+      : [];
 
     // Resolve which skylights / dormers land on which face of THIS roof.
     const skyByFace = new Map<string, { node: BubbleGraphNode; placement: SkylightPlacement }[]>();
@@ -947,11 +1565,19 @@ export function buildOGScene(
       const dormerHits = dormerByFace.get(face.id) ?? [];
 
       let faceMesh: THREE.Mesh | null = null;
-      if (skyHits.length > 0 || dormerHits.length > 0) {
+      if (skyHits.length > 0 || dormerHits.length > 0 || punchFootprints.length > 0) {
         try {
           const solid = pitchedFaceSolid(face, coveringThicknessM);
           if (solid) {
+            const faceZ = face.vertices.map((v) => v.z);
             const cutters: Solid[] = [
+              // Priority inverted: these bodies outrank the roof, so they take a
+              // hole out of it exactly the way a dormer notch does.
+              ...punchFootprints.map((fp) => dormerNotchSolid(
+                fp.map((p) => ({ x: p.x, y: p.y, z: 0 })),
+                Math.min(...faceZ) - 1000,
+                Math.max(...faceZ) + 1000,
+              )),
               ...skyHits.map((h) => skylightCutterSolid(h.placement, coveringThicknessM)),
               ...dormerHits.map((h) => {
                 const front = h.placement.frontWall.corners[0]; // frontBottomL, on the roof surface
@@ -1042,6 +1668,142 @@ export function buildOGScene(
     if (!mesh) continue;
     applyMat(mesh, 'beam', n, matConfig);
     tag(mesh, n.type, n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  // ── Stairs ──
+  // Flights as stepped solids, landings as small slabs. The stairwell node
+  // itself draws nothing: it is the parameter holder, and its slab opening is a
+  // plain `void` that the boolean pass above already applied.
+  //
+  // At the `steps` detail level the sawtooth exists as real `stair_tread` nodes,
+  // so those stairwells get the plain waist under their treads instead of the
+  // stepped solid — otherwise every step would be drawn twice in place.
+  const stairwellsWithTreads = new Set(
+    nodes
+      .filter((n) => n.type === 'stair_tread')
+      .map((n) => String(n.properties.source_stairwell_id ?? '')),
+  );
+  for (const n of nodes.filter((n) => n.type === 'stair_flight')) {
+    const stepped = !stairwellsWithTreads.has(String(n.properties.source_stairwell_id ?? ''));
+    const mesh = stepped ? stairFlightMesh(n) : stairWaistMesh(n);
+    if (!mesh) continue;
+    applyMat(mesh, 'stair_flight', n, matConfig);
+    tag(mesh, 'stair_flight', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  for (const n of nodes.filter((n) => n.type === 'stair_landing')) {
+    let poly: { x: number; y: number }[] = [];
+    try {
+      poly = JSON.parse(String(n.properties.polygon ?? '[]'));
+    } catch { /* a malformed polygon just means no landing, not a crash */ }
+    if (poly.length < 3) continue;
+    const thickMm = Number(n.properties.thickness_mm ?? 150);
+    const levelMm = Number(n.properties.level_mm ?? n.z);
+    // Hang it under the walking surface, like the flights.
+    const mesh = extrudePolygon(poly, thickMm * MM, (levelMm - thickMm) * MM, 0x155e75);
+    if (!mesh) continue;
+    applyMat(mesh, 'stair_landing', n, matConfig);
+    tag(mesh, 'stair_landing', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  for (const n of nodes.filter((n) => n.type === 'stair_tread')) {
+    const mesh = stairTreadMesh(n);
+    if (!mesh) continue;
+    applyMat(mesh, 'stair_tread', n, matConfig);
+    tag(mesh, 'stair_tread', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  // Winder steps (spiral treads and fan corners): one-riser-thick wedge prisms.
+  for (const n of nodes.filter((n) => n.type === 'stair_winder')) {
+    let poly: { x: number; y: number }[] = [];
+    try {
+      poly = JSON.parse(String(n.properties.polygon ?? '[]'));
+    } catch { /* a malformed polygon just means no winder, not a crash */ }
+    if (poly.length < 3) continue;
+    const riserMm = Number(n.properties.riser_mm ?? 170);
+    const levelMm = Number(n.properties.level_mm ?? n.z);
+    const mesh = extrudePolygon(poly, riserMm * MM, (levelMm - riserMm) * MM, 0x155e75);
+    if (!mesh) continue;
+    applyMat(mesh, 'stair_winder', n, matConfig);
+    tag(mesh, 'stair_winder', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  // The monolithic spiral: one helical waist with the steps on top.
+  for (const n of nodes.filter((n) => n.type === 'stair_helix')) {
+    const geo = buildHelixGeometry({
+      centerXMm: n.x,
+      centerYMm: n.y,
+      baseZMm: Number(n.properties.base_z_mm ?? 0),
+      innerMm: Number(n.properties.inner_mm ?? 100),
+      outerMm: Number(n.properties.outer_mm ?? 1100),
+      startRad: Number(n.properties.start_rad ?? 0),
+      deltaRad: Number(n.properties.delta_rad ?? 0.3),
+      steps: Number(n.properties.steps ?? 2),
+      riserMm: Number(n.properties.riser_mm ?? 170),
+      treadMm: Number(n.properties.tread_mm ?? 280),
+      waistMm: Number(n.properties.thickness_mm ?? 150),
+    });
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ roughness: 0.7, side: THREE.DoubleSide }),
+    );
+    applyMat(mesh, 'stair_helix', n, matConfig);
+    tag(mesh, 'stair_helix', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  // The centre pole of a spiral stair.
+  for (const n of nodes.filter((n) => n.type === 'stair_column')) {
+    const r = Number(n.properties.radius_mm ?? 0);
+    const h = Number(n.properties.height_mm ?? 0);
+    const baseZ = Number(n.properties.base_z_mm ?? 0);
+    if (!(r > 0 && h > 0)) continue;
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(r * MM, r * MM, h * MM, 24),
+      new THREE.MeshStandardMaterial({ roughness: 0.6 }),
+    );
+    mesh.position.copy(v3(n.x, n.y, baseZ + h / 2));
+    applyMat(mesh, 'stair_column', n, matConfig);
+    tag(mesh, 'stair_column', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  for (const n of nodes.filter((n) => n.type === 'stair_base_beam')) {
+    const mesh = stairBaseBeamMesh(n);
+    if (!mesh) continue;
+    applyMat(mesh, 'stair_base_beam', n, matConfig);
+    tag(mesh, 'stair_base_beam', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  for (const n of nodes.filter((n) => n.type === 'stair_railing')) {
+    for (const mesh of stairRailingMeshes(n)) {
+      applyMat(mesh, 'stair_railing', n, matConfig);
+      tag(mesh, 'stair_railing', n.id, resolveStoreyId(n, nodeMap));
+      scene.add(mesh);
+    }
+  }
+
+  // Sweep elements: a library profile swept along the guide line the graph
+  // defines (1 ax = vertical, 2 = segment, 3+ = polyline). One pure compute
+  // shared with the plan, sections and quantities.
+  for (const n of nodes.filter((n) => n.type === 'sweep')) {
+    const res = computeSweep(n, nodeMap, edges);
+    if (!res.placed || res.solids.length === 0) continue;
+    const geo = sweepBufferGeometry(res.solids, res.placed);
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ color: nodeHex('sweep'), roughness: 0.7 }),
+    );
+    applyMat(mesh, 'sweep', n, matConfig);
+    tag(mesh, 'sweep', n.id, resolveStoreyId(n, nodeMap));
     scene.add(mesh);
   }
 

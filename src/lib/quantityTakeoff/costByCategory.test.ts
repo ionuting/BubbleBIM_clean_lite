@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { costByCategory, topNWithOther, grandTotalCost, OTHER_LABEL } from './costByCategory';
 import { aggregateCalcGroups } from './calcAggregate';
+import { getCompiledUnitPrices } from '@/lib/norms/catalogCompiled';
 import { PRETURI_DEFAULT_RO, totalPret, preturiDefaultTotale } from '@/lib/norms';
 
 async function exampleModel() {
@@ -77,7 +78,11 @@ describe('prețuri orientative implicite', () => {
       for (const s of cap.storeys)
         for (const ag of s.articles) used.add(ag.normId);
 
-    const missing = [...used].filter((id) => !PRETURI_DEFAULT_RO[id]);
+    // Sursa de runtime a prețurilor e librăria COMPILATĂ, nu ancora TS:
+    // articolele adăugate doar în MD (pardoseli, șapă, lemn) sunt tarifabile
+    // fără o copie în TypeScript — vezi catalogCompiled.
+    const defaults = getCompiledUnitPrices();
+    const missing = [...used].filter((id) => !(defaults[id] > 0));
     expect(missing, `articole fără preț implicit: ${missing.join(', ')}`).toHaveLength(0);
   });
 });

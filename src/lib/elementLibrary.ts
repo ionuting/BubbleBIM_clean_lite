@@ -29,6 +29,16 @@ export const WALL_TYPES: WallType[] = [
   { id: 'W30',  label: 'Wall 30 cm',   thickness_mm:  300, material: 'Concrete C25/30', fire_rating: 'REI 180', description: 'Structural concrete wall, 30 cm' },
   { id: 'W35',  label: 'Wall 35 cm',   thickness_mm:  350, material: 'Concrete C30/37', fire_rating: 'REI 180', description: 'Exterior concrete wall, 35 cm' },
   { id: 'W40',  label: 'Wall 40 cm',   thickness_mm:  400, material: 'Concrete C30/37', fire_rating: 'REI 240', description: 'Thick exterior concrete wall, 40 cm' },
+  // Timber-frame walls: studs + sheathing + insulation + board. The thickness is
+  // the finished build-up; the framing inside is derived (lib/framing).
+  { id: 'TF14', label: 'Timber frame 14 cm', thickness_mm: 140, material: 'Timber frame', fire_rating: 'REI 30',  description: 'Interior timber-frame partition: 45×95 studs, board both sides' },
+  { id: 'TF20', label: 'Timber frame 20 cm', thickness_mm: 200, material: 'Timber frame', fire_rating: 'REI 60',  description: 'Exterior timber-frame wall: 45×145 studs, OSB + board, 140 mm wool' },
+  { id: 'TF25', label: 'Timber frame 25 cm', thickness_mm: 250, material: 'Timber frame', fire_rating: 'REI 60',  description: 'Exterior timber-frame wall: 45×195 studs, OSB + board, 190 mm wool' },
+  // Cross-laminated timber panels: the thickness is the panel itself; the
+  // build-up (insulation outside, board inside) is priced by the norms.
+  { id: 'CLT100', label: 'CLT 10 cm', thickness_mm: 100, material: 'CLT', fire_rating: 'REI 30', description: '3-layer CLT panel 100 mm, interior wall' },
+  { id: 'CLT120', label: 'CLT 12 cm', thickness_mm: 120, material: 'CLT', fire_rating: 'REI 60', description: '3-layer CLT panel 120 mm, exterior wall' },
+  { id: 'CLT140', label: 'CLT 14 cm', thickness_mm: 140, material: 'CLT', fire_rating: 'REI 60', description: '5-layer CLT panel 140 mm, exterior or shear wall' },
 ];
 
 // ─── Beam Types ───────────────────────────────────────────────────────────────
@@ -102,6 +112,12 @@ export const SLAB_TYPES: SlabType[] = [
   { id: 'SLAB20', label: 'Slab 20 cm', thickness_mm:  200, material: 'Concrete C30/37', description: 'Concrete slab 200 mm' },
   { id: 'SLAB25', label: 'Slab 25 cm', thickness_mm:  250, material: 'Concrete C30/37', description: 'Concrete slab 250 mm' },
   { id: 'SLAB30', label: 'Slab 30 cm', thickness_mm:  300, material: 'Concrete C35/45', description: 'Concrete slab 300 mm' },
+  // Timber joist floors — measured per m² like the norm, thickness = joist depth + decking.
+  { id: 'TJ20',   label: 'Timber joists 20 cm', thickness_mm: 200, material: 'Timber joists', description: 'Timber joist floor 45×195 @ 500 mm, 22 mm decking' },
+  { id: 'TJ24',   label: 'Timber joists 24 cm', thickness_mm: 240, material: 'Timber joists', description: 'Timber joist floor 45×245 @ 500 mm, 22 mm decking' },
+  // CLT floor panels — measured per m² like the wall panels.
+  { id: 'CLT160', label: 'CLT floor 16 cm', thickness_mm: 160, material: 'CLT', description: '5-layer CLT floor panel 160 mm, spans to ~5 m' },
+  { id: 'CLT200', label: 'CLT floor 20 cm', thickness_mm: 200, material: 'CLT', description: '7-layer CLT floor panel 200 mm, spans to ~6.5 m' },
 ];
 
 // ─── Foundation Types ─────────────────────────────────────────────────────────

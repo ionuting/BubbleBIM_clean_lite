@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
-import { calcWallGeometry, MM } from './bimGeometry';
+import { calcWallGeometry, getAxRealPos, getNodeWallThickness, parseWallThickness, MM } from './bimGeometry';
 
 /** storey 0–3000mm + two ax + a wall wired between them. */
 function scene(wallProps: Record<string, unknown>) {
@@ -46,5 +46,66 @@ describe('wall height vs ring beam', () => {
     const g = calcWallGeometry(wall, nodeMap, edges)!;
     expect(g.wallH).toBe(2500);
     expect(g.beamDesc).toBeDefined();
+  });
+});
+
+describe('getAxRealPos — grid offsets', () => {
+  const storey: BubbleGraphNode = {
+    id: 'st', type: 'storey', name: 'S', x: 0, y: 0, z: 0,
+    properties: { axesX: [0, 5000, 10000], axesY: [0, 4000] },
+  };
+  const grid = (props: Record<string, unknown>): BubbleGraphNode =>
+    ({ id: 'g', type: 'ax', name: 'g', x: 0, y: 0, z: 0, parentId: 'st', properties: props });
+  const map = (n: BubbleGraphNode) => new Map<string, BubbleGraphNode>([[storey.id, storey], [n.id, n]]);
+
+  it('adds ax_dx_mm / ax_dy_mm to the grid value', () => {
+    const n = grid({ gridX: 1, gridY: 1, ax_dx_mm: 500, ax_dy_mm: -250 });
+    expect(getAxRealPos(n, map(n))).toEqual({ x: 5500, y: 3750 });
+  });
+
+  it('bimX/bimY still win over grid + offset', () => {
+    const n = grid({ gridX: 1, gridY: 1, ax_dx_mm: 500, bimX: 123, bimY: 456 });
+    expect(getAxRealPos(n, map(n))).toEqual({ x: 123, y: 456 });
+  });
+
+  it('does not sort the stored axes in place', () => {
+    const s: BubbleGraphNode = { ...storey, properties: { axesX: [10000, 0, 5000], axesY: [4000, 0] } };
+    const n = grid({ gridX: 1, gridY: 1 });
+    expect(getAxRealPos(n, new Map([[s.id, s], [n.id, n]]))).toEqual({ x: 5000, y: 4000 });
+    expect(s.properties.axesX).toEqual([10000, 0, 5000]);
+  });
+});
+
+describe('getNodeWallThickness — custom thicknesses', () => {
+  const wall = (properties: Record<string, unknown>): BubbleGraphNode =>
+    ({ id: 'w1', type: 'wall', name: 'W', x: 0, y: 0, z: 0, properties } as BubbleGraphNode);
+
+  it('falls back to the type when nothing custom is set', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'W25' }))).toBeCloseTo(0.25, 6);
+    expect(getNodeWallThickness(wall({}))).toBeCloseTo(0.20, 6);
+  });
+
+  it('A 60 cm WALL: the custom value wins over the type', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'W25', wall_custom_mm: 600 }))).toBeCloseTo(0.6, 6);
+  });
+
+  it('there is no upper bound — a retaining wall can be a metre thick', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'W20', wall_custom_mm: 1000 }))).toBeCloseTo(1.0, 6);
+  });
+
+  it('zero or negative means "not set" — it never collapses the wall', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'W25', wall_custom_mm: 0 }))).toBeCloseTo(0.25, 6);
+    expect(getNodeWallThickness(wall({ wall_type: 'W25', wall_custom_mm: -5 }))).toBeCloseTo(0.25, 6);
+    expect(getNodeWallThickness(wall({ wall_type: 'W25', wall_custom_mm: 'gros' }))).toBeCloseTo(0.25, 6);
+  });
+
+  it('a separator stays a separator — a custom thickness cannot give it a body', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'separator', wall_custom_mm: 600 })))
+      .toBeCloseTo(parseWallThickness('separator'), 6);
+  });
+
+  it('timber and CLT types keep resolving through the library', () => {
+    expect(getNodeWallThickness(wall({ wall_type: 'TF25' }))).toBeCloseTo(0.25, 6);
+    expect(getNodeWallThickness(wall({ wall_type: 'CLT120' }))).toBeCloseTo(0.12, 6);
   });
 });

@@ -31,10 +31,21 @@
  *   - Doors/windows: wall-hosted openings only (`collectOpenings`), via
  *     `addIfcWallDoor`/`addIfcWallWindow`. Standalone door/window nodes not
  *     attached to a wall are not exported.
- *   - No roofs, stairs, MEP, or non-convex slab triangulation subtleties —
- *     `@ifc-lite/create`'s own arbitrary-profile slab handles any simple
- *     polygon in one shot, convex or not (unlike the FEM module's manual fan
- *     triangulation, this needs no triangulation at all).
+ *   - No roofs or MEP. Non-convex slabs are fine: `@ifc-lite/create`'s
+ *     arbitrary-profile slab handles any simple polygon in one shot.
+ *   - Stairs ARE exported, from the stairwell's solved geometry: each straight
+ *     flight as a real IfcStair (`addIfcStair` is a straight-run primitive
+ *     whose Position is the base of the first riser — exactly the walking-line
+ *     convention the solver uses), landings and winder steps as profile slabs
+ *     at their levels, and a spiral's pole as a circular column. The base beam
+ *     is NOT exported: `addIfcFooting` is axis-aligned, so a rotated stair
+ *     would get a mis-oriented footing — worse than none.
+ *   - Sweeps ARE exported, one arbitrary-profile extrusion per guide-line
+ *     segment. An IFC extrusion has two PARALLEL cap planes, so a mitered
+ *     corner cannot be expressed in one solid: the segments overlap on the
+ *     inside of a corner and notch on the outside, by at most the profile's
+ *     lateral half-width. The entity type follows the node's `ifc_type`
+ *     ('auto' → IFCBEAM for a horizontal run, IFCCOLUMN for a vertical one).
  */
 
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
@@ -43,7 +54,7 @@ import {
   getConnectedNodes,
   parseColumnDims,
   parseBeamDims,
-  parseWallThickness,
+  getNodeWallThickness,
   getNodeSlabThickness,
   calcRoomPolygon,
   collectOpenings,
@@ -51,6 +62,15 @@ import {
 } from '@/lib/bimGeometry';
 import { IfcCreator } from '@ifc-lite/create';
 import type { CreateResult } from '@ifc-lite/create';
+import { computeRoofFaces } from '@/lib/roof/solver';
+import {
+  attachHeightAlong, attachesToRoof, isTrimmed, roofTrim, roofTrimsNode, topOutline, trimmedTopAlong,
+  type RoofTrim,
+} from '@/lib/roof/trim';
+import { gableMaterial, gableSpec } from '@/lib/roof/gable';
+import { computeStairGeometry } from '@/lib/stair';
+import { flightProfile } from '@/lib/stair/profile';
+import { computeSweep, sweepSegments } from '@/lib/sweep';
 
 export interface IfcModelOptions {
   schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
@@ -60,6 +80,21 @@ export interface IfcModelOptions {
 function nameOf(n: BubbleGraphNode): string | undefined {
   const t = n.name?.trim();
   return t ? t : undefined;
+}
+
+/** The plan rectangle of a wall from its axis and thickness (BIM mm). */
+function wallFootprintMm(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  thicknessMm: number,
+): Array<{ x: number; y: number }> {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len * thicknessMm / 2, ny = dx / len * thicknessMm / 2;
+  return [
+    { x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny },
+    { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny },
+  ];
 }
 
 export function buildIfcModel(
@@ -75,6 +110,15 @@ export function buildIfcModel(
     .filter((n) => n.type === 'storey')
     .slice()
     .sort((a, b) => Number(a.properties.bottomElevation ?? 0) - Number(b.properties.bottomElevation ?? 0));
+
+  // Roof trim planes, built once: a roof sits on its own storey but cuts walls
+  // on the ones below, so this cannot live inside the storey loop.
+  const roofTrims: RoofTrim[] = [];
+  for (const rn of allNodes) {
+    if (rn.type !== 'roof') continue;
+    const t = roofTrim(rn, computeRoofFaces(rn, allNodes, edges).faces);
+    if (t) roofTrims.push(t);
+  }
 
   for (const storey of storeys) {
     const bottomMm = Number(storey.properties.bottomElevation ?? 0);
@@ -145,7 +189,7 @@ export function buildIfcModel(
       const wallLenMm = Math.hypot(posB.x - posA.x, posB.y - posA.y);
       if (wallLenMm < 1) continue;
 
-      const thickness = parseWallThickness(String(n.properties.wall_type ?? 'W20'));
+      const thickness = getNodeWallThickness(n);
 
       // Ring-beam height reduction — same rule as calcWallGeometry, so a wall doesn't
       // visually overlap the beam that sits above it when has_beam is set.
@@ -154,22 +198,98 @@ export function buildIfcModel(
       const wallHMm = n.properties.height != null
         ? Number(n.properties.height)
         : Math.max(0, topMm - bottomMm - beamHMm);
-      const wallHM = wallHMm * MM;
-      if (wallHM < 0.001) continue;
+      if (wallHMm * MM < 0.001) continue;
+
+      // ── Roof trim ─────────────────────────────────────────────────────────
+      //
+      // A wall cut by a roof leaves IFC with a choice: `addIfcWall` is
+      // parametric (a rectangle swept up) and is the only thing that can host
+      // `IfcOpeningElement`s, but it cannot express a sloping top. So the wall
+      // goes out in two parts — the plain box up to the LOWEST point of the
+      // trimmed top, carrying every door and window as before, and above it the
+      // gable as its own IFCWALL whose profile is the wall's elevation swept
+      // through its thickness. A wall the roof does not reach takes neither
+      // branch and is written exactly as it was.
+      const thicknessMm = thickness * 1000;
+      const planes = roofTrims
+        .filter((t) => roofTrimsNode(t, n, wallFootprintMm(posA, posB, thicknessMm)))
+        .flatMap((t) => t.planes);
+
+      let topAbsMm = bottomMm + wallHMm;
+      if (planes.length > 0 && attachesToRoof(n)) {
+        const reach = attachHeightAlong(planes, posA, posB);
+        if (reach != null && reach > topAbsMm) topAbsMm = reach;
+      }
+      const segs = planes.length > 0 ? trimmedTopAlong(planes, posA, posB, topAbsMm) : null;
+      const trimmed = !!segs && isTrimmed(segs, topAbsMm);
+      const boxTopAbsMm = trimmed
+        ? Math.min(...segs.flatMap((s) => [s.z0, s.z1]))
+        : topAbsMm;
+      const boxHMm = boxTopAbsMm - bottomMm;
+      if (boxHMm * MM < 0.001) continue;
 
       const wallId = creator.addIfcWall(storeyId, {
         Start: [posA.x * MM, posA.y * MM, 0],
         End: [posB.x * MM, posB.y * MM, 0],
-        Thickness: thickness, Height: wallHM,
+        Thickness: thickness, Height: boxHMm * MM,
         Name: nameOf(n), Tag: n.id,
       });
+
+      if (trimmed) {
+        // The gable may be its own construction — thinner, in another material,
+        // and sitting off the wall axis. `Depth` carries the thickness and the
+        // placement carries the offset; a wall nobody configured resolves to the
+        // wall's own thickness and a zero offset, so the output is unchanged.
+        const spec = gableSpec(n, thicknessMm);
+
+        // Local frame: X along the wall, Z the wall normal, so Y = Z × X points
+        // up and the profile is drawn straight in elevation.
+        const ux = (posB.x - posA.x) / wallLenMm, uy = (posB.y - posA.y) / wallLenMm;
+        const nx = uy, ny = -ux;
+        const outline = topOutline(segs);
+        const profile: Array<[number, number]> = [
+          [0, 0], [wallLenMm * MM, 0],
+          ...[...outline].reverse().map((p): [number, number] =>
+            [p.t * wallLenMm * MM, (p.z - boxTopAbsMm) * MM]),
+        ];
+        // A sliver thinner than a millimetre is rounding, not a gable.
+        if (Math.max(...profile.map((p) => p[1])) * 1000 > 1) {
+          // The solid is swept from the placement along +Z (the wall normal),
+          // so it starts half a thickness back from the gable's own centre-line.
+          const backMm = spec.offsetMm - spec.thicknessMm / 2;
+          const gableId = creator.addElement(storeyId, {
+            IfcType: 'IFCWALL',
+            Placement: {
+              Location: [
+                (posA.x + nx * backMm) * MM,
+                (posA.y + ny * backMm) * MM,
+                boxHMm * MM,
+              ],
+              Axis: [nx, ny, 0],
+              RefDirection: [ux, uy, 0],
+            },
+            Profile: { ProfileType: 'AREA', OuterCurve: profile },
+            Depth: spec.thicknessMm * MM,
+            Name: nameOf(n) ? `${nameOf(n)} (gable)` : 'Wall (gable)',
+            Tag: `${n.id}:gable`,
+          });
+          // Only when the gable names its own material: writing the wall's here
+          // too would give every wall in every existing model a material it
+          // never had.
+          if (spec.material) {
+            creator.addIfcMaterial(gableId, { Name: gableMaterial(n, spec), Category: 'Gable' });
+          }
+        }
+      }
 
       const openingInfos = collectOpenings(n, wallLenMm, edges, nodeMap);
       for (const op of openingInfos) {
         // Clamp so a mis-measured opening from a formula edge case can't land outside the wall solid.
         const along = Math.min(Math.max(op.distFromStart, 0), Math.max(0, wallLenMm - op.width)) * MM;
         const w = op.width * MM;
-        const h = Math.min(op.height, Math.max(0, wallHMm - op.sillHeight)) * MM;
+        // Clamped to the box part: the gable above it is a separate product and
+        // cannot host an opening.
+        const h = Math.min(op.height, Math.max(0, boxHMm - op.sillHeight)) * MM;
         if (w < 0.001 || h < 0.001) continue;
         const thk = op.frameDepth > 0 ? op.frameDepth * MM : undefined;
 
@@ -218,6 +338,122 @@ export function buildIfcModel(
         Profile: poly.map((p): [number, number] => [p.x * MM, p.y * MM]),
         Name: nameOf(n), Tag: n.id,
       });
+    }
+
+    // ── Sweeps: one arbitrary-profile extrusion per guide-line segment ──
+    // Frame: the profile's own (x, y) = (lateral left, up) must land as local
+    // (X, Y), so RefDirection is the lateral direction and Axis the extrusion
+    // heading — then Y = Axis × RefDirection comes out as world up. Getting
+    // these two the wrong way round exports the profile lying on its side.
+    for (const n of storeyNodes) {
+      if (n.type !== 'sweep') continue;
+      const res = computeSweep(n, nodeMap, edges);
+      if (!res.placed || !res.path) continue;
+
+      const declared = String(n.properties.ifc_type ?? 'auto').toUpperCase();
+      const ifcType = declared !== 'AUTO' && declared.startsWith('IFC')
+        ? declared
+        : (res.path.kind === 'vertical' ? 'IFCCOLUMN' : 'IFCBEAM');
+      const outerCurve = res.placed.map((p): [number, number] => [p.x * MM, p.y * MM]);
+
+      for (const seg of sweepSegments(res.path)) {
+        if (seg.lengthMm < 1) continue;
+        creator.addElement(storeyId, {
+          IfcType: ifcType,
+          Placement: {
+            Location: [seg.start.x * MM, seg.start.y * MM, (seg.start.z - bottomMm) * MM],
+            Axis: [seg.axis.x, seg.axis.y, seg.axis.z],
+            RefDirection: [seg.refDir.x, seg.refDir.y, seg.refDir.z],
+          },
+          Profile: { ProfileType: 'AREA', OuterCurve: outerCurve },
+          Depth: seg.lengthMm * MM,
+          Name: nameOf(n), Tag: n.id,
+        });
+      }
+    }
+
+    // ── Stairs: the solved stairwell geometry, element by element ──
+    for (const n of storeyNodes) {
+      if (n.type !== 'stairwell') continue;
+      const { geometry } = computeStairGeometry(n, allNodes, edges);
+      if (!geometry) continue;
+
+      // Each flight is an IfcStair whose body is OUR cast cross-section — the
+      // sawtooth-over-waist from `flightProfile`, with the same junction depths
+      // the 3D viewers use — extruded across the width. The `addIfcStair`
+      // primitive was tried first and draws detached tread plates floating one
+      // above the other; a generic element with an arbitrary profile carries
+      // the true solid instead.
+      //
+      // Frame: profile (x, y) = (along run, up); local Z (the extrusion axis)
+      // must then be the RIGHT-hand normal of the run so Y = Z × X points UP,
+      // and the extrusion starts on the LEFT edge to end up centred.
+      const { intent: stairIntent } = computeStairGeometry(n, allNodes, edges);
+      for (const f of geometry.flights) {
+        const runMm = Math.hypot(f.end.x - f.start.x, f.end.y - f.start.y);
+        const dir = runMm > 1e-6
+          ? { x: (f.end.x - f.start.x) / runMm, y: (f.end.y - f.start.y) / runMm }
+          : { x: 1, y: 0 };
+        const isLast = f.index === geometry.flights.length - 1;
+        const junction = stairIntent.turnStyle === 'winder' ? f.riserMm : stairIntent.thicknessMm;
+        const profile = flightProfile(f.steps, f.riserMm, f.treadMm, stairIntent.thicknessMm, {
+          footDropMm: f.index > 0 ? junction : 0,
+          headDropMm: isLast ? 0 : junction,
+          ...(isLast ? { tailMm: Math.max(30, stairIntent.voidClearanceMm) } : {}),
+        });
+        if (!profile) continue;
+        const half = f.widthMm / 2;
+        creator.addElement(storeyId, {
+          IfcType: 'IFCSTAIR',
+          Placement: {
+            Location: [
+              (f.start.x - dir.y * half) * MM,          // left edge of the run
+              (f.start.y + dir.x * half) * MM,
+              (f.start.z - bottomMm) * MM,
+            ],
+            Axis: [dir.y, -dir.x, 0],                   // across, extrusion axis
+            RefDirection: [dir.x, dir.y, 0],            // along the run
+          },
+          Profile: {
+            ProfileType: 'AREA',
+            OuterCurve: profile.map((p): [number, number] => [p.x * MM, p.y * MM]),
+          },
+          Depth: f.widthMm * MM,
+          Name: nameOf(n), Tag: n.id,
+        });
+      }
+
+      // Landings and winder steps as profile slabs at their walking levels —
+      // a winder is simply a one-riser-thick slab shaped like its wedge.
+      for (const l of geometry.landings) {
+        creator.addIfcSlab(storeyId, {
+          Position: [0, 0, (l.levelMm - l.thicknessMm - bottomMm) * MM],
+          Thickness: l.thicknessMm * MM,
+          Profile: l.polygon.map((p): [number, number] => [p.x * MM, p.y * MM]),
+          Name: nameOf(n), Tag: n.id,
+        });
+      }
+      for (const w of geometry.winders) {
+        creator.addIfcSlab(storeyId, {
+          Position: [0, 0, (w.zTopMm - w.riserMm - bottomMm) * MM],
+          Thickness: w.riserMm * MM,
+          Profile: w.polygon.map((p): [number, number] => [p.x * MM, p.y * MM]),
+          Name: nameOf(n), Tag: n.id,
+        });
+      }
+
+      if (geometry.spiral && geometry.spiral.innerMm > 0) {
+        creator.addIfcCircularColumn(storeyId, {
+          Position: [
+            geometry.spiral.center.x * MM,
+            geometry.spiral.center.y * MM,
+            (geometry.bottomZMm - bottomMm) * MM,
+          ],
+          Radius: geometry.spiral.innerMm * MM,
+          Height: (geometry.topZMm - geometry.bottomZMm) * MM,
+          Name: nameOf(n), Tag: n.id,
+        });
+      }
     }
   }
 

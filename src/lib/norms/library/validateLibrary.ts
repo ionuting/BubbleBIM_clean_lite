@@ -38,7 +38,22 @@ export interface ValidationResult {
 }
 
 /** Tipuri de noduri care nu vin din `elementLibrary` (nu au tipuri enumerabile). */
-const VIRTUAL_NODE_TYPES = new Set(['room', 'ax', 'space', 'zone']);
+/**
+ * Node types that are legitimate mapping targets but have no catalogue of
+ * element TYPES behind them — a room is a room, and a stairwell is measured
+ * from its solved geometry rather than from a `SLAB15`-style type string. Their
+ * mappings use the `*` wildcard, so an empty type list is expected, not a
+ * missing entry.
+ */
+const VIRTUAL_NODE_TYPES = new Set([
+  'room', 'ax', 'space', 'zone', 'stairwell', 'sweep',
+  // Contour nodes: a shell's "element type" is its ROLE, and a cell is a hole
+  // in one — neither has a catalogue of sections behind it.
+  'shell', 'cell', 'covering',
+  // The roof and what its solver generates: measured from solved faces and
+  // member end points, no type catalogue behind them.
+  'roof', 'covering', 'rafter', 'hip_rafter', 'valley_rafter', 'ridge_beam', 'wall_plate', 'purlin', 'post',
+]);
 
 export function validateLibrary(lib: NormLibrary, compiled: CompiledLibrary): ValidationResult {
   const issues: ValidationIssue[] = [];
@@ -98,6 +113,51 @@ export function validateLibrary(lib: NormLibrary, compiled: CompiledLibrary): Va
     }
   }
 
+  // ── 3b. Specificații: grupuri, opțiuni, referințe din mapări ──
+  const specGroups = lib.specGroups ?? [];
+  const optionIds = new Set<string>();
+  for (const g of specGroups) {
+    for (const o of g.options) optionIds.add(`${g.id}:${o.id}`);
+    for (const a of g.defaultArticles) {
+      if (!articleIds.has(a)) {
+        push('error', 'unknown-default-article',
+          `grupul \`${g.id}\` declară articolul implicit inexistent \`${a}\``, '_specificatii.md');
+      }
+    }
+    if (g.options.length < 2) {
+      push('warning', 'single-option',
+        `grupul \`${g.id}\` are o singură opțiune — nu e nimic de comutat`, '_specificatii.md');
+    }
+  }
+
+  const specsUsedByRules = new Set(
+    lib.categories.flatMap((c) => c.mappings.map((m) => m.spec).filter((x): x is string => !!x)),
+  );
+  for (const cat of lib.categories) {
+    for (const m of cat.mappings) {
+      if (m.spec && !optionIds.has(m.spec)) {
+        push('error', 'unknown-spec',
+          `maparea referă specificația inexistentă \`${m.spec}\` (declar-o în _specificatii.md)`, cat.sourceFile);
+      }
+    }
+  }
+  // O opțiune fără mapări e legitimă („fără șapă") ATÂTA TIMP cât grupul are
+  // ce scoate: fie articolele implicitului, fie mapările opțiunii implicite,
+  // care se dezactivează când alegi altceva. Dacă n-are nici una, nici alta,
+  // alegerea nu schimbă nimic și e o capcană tăcută.
+  for (const g of specGroups) {
+    const defaultHasRules = specsUsedByRules.has(`${g.id}:${g.defaultOption}`);
+    if (g.defaultArticles.length > 0 || defaultHasRules) continue;
+    for (const o of g.options) {
+      if (o.id === g.defaultOption) continue;
+      if (!specsUsedByRules.has(`${g.id}:${o.id}`)) {
+        push('warning', 'inert-option',
+          `opțiunea \`${g.id}:${o.id}\` nu are nicio mapare, iar grupul nu scoate nimic — alegerea n-ar schimba nimic`,
+          '_specificatii.md');
+      }
+    }
+  }
+
   // ── 4. Articole fără preț declarat ──
   for (const cat of lib.categories) {
     for (const a of cat.articles) {
@@ -108,8 +168,12 @@ export function validateLibrary(lib: NormLibrary, compiled: CompiledLibrary): Va
   }
 
   // ── 5. Acoperire ──
+  // Regulile cu sistem sau cu specificație sunt ALTERNATIVE ale descompunerii
+  // implicite, nu acoperire în plus: un tip mapat doar în `timber_frame` sau
+  // doar sub `zidarie:bca25` rămâne nemapat implicit, deci nu-l numărăm.
   const mappedTypes = new Set<string>();
   for (const r of compiled.mapping) {
+    if (r.structuralSystem || r.spec) continue;
     if (r.elementTypeId === '*') {
       for (const t of elementTypesFor(r.nodeType)) mappedTypes.add(`${r.nodeType}/${t.id}`);
       if (VIRTUAL_NODE_TYPES.has(r.nodeType)) mappedTypes.add(`${r.nodeType}/*`);
