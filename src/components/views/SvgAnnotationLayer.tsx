@@ -31,6 +31,7 @@ import {
   type AnnPt,
   type HatchPatternId,
 } from '@/store';
+import { offsetNormalSvg } from '@/lib/annotationGeometry';
 import { SvgHatchDefs } from './SvgHatches';
 
 // ─── Tool type ────────────────────────────────────────────────────────────────
@@ -494,7 +495,11 @@ export function SvgAnnotationLayer({
     }
 
     if (activeTool === 'select') {
-      onSelectAnnotation?.(ann.id === selectedId ? null : ann.id);
+      // NOT a toggle. `handleAnnPointerDown` already selected this annotation
+      // on the way down, so toggling here would undo it on the way up and
+      // nothing could ever be selected with the Select tool. Clicking empty
+      // space is what deselects — that is the capture rect's job.
+      onSelectAnnotation?.(ann.id);
       return;
     }
 
@@ -662,7 +667,13 @@ export function SvgAnnotationLayer({
         const lenSvg = Math.hypot(dx, dy);
         if (lenSvg < 0.5) return null;
         const ux = dx / lenSvg, uy = dy / lenSvg;
-        const nx = -uy, ny = ux;
+        // `offsetDir` was measured against the baseline's LOGICAL normal, so
+        // the normal it is applied along has to be that same one carried into
+        // SVG — not `perp(s2 − s1)`, which a flipped Y axis turns around and
+        // which put the line on the side nobody clicked. See offsetNormalSvg.
+        const n = offsetNormalSvg(p1, p2, toSvg);
+        if (!n) return null;
+        const nx = n.x, ny = n.y;
         const logLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
         const svgPerLog = logLen > 1e-9 ? lenSvg / logLen : 1;
         const offSvg = offsetDir * svgPerLog;
