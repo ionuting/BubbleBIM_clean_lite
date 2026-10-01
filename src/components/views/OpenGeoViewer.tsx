@@ -20,6 +20,8 @@ import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { createPointerZoom } from '@/lib/orbitPointerZoom';
 import { pickNodeId } from '@/lib/pickSelection';
 import { applySelectionHighlight, setHighlight } from '@/lib/selectionHighlight';
+import { ensureProfileLibraryLoaded } from '@/lib/sweep';
+import { subscribeBglibStore } from '@/lib/bglibSymbolStore';
 
 function addBimAxes(scene: THREE.Scene, length = 1): void {
   const mkLine = (end: [number, number, number], color: number) => {
@@ -64,7 +66,18 @@ export function OpenGeoViewer({
   const [ogError, setOgError]     = useState<string | null>(null);
   const [isBuilding, setBuilding] = useState(false);
   const [dayMode, setDayMode]     = useState(false);
+  // Structure view: walls as studs/plates/sheathing (timber) or with panel joints (CLT).
+  const [structureView, setStructureView] = useState(false);
   const { config: matConfig } = useMaterialConfig();
+
+  // Sweep DXF profiles arrive async through the bglib store; without the
+  // initial listing every dxf: id parks as 'loading' forever, and without the
+  // subscription a profile landing after the first build never shows up.
+  const [profileVer, setProfileVer] = useState(0);
+  useEffect(() => {
+    void ensureProfileLibraryLoaded();
+    return subscribeBglibStore(() => setProfileVer((n) => n + 1));
+  }, []);
 
   // ── Visibility filter ────────────────────────────────────────────────────
   const [hiddenTypes, setHiddenTypes]         = useState<Set<string>>(new Set());
@@ -213,6 +226,13 @@ export function OpenGeoViewer({
     renderer.domElement.addEventListener('click', onClick);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('resize', onResize);
+    // The canvas must follow its CONTAINER, not just the window. Opening a
+    // side panel (object library, inspector) resizes the container without
+    // resizing the window, and a WebGL canvas keeps whatever pixel size it was
+    // last given — so it stayed too wide and painted over the panel next to it.
+    const ro = new ResizeObserver(onResize);
+    ro.observe(container);
+
 
     let animId: number;
     const animate = () => { animId = requestAnimationFrame(animate); renderer.render(scene, camera); };
@@ -228,6 +248,7 @@ export function OpenGeoViewer({
       renderer.domElement.removeEventListener('click', onClick);
       renderer.domElement.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       renderer.dispose();
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
     };
@@ -267,7 +288,7 @@ export function OpenGeoViewer({
           (c) => c instanceof THREE.Light || c instanceof THREE.Line,
         );
 
-        buildOGScene(scene, nodes, edges, matConfig);
+        buildOGScene(scene, nodes, edges, matConfig, { structureView });
 
         // Re-apply visibility
         scene.traverse((obj) => {
@@ -321,7 +342,7 @@ export function OpenGeoViewer({
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, isReady, matConfig]);
+  }, [nodes, edges, isReady, matConfig, profileVer, structureView]);
 
   return (
     <div className={cn('relative w-full h-full', className)}>
@@ -355,6 +376,16 @@ export function OpenGeoViewer({
             className="w-7 h-7 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-base select-none transition-colors"
           >
             {dayMode ? '🌙' : '☀️'}
+          </button>
+        )}
+        {isReady && (
+          <button
+            onClick={() => setStructureView((v) => !v)}
+            title={structureView ? 'Show walls as solids' : 'Structure view — studs, plates, sheathing, CLT joints'}
+            data-testid="og-structure-toggle"
+            className={`w-7 h-7 flex items-center justify-center rounded-full text-base select-none transition-colors ${structureView ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-black/50 hover:bg-black/70'}`}
+          >
+            🪵
           </button>
         )}
       </div>

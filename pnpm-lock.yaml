@@ -47,6 +47,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      earcut:
+        specifier: 3.0.2
+        version: 3.0.2
       lucide-react:
         specifier: ^0.562.0
         version: 0.562.0(react@18.3.1)
@@ -57,8 +60,11 @@ importers:
         specifier: ^15.2.0
         version: 15.2.0
       opengeometry:
-        specifier: ^2.0.9
-        version: 2.0.9(three@0.182.0)
+        specifier: 2.0.13
+        version: 2.0.13(three@0.182.0)
+      proj4:
+        specifier: ^2.22.0
+        version: 2.22.0
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -2626,6 +2632,9 @@ packages:
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
+  mgrs@1.0.0:
+    resolution: {integrity: sha512-awNbTOqCxK1DBGjalK3xqWIstBZgN6fxsMSiXLs9/spqWkF2pAhb2rrYCFSsr1/tT7PhcDGjZndG8SWYn0byYA==}
+
   mime-db@1.52.0:
     resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
     engines: {node: '>= 0.6'}
@@ -2782,8 +2791,8 @@ packages:
     resolution: {integrity: sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg==}
     engines: {node: '>=6'}
 
-  opengeometry@2.0.9:
-    resolution: {integrity: sha512-H/nmcZaOaUKs+7fh2qdpkpIpLVKEnGvTV0wf6906UpsIvczZo7b+QUFgei7fT1dLQjlq0Y1sZ1p4c7nhN+ijfw==}
+  opengeometry@2.0.13:
+    resolution: {integrity: sha512-LEIVwMrv8HbIpKDtBHlJaklUYZ6OwxvZ20P3v4Fm+N3NMB7ErAPp1FJXYoZ+Be1hScSlvud55RvOkcT9iD8Fjg==}
     peerDependencies:
       three: '>=0.168.0'
 
@@ -2892,6 +2901,14 @@ packages:
   progress@2.0.3:
     resolution: {integrity: sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==}
     engines: {node: '>=0.4.0'}
+
+  proj4@2.22.0:
+    resolution: {integrity: sha512-MVvH09QrYm3A235rcX39WDiCKanrBiblu28l0KYIn/B2DofmYhvP/LLS43kE66jNDfx/P1l/nah3JmsAq8UgbQ==}
+    peerDependencies:
+      geotiff: '*'
+    peerDependenciesMeta:
+      geotiff:
+        optional: true
 
   promise-retry@2.0.1:
     resolution: {integrity: sha512-y+WKFlBR8BGXnsNlIHFGPZmyDf3DFMoLhaflAnyZgV6rG6xu+JwesTo2Q9R6XwYmtmwAFCkAk3e35jEdoeh/3g==}
@@ -3317,10 +3334,6 @@ packages:
   truncate-utf8-bytes@1.0.2:
     resolution: {integrity: sha512-95Pu1QXQvruGEhv62XCMO3Mm90GscOCClvrIUwCM0PYOXK3kaF3l3sIHxx71ThJfcbM2O5Au6SO3AWCSEfW4mQ==}
 
-  tsc@2.0.4:
-    resolution: {integrity: sha512-fzoSieZI5KKJVBYGvwbVZs/J5za84f2lSTLPYf6AGiIf43tZ3GNrI1QzTLcjtyDDP4aLxd46RTZq1nQxe7+k5Q==}
-    hasBin: true
-
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
@@ -3387,6 +3400,7 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   vanjs-core@1.6.1:
@@ -3491,6 +3505,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  wkt-parser@1.5.6:
+    resolution: {integrity: sha512-cqHU3lzGt/gt2OqIORP0uVy5yeOX43WABmgFkmJsmcqH3HhQo9PiJG6ftytwGKmpQUbegeX7+pQc2BuNCRfcrw==}
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -6918,6 +6935,8 @@ snapshots:
 
   meshoptimizer@1.1.1: {}
 
+  mgrs@1.0.0: {}
+
   mime-db@1.52.0: {}
 
   mime-types@2.1.35:
@@ -7072,10 +7091,9 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  opengeometry@2.0.9(three@0.182.0):
+  opengeometry@2.0.13(three@0.182.0):
     dependencies:
       three: 0.182.0
-      tsc: 2.0.4
       uuid: 10.0.0
 
   ora@5.4.1:
@@ -7166,6 +7184,11 @@ snapshots:
   process-nextick-args@2.0.1: {}
 
   progress@2.0.3: {}
+
+  proj4@2.22.0:
+    dependencies:
+      mgrs: 1.0.0
+      wkt-parser: 1.5.6
 
   promise-retry@2.0.1:
     dependencies:
@@ -7638,8 +7661,6 @@ snapshots:
     dependencies:
       utf8-byte-length: 1.0.5
 
-  tsc@2.0.4: {}
-
   tslib@2.8.1: {}
 
   type-fest@0.13.1:
@@ -7804,6 +7825,8 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  wkt-parser@1.5.6: {}
 
   wrap-ansi@7.0.0:
     dependencies:

@@ -17,6 +17,7 @@
  */
 import type { Pt2, Pt3, RoofContour, RoofDiagnostic, RoofFace3D, RoofType } from './types';
 import { buildRoofEnvelope } from './skeleton';
+import { extrudePolygon3, type Tri } from './eyebrow';
 import { computeFaceBasis, findHostFace, projectPlanPointToFace, type FaceBasis } from './faceGeometry';
 
 export interface DormerIntent {
@@ -195,4 +196,53 @@ function emptyPane(): WallPane {
 }
 function emptyContour(basis: FaceBasis): RoofContour {
   return { points: [], axIds: [], baseZ: basis.origin.z, storeyId: null };
+}
+
+/** A box dormer node's intent, as the 3D view and the IFC export both read it. */
+export function dormerIntentOf(node: { x: number; y: number; properties: Record<string, unknown> }): DormerIntent {
+  const p = node.properties;
+  return {
+    planX: node.x,
+    planY: node.y,
+    widthMm: Number(p.width_mm ?? 1200),
+    depthMm: Number(p.depth_mm ?? 900),
+    wallHeightMm: Number(p.wall_height_mm ?? 1200),
+    roofType: String(p.roof_type ?? 'gable') === 'shed' ? 'shed' : 'gable',
+    pitchDeg: Number(p.pitch_deg ?? 25),
+    overhangMm: Number(p.overhang_mm ?? 200),
+  };
+}
+
+/**
+ * The box dormer as closed solids, for the export: its three walls given the
+ * thickness the 3D view gives them (outward from the pane), its own slopes
+ * given the covering's thickness (downward), its gable ends the walls'
+ * thickness (inward). Millimetres, BIM axes.
+ */
+export function dormerSolids(
+  p: DormerPlacement, wallThicknessMm = 100, roofThicknessMm = 40,
+): { walls: Tri[][]; roof: Tri[][] } {
+  const u: Pt3 = { x: p.basis.u.x, y: p.basis.u.y, z: 0 };
+  const l = Math.hypot(p.basis.v.x, p.basis.v.y) || 1;
+  const front: Pt3 = { x: -p.basis.v.x / l, y: -p.basis.v.y / l, z: 0 };
+  const scale = (d: Pt3, k: number): Pt3 => ({ x: d.x * k, y: d.y * k, z: d.z * k });
+  const walls = [
+    extrudePolygon3(p.frontWall.corners, scale(front, wallThicknessMm)),
+    extrudePolygon3(p.cheekLeft.corners, scale(u, -wallThicknessMm)),
+    extrudePolygon3(p.cheekRight.corners, scale(u, wallThicknessMm)),
+  ];
+  const all = p.ownRoofFaces.flatMap((f) => f.vertices);
+  const c = all.reduce((m, q) => ({ x: m.x + q.x / all.length, y: m.y + q.y / all.length, z: m.z + q.z / all.length }), { x: 0, y: 0, z: 0 });
+  const roof: Tri[][] = [];
+  for (const f of p.ownRoofFaces) {
+    if (f.role === 'gable_end') {
+      const m = f.vertices.reduce((s, q) => ({ x: s.x + q.x / f.vertices.length, y: s.y + q.y / f.vertices.length, z: 0 }), { x: 0, y: 0, z: 0 });
+      const d = { x: c.x - m.x, y: c.y - m.y, z: 0 };
+      const dl = Math.hypot(d.x, d.y) || 1;
+      walls.push(extrudePolygon3(f.vertices, scale({ x: d.x / dl, y: d.y / dl, z: 0 }, wallThicknessMm)));
+    } else {
+      roof.push(extrudePolygon3(f.vertices, { x: 0, y: 0, z: -roofThicknessMm }));
+    }
+  }
+  return { walls: walls.filter((t) => t.length), roof: roof.filter((t) => t.length) };
 }

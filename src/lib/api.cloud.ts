@@ -4,7 +4,9 @@
  */
 
 import { parseAxes } from './utils';
-import { authHeaders, getActiveProjectId, getToken } from './auth';
+import { authHeaders, getActiveProjectId, getToken, setActiveProjectId } from './auth';
+import { topologyClient } from './topology/client';
+import type { SolidsResult, TopologyRequest, TopologyResult, TopologyStatus } from './topology/types';
 
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '/api').replace(/\/$/, '');
 
@@ -38,7 +40,11 @@ export interface GraphData {
   activeStoreyId?: string | null;
   projectName?: string;
   annotations?: import('@/store').DrawingAnnotation[];
+  /** The project's 2D views — see lib/views/drawingViews.ts. */
+  drawingViews?: import('@/lib/views/drawingViews').DrawingView[];
   worldLocation?: import('@/store').WorldLocation;
+  /** The site's ground — see lib/terrain. Absent in projects saved before it existed. */
+  terrain?: import('@/lib/terrain').TerrainModel;
   globeInstances?: import('@/store').GlobeInstance[];
   composerShapes?: import('@/store').RoomXShape[];
   /** Open drawing tabs (plans/sections/elevations/…) — persisted so the drawing workspace survives a reload. */
@@ -48,6 +54,8 @@ export interface GraphData {
   structuralSystem?: import('@/lib/systems/structuralSystem').StructuralSystem;
   /** Project-wide material/finish choices (lib/norms/specs.ts). */
   specs?: Record<string, string>;
+  /** Cost scenarios (deltas + cached results) and the target budget. See lib/scenarios. */
+  scenarios?: import('@/lib/scenarios/types').ScenarioPersist;
 }
 
 function normalizeGraph(data: GraphData): GraphData {
@@ -282,6 +290,80 @@ export interface HistoryDiffSummary {
   edges: { added: string[]; removed: string[] };
 }
 
+// ─── Projects ─────────────────────────────────────────────────────────────
+//
+// The same four calls the local build serves from `backend/projects/`, over
+// the cloud's own per-user project table. The identity differs and that is
+// the whole point of keeping them apart: locally a project IS its slug, here
+// it is a database id that belongs to an account. `ProjectSummary.slug`
+// therefore carries the project id, which is what the caller hands back.
+//
+// Rename has no route on this side yet, so it says so instead of failing
+// silently — a rename that reports success and changes nothing is worse than
+// one that admits it cannot.
+
+export interface ProjectSummary {
+  slug: string;
+  name: string;
+  nodes: number;
+  edges: number;
+  /** Unix seconds. */
+  updated: number;
+  active: boolean;
+}
+
+interface CloudProjectRow {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export async function listProjects(): Promise<{ projects: ProjectSummary[]; active: string }> {
+  const active = getActiveProjectId() ?? '';
+  if (!getToken()) return { projects: [], active };
+  try {
+    const res = await fetch(`${API_BASE}/projects`, { headers: authHeaders(false) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = (await res.json()) as { projects?: CloudProjectRow[] };
+    const projects = (body.projects ?? []).map((p): ProjectSummary => ({
+      slug: p.id,
+      name: p.name,
+      // The listing carries metadata only; counts would cost one full
+      // project fetch each, so they are left at zero rather than guessed.
+      nodes: 0,
+      edges: 0,
+      updated: p.updatedAt ? Math.floor(new Date(p.updatedAt).getTime() / 1000) : 0,
+      active: p.id === active,
+    }));
+    return { projects, active };
+  } catch (err) {
+    console.error('❌ Failed to list projects:', err);
+    return { projects: [], active };
+  }
+}
+
+/** Make a project the one a bare `loadGraph()` returns. */
+export async function openProject(slug: string): Promise<boolean> {
+  if (!getToken()) return false;
+  setActiveProjectId(slug);
+  return true;
+}
+
+export async function renameProject(_slug: string, _name: string): Promise<boolean> {
+  throw new Error('Redenumirea unui proiect nu e disponibilă în versiunea cloud.');
+}
+
+export async function deleteProject(slug: string, _keepHistory = true): Promise<boolean> {
+  if (!getToken()) return false;
+  const res = await fetch(`${API_BASE}/projects/${slug}`, {
+    method: 'DELETE', headers: authHeaders(false),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+  if (getActiveProjectId() === slug) setActiveProjectId(null);
+  return true;
+}
+
 function requireProject(): string | null {
   const projectId = getActiveProjectId();
   if (!projectId || !getToken()) {
@@ -423,4 +505,22 @@ export async function addHistoryComment(commitId: number, text: string): Promise
     console.error('❌ Failed to add comment:', err);
     return null;
   }
+}
+
+// ── Room topology (topologicpy on PythonOCC) ─────────────────────────────────
+// Answers 503 with the reason when the backend runs without the kernel.
+
+const _topology = topologyClient(API_BASE);
+
+export function getTopologyStatus(): Promise<TopologyStatus> {
+  return _topology.status();
+}
+
+export function analyzeTopology(req: TopologyRequest, signal?: AbortSignal): Promise<TopologyResult> {
+  return _topology.analyze(req, signal);
+}
+
+/** Every element of an IFC as an exact solid — volumes, and what pairs share. */
+export function measureSolids(ifc: string, signal?: AbortSignal): Promise<SolidsResult> {
+  return _topology.solids(ifc, signal);
 }

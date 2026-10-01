@@ -4,9 +4,10 @@
  * - Click to activate · Double-click to rename · Click × to close
  */
 import { useState, useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { PictureInPicture2, X } from 'lucide-react';
 import type { ViewTab, ViewTabType } from '@/store';
 import { VIEW_TAB_LUCIDE } from '@/components/bubble-graph/CleanRibbon';
+import { isDetachable } from '@/lib/detachedView';
 
 const TAB_ICONS: Record<ViewTabType, string> = {
   'graph-editor':      '◈',
@@ -27,6 +28,7 @@ const TAB_ICONS: Record<ViewTabType, string> = {
   'ifc-plan':          '▦',
   'composer':          '◇',
   'fem':               '🏗',
+  'topology':          '⋈',
 };
 
 interface ViewTabBarProps {
@@ -37,9 +39,19 @@ interface ViewTabBarProps {
   onRename: (id: string, label: string) => void;
   /** Use Lucide icons (Clean Lite / modern chrome). */
   useLucide?: boolean;
+  /**
+   * Pull this view into its own OS window (desktop build only). Absent in the
+   * browser, where there is nowhere to put it.
+   */
+  onDetach?: (tab: ViewTab) => void;
+  /** Tabs that already have a window of their own; ⧉ then focuses it. */
+  detachedIds?: readonly string[];
 }
 
-export function ViewTabBar({ tabs, activeTabId, onSelect, onClose, onRename, useLucide = false }: ViewTabBarProps) {
+export function ViewTabBar({
+  tabs, activeTabId, onSelect, onClose, onRename, useLucide = false,
+  onDetach, detachedIds,
+}: ViewTabBarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,10 +78,12 @@ export function ViewTabBar({ tabs, activeTabId, onSelect, onClose, onRename, use
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         const LucideIcon = VIEW_TAB_LUCIDE[tab.type];
+        const isDetached = !!detachedIds?.includes(tab.id);
+        const canDetach = !!onDetach && isDetachable(tab.type);
         return (
           <div
             key={tab.id}
-            className={`bb-tab${isActive ? ' active' : ''}`}
+            className={`bb-tab${isActive ? ' active' : ''}${isDetached ? ' detached' : ''}`}
             onClick={() => onSelect(tab.id)}
             onDoubleClick={() => startEdit(tab)}
             title={tab.label}
@@ -106,6 +120,19 @@ export function ViewTabBar({ tabs, activeTabId, onSelect, onClose, onRename, use
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>
                 {tab.label}
               </span>
+            )}
+
+            {canDetach && (
+              <button
+                className="tab-detach"
+                onClick={(e) => { e.stopPropagation(); onDetach!(tab); }}
+                title={isDetached
+                  ? 'Vederea are deja fereastra ei — adu-o în față'
+                  : 'Deschide vederea într-o fereastră proprie (⌘⇧D)'}
+                style={{ opacity: isDetached ? 1 : undefined, color: isDetached ? 'hsl(var(--primary))' : undefined }}
+              >
+                <PictureInPicture2 className="bb-ico" strokeWidth={1.75} />
+              </button>
             )}
 
             {tab.canClose && (

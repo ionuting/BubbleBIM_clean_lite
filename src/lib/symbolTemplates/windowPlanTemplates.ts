@@ -2,7 +2,16 @@ import type { SvgSymNode, SvgSymEdge } from '@/lib/svgSymbolStore';
 import { assembleDef, mkSp, mkSl, mkSh } from './templateCompiler';
 import type { SymbolTemplate } from './types';
 
+/**
+ * Window symbol space: the outer face of the wall is y=0, the inner face is
+ * y=`outer_off + inner_off` — the plan scales that pair onto the wall it
+ * lands in, so this IS the wall thickness. The frame's section (the two
+ * corner squares) and the glazing line sit on the wall's axis, halfway
+ * between; the sill zone projects from the inner face into the room. Put
+ * differently: nothing but the sill leaves the wall.
+ */
 const INNER_Y = 'outer_off + inner_off';
+const MID_Y = '(outer_off + inner_off) / 2';
 const SILL_Y = 'outer_off + inner_off + sill_proj';
 const SQ = 'sq / 2';
 
@@ -12,7 +21,7 @@ function frameSquare(cx: string, cy: string): { nodes: SvgSymNode[]; edges: SvgS
   const p2 = mkSp(`(${cx}) + ${SQ}`, `(${cy}) + ${SQ}`, 'sq');
   const p3 = mkSp(`(${cx}) - ${SQ}`, `(${cy}) + ${SQ}`, 'sq');
   const { node, edges } = mkSh([p0, p1, p2, p3], '#ffffff', 1, 'solid', '#222222', 2);
-  node.label = cx === '0' ? 'SqL' : 'SqR';
+  node.label = cx.startsWith('0') ? 'SqL' : 'SqR';
   return { nodes: [p0, p1, p2, p3, node], edges, fill: node };
 }
 
@@ -43,21 +52,23 @@ function buildFixed(typeKey: string, name: string) {
   nodes.push(i0, i1, inner.node);
   edges.push(...inner.edges);
 
-  const sqL = frameSquare('0', '0');
-  const sqR = frameSquare('W', '0');
+  // The frame's section at each jamb, inside the wall, on its axis.
+  const sqL = frameSquare(`0 + ${SQ}`, MID_Y);
+  const sqR = frameSquare(`W - ${SQ}`, MID_Y);
   nodes.push(...sqL.nodes, ...sqR.nodes);
   edges.push(...sqL.edges, ...sqR.edges);
 
-  const g0 = mkSp('0', 'gw');
-  const g1 = mkSp('W', 'gw');
-  const g0b = mkSp('0', '-gw');
-  const g1b = mkSp('W', '-gw');
+  // The glazing: two lines either side of the axis, joined at mid-span.
+  const g0 = mkSp('0', `${MID_Y} + gw`);
+  const g1 = mkSp('W', `${MID_Y} + gw`);
+  const g0b = mkSp('0', `${MID_Y} - gw`);
+  const g1b = mkSp('W', `${MID_Y} - gw`);
   const gTop = mkSl(g0, g1, '#5588AA', 1);
   gTop.node.label = 'Glass';
   const gBot = mkSl(g0b, g1b, '#5588AA', 1);
   gBot.node.label = 'Glass';
-  const gMid0 = mkSp('W/2', 'gw');
-  const gMid1 = mkSp('W/2', '-gw');
+  const gMid0 = mkSp('W/2', `${MID_Y} + gw`);
+  const gMid1 = mkSp('W/2', `${MID_Y} - gw`);
   const gMid = mkSl(gMid0, gMid1, '#5588AA', 1);
   gMid.node.label = 'Glass';
   nodes.push(g0, g1, g0b, g1b, gTop.node, gBot.node, gMid0, gMid1, gMid.node);
@@ -88,19 +99,20 @@ function buildCasement(typeKey: string, name: string, double: boolean) {
     nodes.push(c0, c1, center.node);
     edges.push(...center.edges);
 
-    const a0 = mkSp('W*0.25', 'gw*2');
-    const a1 = mkSp('W*0.25', 'gw*4');
+    // Opening indicators: a dashed tick from the glazing towards the room.
+    const a0 = mkSp('W*0.25', `${MID_Y} + gw*2`);
+    const a1 = mkSp('W*0.25', `${MID_Y} + gw*4`);
     const indL = mkSl(a0, a1, '#5588AA', 1, true);
     indL.node.label = 'Glass';
-    const b0 = mkSp('W*0.75', 'gw*2');
-    const b1 = mkSp('W*0.75', 'gw*4');
+    const b0 = mkSp('W*0.75', `${MID_Y} + gw*2`);
+    const b1 = mkSp('W*0.75', `${MID_Y} + gw*4`);
     const indR = mkSl(b0, b1, '#5588AA', 1, true);
     indR.node.label = 'Glass';
     nodes.push(a0, a1, indL.node, b0, b1, indR.node);
     edges.push(...indL.edges, ...indR.edges);
   } else {
-    const a0 = mkSp('W*0.5', 'gw*2');
-    const a1 = mkSp('W*0.5', 'gw*4');
+    const a0 = mkSp('W*0.5', `${MID_Y} + gw*2`);
+    const a1 = mkSp('W*0.5', `${MID_Y} + gw*4`);
     const ind = mkSl(a0, a1, '#5588AA', 1, true);
     ind.node.label = 'Glass';
     nodes.push(a0, a1, ind.node);
@@ -142,12 +154,12 @@ function buildTiltTurn(typeKey: string, name: string) {
   const nodes = [...def.nodes];
   const edges = [...def.edges];
 
-  const cx = mkSp('W/2', 'gw*3');
-  const cy = mkSp('W/2', 'gw*5');
+  const cx = mkSp('W/2', `${MID_Y} + gw*3`);
+  const cy = mkSp('W/2', `${MID_Y} + gw*5`);
   const tilt = mkSl(cx, cy, '#5588AA', 1, true);
   tilt.node.label = 'Glass';
-  const hx = mkSp('W*0.35', 'gw*3');
-  const hy = mkSp('W*0.65', 'gw*3');
+  const hx = mkSp('W*0.35', `${MID_Y} + gw*3`);
+  const hy = mkSp('W*0.65', `${MID_Y} + gw*3`);
   const hinge = mkSl(hx, hy, '#5588AA', 1);
   hinge.node.label = 'Glass';
   nodes.push(cx, cy, tilt.node, hx, hy, hinge.node);

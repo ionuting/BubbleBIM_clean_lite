@@ -86,3 +86,38 @@ describe('computeSweep on library-default properties', () => {
     expect(res.diagnostics.some((d) => d.code === 'PROFILE_UNAVAILABLE')).toBe(true);
   });
 });
+
+describe('computeSweep — a raking run', () => {
+  it('a cornice climbing a gable measures its own slope length, not its shadow', () => {
+    // 4 m along, 3 m up: a run of 5 m, whatever the plan says.
+    const { sweep, nodeMap, edges } = build(
+      [['a', 0, 0], ['b', 4000, 0]],
+      { rise_mm: 3000, p_w_mm: 200, p_h_mm: 100 },
+    );
+    const r = computeSweep(sweep, nodeMap, edges);
+    expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(r.path!.kind).toBe('raked');
+    expect(r.lengthMm).toBeCloseTo(5000, 3);
+    // A prism swept square to its own path: volume is area × slope length.
+    expect(r.volumeMm3).toBeCloseTo(200 * 100 * 5000, 0);
+    expect(r.zMaxMm - r.zMinMm).toBeGreaterThan(3000);   // the rise, plus the profile
+  });
+
+  it('the same run without a rise is the level one it always was', () => {
+    const { sweep, nodeMap, edges } = build([['a', 0, 0], ['b', 4000, 0]], { p_w_mm: 200, p_h_mm: 100 });
+    const r = computeSweep(sweep, nodeMap, edges);
+    expect(r.path!.kind).toBe('horizontal');
+    expect(r.lengthMm).toBeCloseTo(4000, 3);
+    expect(r.volumeMm3).toBeCloseTo(200 * 100 * 4000, 0);
+  });
+
+  it('the plan outline is the run\'s shadow — a rake does not widen it', () => {
+    const level = computeSweep(...(() => { const b = build([['a', 0, 0], ['b', 4000, 0]], { p_w_mm: 200, p_h_mm: 100 }); return [b.sweep, b.nodeMap, b.edges] as const; })());
+    const raked = computeSweep(...(() => { const b = build([['a', 0, 0], ['b', 4000, 0]], { p_w_mm: 200, p_h_mm: 100, rise_mm: 3000 }); return [b.sweep, b.nodeMap, b.edges] as const; })());
+    const span = (fp: { x: number; y: number }[][]) => {
+      const ys = fp.flat().map((p) => p.y);
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    expect(span(raked.footprint)).toBeCloseTo(span(level.footprint), 6);
+  });
+});

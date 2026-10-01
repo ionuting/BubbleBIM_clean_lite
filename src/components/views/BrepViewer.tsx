@@ -183,6 +183,13 @@ export function BrepViewer({
     el.addEventListener('click', onClick);
     el.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('resize', onResize);
+    // The canvas must follow its CONTAINER, not just the window. Opening a
+    // side panel (object library, inspector) resizes the container without
+    // resizing the window, and a WebGL canvas keeps whatever pixel size it was
+    // last given — so it stayed too wide and painted over the panel next to it.
+    const ro = new ResizeObserver(onResize);
+    ro.observe(container);
+
 
     let raf = 0;
     const loop = () => { raf = requestAnimationFrame(loop); renderer.render(scene, camera); };
@@ -197,6 +204,7 @@ export function BrepViewer({
       el.removeEventListener('click', onClick);
       el.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       renderer.dispose();
       if (container.contains(el)) container.removeChild(el);
     };

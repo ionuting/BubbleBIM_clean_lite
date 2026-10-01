@@ -29,6 +29,10 @@ export const WALL_TYPES: WallType[] = [
   { id: 'W30',  label: 'Wall 30 cm',   thickness_mm:  300, material: 'Concrete C25/30', fire_rating: 'REI 180', description: 'Structural concrete wall, 30 cm' },
   { id: 'W35',  label: 'Wall 35 cm',   thickness_mm:  350, material: 'Concrete C30/37', fire_rating: 'REI 180', description: 'Exterior concrete wall, 35 cm' },
   { id: 'W40',  label: 'Wall 40 cm',   thickness_mm:  400, material: 'Concrete C30/37', fire_rating: 'REI 240', description: 'Thick exterior concrete wall, 40 cm' },
+  // At 60 cm a wall stops being a partition and becomes mass: an old solid-brick
+  // or stone wall, a basement or retaining wall. Priced as masonry by volume —
+  // see the W60 rows in data/norms/library/zidarie.md.
+  { id: 'W60',  label: 'Wall 60 cm',   thickness_mm:  600, material: 'Brick',          fire_rating: 'REI 240', description: 'Massive masonry wall, 60 cm — old walls, basement, retaining' },
   // Timber-frame walls: studs + sheathing + insulation + board. The thickness is
   // the finished build-up; the framing inside is derived (lib/framing).
   { id: 'TF14', label: 'Timber frame 14 cm', thickness_mm: 140, material: 'Timber frame', fire_rating: 'REI 30',  description: 'Interior timber-frame partition: 45×95 studs, board both sides' },
@@ -360,6 +364,27 @@ export const SLAB_TYPE_MAP       = new Map(SLAB_TYPES.map((t)       => [t.id, t]
 export const FOUNDATION_TYPE_MAP = new Map(FOUNDATION_TYPES.map((t) => [t.id, t]));
 export const WINDOW_TYPE_MAP     = new Map(WINDOW_TYPES.map((t)     => [t.id, t]));
 export const DOOR_TYPE_MAP       = new Map(DOOR_TYPES.map((t)       => [t.id, t]));
+
+/**
+ * Does this opening have two sashes or two leaves? The node may say so itself;
+ * otherwise its catalogue entry does. Every view that draws a mullion or a
+ * meeting stile — plan symbol, elevation, IFC fill — must agree on the answer,
+ * so it is read here rather than in each of them.
+ *
+ * Typed structurally so the library stays free of the graph's own types.
+ */
+export function isDoubleOpening(
+  node: { properties: Record<string, unknown> },
+  isDoor: boolean,
+): boolean {
+  const d = node.properties.double;
+  if (d === true || d === 'true' || d === 'True') return true;
+  if (isDoor) {
+    const e = DOOR_TYPE_MAP.get(String(node.properties.door_type ?? ''));
+    return !!e && (e.leaf_count === 2 || e.swing === 'double');
+  }
+  return WINDOW_TYPE_MAP.get(String(node.properties.window_type ?? ''))?.opening === 'double';
+}
 
 /** All type tables indexed by BIM element family name. */
 export const ELEMENT_LIBRARY = {

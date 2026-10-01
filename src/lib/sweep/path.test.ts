@@ -112,3 +112,60 @@ describe('resolveSweepPath', () => {
     expect(out.path!.points[1].z).toBe(3000);
   });
 });
+
+describe('resolveSweepPath — the rake', () => {
+  const run = (over: Partial<SweepIntent>) => {
+    const { node, nodeMap, edges } = setup(
+      [ax('a', 0, 0), ax('b', 4000, 0)],
+      [e('e1', 'sw', 'a'), e('e2', 'sw', 'b')],
+    );
+    return resolveSweepPath(node, nodeMap, edges, intent(over));
+  };
+
+  it('no rise leaves the run level, as it always was', () => {
+    const out = run({});
+    expect(out.path!.kind).toBe('horizontal');
+    expect(out.path!.points.map((p) => p.z)).toEqual([3000, 3000]);
+  });
+
+  it('a rise lifts the far end and nothing else', () => {
+    const out = run({ riseMm: 1000 });
+    expect(out.path!.kind).toBe('raked');
+    expect(out.path!.points.map((p) => p.z)).toEqual([3000, 4000]);
+    expect(out.path!.points.map((p) => p.x)).toEqual([0, 4000]);
+  });
+
+  it('a fall is a negative rise', () => {
+    expect(run({ riseMm: -600 }).path!.points[1].z).toBe(2400);
+  });
+
+  it('a rise under a millimetre is not a rake', () => {
+    expect(run({ riseMm: 0.4 }).path!.kind).toBe('horizontal');
+  });
+
+  it('the climb is spread by length, so a polyline keeps one slope', () => {
+    // Legs of 3000 and 1000: the corner must sit three quarters of the way up.
+    const { node, nodeMap, edges } = setup(
+      [ax('a', 0, 0), ax('b', 3000, 0), ax('c', 3000, 1000)],
+      [e('e1', 'sw', 'a'), e('e2', 'sw', 'b'), e('e3', 'sw', 'c')],
+    );
+    const out = resolveSweepPath(node, nodeMap, edges, intent({ riseMm: 800 }));
+    expect(out.path!.points.map((p) => p.z)).toEqual([3000, 3600, 3800]);
+  });
+
+  it('a closed loop cannot rise, and says so', () => {
+    const { node, nodeMap, edges } = setup(
+      [ax('a', 0, 0), ax('b', 4000, 0), ax('c', 4000, 4000)],
+      [e('e1', 'sw', 'a'), e('e2', 'sw', 'b'), e('e3', 'sw', 'c')],
+    );
+    const out = resolveSweepPath(node, nodeMap, edges, intent({ riseMm: 500, closed: true }));
+    expect(out.path!.kind).toBe('horizontal');
+    expect(out.path!.points.every((p) => p.z === 3000)).toBe(true);
+    expect(out.diagnostics.map((d) => d.code)).toContain('CLOSED_CANNOT_RISE');
+  });
+
+  it('the rake starts from the level and offset the run already had', () => {
+    const out = run({ riseMm: 1000, level: 'bottom', offsetZMm: 250 });
+    expect(out.path!.points.map((p) => p.z)).toEqual([250, 1250]);
+  });
+});

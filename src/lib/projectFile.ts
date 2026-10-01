@@ -12,13 +12,20 @@
  *   - symbolConfigs  : { window, door, svgSymbols }
  */
 
-import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes, ViewTab, Viewer3DType, WorldLocation, GlobeInstance, RoomXShape } from '@/store';
+import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes, ViewTab, WorldLocation, GlobeInstance, RoomXShape } from '@/store';
+import { normaliseViewer3DType, type Viewer3DType } from '@/lib/viewer3dType';
+import { parseStructuralSystem, type StructuralSystem } from '@/lib/systems/structuralSystem';
+import { parseSpecSelection, type SpecSelection } from '@/lib/norms/specs';
 import { exportRegistry as exportWindowRegistry, importRegistry as importWindowRegistry } from './windowSymbolLibrary';
 import { exportDoorRegistry, importDoorRegistry } from './doorSymbolLibrary';
 import { exportSymbolLibrary, importSymbolLibrary, type SvgSymbolDef } from './svgSymbolStore';
 import { exportCustomCalc, importCustomCalc, type CustomCalcPersist } from '@/store/customCalcStore';
 import { exportPrices, importPrices, type PricePersist } from '@/store/priceStore';
+import { exportEnergySettings, importEnergySettings, type EnergyPersist } from '@/store/energyStore';
 import { exportMappingOverrides, importMappingOverrides, type MappingOverridePersist } from '@/store/mappingOverrideStore';
+import { exportScenarios, importScenarios } from '@/store/scenarioStore';
+import { exportDrawings, importDrawings, type DrawingsPersist } from '@/store/drawingsPersist';
+import type { ScenarioPersist } from '@/lib/scenarios/types';
 
 // ─── Format types ─────────────────────────────────────────────────────────────
 
@@ -36,6 +43,12 @@ export interface BbimFile {
     worldLocation?: WorldLocation;
     globeInstances?: GlobeInstance[];
     composerShapes?: RoomXShape[];
+    /** Project-wide structural system — see lib/systems/structuralSystem.ts. */
+    structuralSystem?: StructuralSystem;
+    /** Project-wide material/finish choices — see lib/norms/specs.ts. */
+    specs?: SpecSelection;
+    /** The site's ground — see lib/terrain. */
+    terrain?: import('@/lib/terrain').TerrainModel;
   };
   viewState: {
     viewTabs: ViewTab[];
@@ -51,8 +64,14 @@ export interface BbimFile {
   customCalc?: CustomCalcPersist;
   /** Prețuri unitare per articol de normă. */
   prices?: PricePersist;
+  /** Convențiile calculului energetic pe care le-a schimbat utilizatorul. */
+  energy?: EnergyPersist;
   /** Suprascrieri de mapare BIM→articol la nivel de proiect. */
   mappingOverrides?: MappingOverridePersist;
+  /** Scenarii de cost (delta-uri peste graf + rezultate cache-uite) și bugetul-țintă. */
+  scenarios?: ScenarioPersist;
+  /** The 2D views (plans, sections, elevations) and their annotations. Absent in files saved before views existed. */
+  drawings?: DrawingsPersist;
 }
 
 // ─── Serialize (current state → JSON object) ──────────────────────────────────
@@ -86,6 +105,9 @@ export function serializeProject(
   worldLocation?: WorldLocation,
   globeInstances?: GlobeInstance[],
   composerShapes?: RoomXShape[],
+  structuralSystem?: StructuralSystem,
+  specs?: SpecSelection,
+  terrain?: import('@/lib/terrain').TerrainModel | null,
 ): BbimFile {
   const cleanTabs = sanitizeViewTabs(viewTabs);
 
@@ -101,6 +123,9 @@ export function serializeProject(
       worldLocation,
       globeInstances,
       composerShapes,
+      structuralSystem,
+      specs,
+      ...(terrain ? { terrain } : {}),
     },
     viewState: {
       viewTabs: cleanTabs,
@@ -114,7 +139,10 @@ export function serializeProject(
     },
     customCalc: exportCustomCalc(),
     prices: exportPrices(),
+    energy: exportEnergySettings(),
     mappingOverrides: exportMappingOverrides(),
+    scenarios: exportScenarios(),
+    drawings: exportDrawings(),
   };
 }
 
@@ -132,6 +160,10 @@ export interface DeserializedProject {
   worldLocation?: WorldLocation;
   globeInstances?: GlobeInstance[];
   composerShapes?: RoomXShape[];
+  structuralSystem?: StructuralSystem;
+  /** Project-wide material/finish choices — see lib/norms/specs.ts. */
+  specs?: SpecSelection;
+  terrain?: import('@/lib/terrain').TerrainModel;
 }
 
 export function deserializeProject(raw: unknown): DeserializedProject {
@@ -154,8 +186,14 @@ export function deserializeProject(raw: unknown): DeserializedProject {
   importCustomCalc(data.customCalc);
   // Restore unit prices (side effect into store)
   importPrices(data.prices);
+  // Restore energy conventions (side effect into store)
+  importEnergySettings(data.energy);
   // Restore per-project mapping overrides (side effect into store)
   importMappingOverrides(data.mappingOverrides);
+  // Restore cost scenarios + budget (side effect into store)
+  importScenarios(data.scenarios);
+  // Restore the 2D views and their annotations (side effect into store)
+  importDrawings(data.drawings);
 
   return {
     projectName: data.projectName ?? 'My Building',
@@ -167,10 +205,15 @@ export function deserializeProject(raw: unknown): DeserializedProject {
       { id: 'graph-editor', label: data.projectName ?? 'My Building', type: 'graph-editor', canClose: false },
     ],
     activeTabId: data.viewState?.activeTabId ?? 'graph-editor',
-    viewer3DType: data.viewState?.viewer3DType ?? 'ara3d',
+    viewer3DType: normaliseViewer3DType(data.viewState?.viewer3DType),
     worldLocation: data.model.worldLocation,
     globeInstances: data.model.globeInstances ?? [],
     composerShapes: data.model.composerShapes ?? [],
+    terrain: data.model.terrain,
+    // Narrowed, not trusted: a hand-edited file must not smuggle an unknown
+    // system into the controlled vocabulary.
+    structuralSystem: parseStructuralSystem(data.model.structuralSystem),
+    specs: parseSpecSelection(data.model.specs),
   };
 }
 

@@ -121,5 +121,27 @@ export function resolveSweepPath(
     return { path: null, diagnostics };
   }
 
-  return { path: { points: pts, closed, kind: 'horizontal' }, diagnostics };
+  // ── The rake ────────────────────────────────────────────────────────────
+  // Spread by arc length rather than per vertex: a polyline with a long leg
+  // and a short one must climb at ONE slope, or the moulding kinks at the
+  // corner between them.
+  let kind: SweepPath['kind'] = 'horizontal';
+  if (Math.abs(intent.riseMm) >= 1) {
+    if (closed) {
+      diagnostics.push({
+        code: 'CLOSED_CANNOT_RISE',
+        severity: 'warning',
+        message: 'Un traseu închis nu poate urca — s-ar întoarce la altă cotă decât a plecat. Panta a fost ignorată.',
+      });
+    } else {
+      let acc = 0;
+      for (let i = 1; i < pts.length; i++) {
+        acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        pts[i].z = z + (intent.riseMm * acc) / len;
+      }
+      kind = 'raked';
+    }
+  }
+
+  return { path: { points: pts, closed, kind }, diagnostics };
 }

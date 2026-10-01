@@ -3234,6 +3234,16 @@
     },
     {
       "nodeType": "wall",
+      "elementTypeId": "W60",
+      "outputs": [
+        {
+          "normId": "0001_00201A01_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
       "elementTypeId": "W15",
       "spec": "zidarie:bca25",
       "outputs": [
@@ -3300,6 +3310,17 @@
     },
     {
       "nodeType": "wall",
+      "elementTypeId": "W60",
+      "spec": "zidarie:bca25",
+      "outputs": [
+        {
+          "normId": "0001_BCA25_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
       "elementTypeId": "W15",
       "spec": "zidarie:caramida_plina",
       "outputs": [
@@ -3356,6 +3377,17 @@
     {
       "nodeType": "wall",
       "elementTypeId": "W40",
+      "spec": "zidarie:caramida_plina",
+      "outputs": [
+        {
+          "normId": "0001_CARPLIN_02",
+          "measure": "volume"
+        }
+      ]
+    },
+    {
+      "nodeType": "wall",
+      "elementTypeId": "W60",
       "spec": "zidarie:caramida_plina",
       "outputs": [
         {

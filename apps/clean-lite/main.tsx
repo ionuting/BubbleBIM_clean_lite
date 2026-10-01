@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppCleanLite } from './App';
 import '../../src/index.css';
-import './clean-theme.css';
+import '../../src/clean-theme.css';
 
 // Dark ArchiCAD chrome by default; user toggle persists in localStorage.
 const THEME_KEY = 'bubblebim_clean_theme';

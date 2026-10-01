@@ -32,7 +32,9 @@ import {
   type HatchPatternId,
 } from '@/store';
 import { offsetNormalSvg } from '@/lib/annotationGeometry';
-import { SvgHatchDefs } from './SvgHatches';
+import { dimDrawing } from '@/lib/drawing/dimGeometry';
+import { DEFAULT_DIM_STYLE_ID, formatDimLabel, resolveDimStyle } from '@/lib/drawing/dimStyle';
+import { DEFAULT_DRAW_STYLE_ID, dashFor, resolveDrawStyle } from '@/lib/drawing/drawStyle';
 
 // ─── Tool type ────────────────────────────────────────────────────────────────
 
@@ -106,10 +108,28 @@ export interface SvgAnnotationLayerProps {
   hatchSpacing?: number;
   hatchAngle?: number;
   hatchOpacity?: number;
+  /** Which named style new dimensions are drawn in. */
+  dimStyleId?: string;
+  /** Which named style every other new annotation is drawn in. */
+  drawStyleId?: string;
   captureBounds?: [number, number, number, number];
   /** Externally-controlled selected annotation id */
   selectedId?: string | null;
   onSelectAnnotation?: (id: string | null) => void;
+  /**
+   * Extra view ids whose annotations are shown (and selectable) here too.
+   * New annotations always take `viewId`. Exists so drawings saved under an
+   * older key are not orphaned when a host starts passing the right one.
+   */
+  alsoViewIds?: string[];
+  /**
+   * With no tool armed, a click on an annotation still selects it (and a
+   * double-click re-edits text). Without this the layer is inert until the
+   * Select tool is picked, which reads as "my drawing cannot be selected".
+   * Drag-to-move stays behind the Select tool on purpose — an idle click
+   * must never nudge a shape.
+   */
+  idlePick?: boolean;
 }
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
@@ -180,21 +200,39 @@ export function SvgAnnotationLayer({
   fillOpacity = 0,
   strokeStyle = 'solid',
   fontBold = false,
-  hatchPattern = 'diagonal',
-  hatchSpacing = 1.0,
-  hatchAngle   = 0,
-  hatchOpacity = 0.4,
+  dimStyleId = DEFAULT_DIM_STYLE_ID,
+  drawStyleId = DEFAULT_DRAW_STYLE_ID,
   captureBounds = [-1e6, -1e6, 1e6, 1e6],
   selectedId,
   onSelectAnnotation,
+  alsoViewIds,
+  idlePick = false,
 }: SvgAnnotationLayerProps) {
   const {
     annotations,
     addAnnotation,
     deleteAnnotation,
     updateAnnotation,
+    dimStyles,
+    drawStyles,
   } = useBubbleGraphStore();
-  const viewAnns = annotations.filter((a) => a.viewId === viewId);
+  const viewAnns = annotations.filter((a) => a.viewId === viewId || (alsoViewIds?.includes(a.viewId) ?? false));
+
+  // Delete / Backspace removes the selected annotation — the eraser tool was
+  // the only way to delete one, so a shape you had just selected sat there.
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      deleteAnnotation(selectedId);
+      onSelectAnnotation?.(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId, deleteAnnotation, onSelectAnnotation]);
 
   const [place, setPlace] = useState<PlaceState>({ stage: 'idle', pts: [] });
   const [mouse, setMouse] = useState<AnnPt | null>(null);
@@ -326,7 +364,11 @@ export function SvgAnnotationLayer({
             const nx = -dy / len, ny = dx / len;
             const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
             const offsetDir = (pt.x - mx) * nx + (pt.y - my) * ny;
-            addAnnotation({ id: annId(), kind: 'dimension', viewId, p1, p2, offsetDir, color: dimColor });
+            // Deliberately no `color`: that field predates styles and is
+            // folded in as a legacy override, so stamping it here would pin
+            // every new dimension to one colour and make the style's own
+            // colour look broken.
+            addAnnotation({ id: annId(), kind: 'dimension', viewId, p1, p2, offsetDir, styleId: dimStyleId });
             onToolDone?.();
           }
           return { stage: 'dim:p1', pts: [] };
@@ -338,8 +380,7 @@ export function SvgAnnotationLayer({
           addAnnotation({
             id: annId(), kind: 'line', viewId,
             p1: prev.pts[0], p2: pt,
-            color: drawColor,
-            strokeStyle,
+            styleId: drawStyleId,
           });
           onToolDone?.();
           return { stage: 'line:p1', pts: [] };
@@ -356,7 +397,7 @@ export function SvgAnnotationLayer({
           addAnnotation({
             id: annId(), kind: 'arc', viewId,
             cx: prev.arcCx!, cy: prev.arcCy!, radius: prev.arcR!,
-            startAngle: prev.arcA0!, endAngle, color: drawColor,
+            startAngle: prev.arcA0!, endAngle, styleId: drawStyleId,
           });
           onToolDone?.();
           return { stage: 'arc:center', pts: [] };
@@ -372,10 +413,7 @@ export function SvgAnnotationLayer({
             addAnnotation({
               id: annId(), kind: 'rect', viewId,
               x, y, width: w, height: h,
-              color: drawColor,
-              fill: fillOpacity > 0 ? fillColor : undefined,
-              fillOpacity: fillOpacity > 0 ? fillOpacity : undefined,
-              strokeStyle,
+              styleId: drawStyleId,
             });
             onToolDone?.();
           }
@@ -390,10 +428,7 @@ export function SvgAnnotationLayer({
             addAnnotation({
               id: annId(), kind: 'circle', viewId,
               cx: prev.pts[0].x, cy: prev.pts[0].y, radius,
-              color: drawColor,
-              fill: fillOpacity > 0 ? fillColor : undefined,
-              fillOpacity: fillOpacity > 0 ? fillOpacity : undefined,
-              strokeStyle,
+              styleId: drawStyleId,
             });
             onToolDone?.();
           }
@@ -435,7 +470,7 @@ export function SvgAnnotationLayer({
       if (prev.stage === 'poly:pts' && prev.pts.length >= 2) {
         addAnnotation({
           id: annId(), kind: 'polyline', viewId, points: prev.pts,
-          closed: false, color: drawColor, strokeStyle,
+          closed: false, styleId: drawStyleId,
         });
         onToolDone?.();
         return { stage: 'poly:pts', pts: [] };
@@ -443,16 +478,14 @@ export function SvgAnnotationLayer({
       if (prev.stage === 'hatch:pts' && prev.pts.length >= 3) {
         addAnnotation({
           id: annId(), kind: 'hatch', viewId, points: prev.pts,
-          pattern: hatchPattern, fillColor: drawColor,
-          fillOpacity: hatchOpacity, color: drawColor,
-          hatchSpacing, hatchAngle,
+          styleId: drawStyleId,
         });
         onToolDone?.();
         return { stage: 'hatch:pts', pts: [] };
       }
       return prev;
     });
-  }, [viewId, addAnnotation, drawColor, strokeStyle, hatchPattern, hatchOpacity, hatchSpacing, hatchAngle, onToolDone]);
+  }, [viewId, addAnnotation, drawStyleId, onToolDone]);
 
   // ── Text overlay ───────────────────────────────────────────────────────
   const confirmText = useCallback((value: string) => {
@@ -464,13 +497,12 @@ export function SvgAnnotationLayer({
           // re-edit: update existing annotation
           updateAnnotation(ov.editId, { text: v } as Partial<DrawingAnnotation>);
         } else if (ov.forLeader) {
-          addAnnotation({ id: annId(), kind: 'leader', viewId, points: ov.forLeader, text: v, color: dimColor });
+          addAnnotation({ id: annId(), kind: 'leader', viewId, points: ov.forLeader, text: v, styleId: drawStyleId });
           setPlace({ stage: 'leader:pts', pts: [] });
         } else {
           addAnnotation({
             id: annId(), kind: 'text', viewId,
-            x: ov.logX, y: ov.logY, text: v, color: textColor,
-            bold: fontBold,
+            x: ov.logX, y: ov.logY, text: v, styleId: drawStyleId,
           });
           setPlace({ stage: 'idle', pts: [] });
           onToolDone?.();
@@ -500,6 +532,13 @@ export function SvgAnnotationLayer({
       // nothing could ever be selected with the Select tool. Clicking empty
       // space is what deselects — that is the capture rect's job.
       onSelectAnnotation?.(ann.id);
+      return;
+    }
+
+    if (idlePick && !activeTool) {
+      // With no tool armed there is no pointer-down pass, so a click is the
+      // whole gesture and toggling is the natural thing for it to do.
+      onSelectAnnotation?.(ann.id === selectedId ? null : ann.id);
       return;
     }
 
@@ -533,7 +572,7 @@ export function SvgAnnotationLayer({
           if (merged) {
             deleteAnnotation(a1.id);
             deleteAnnotation(ann.id);
-            addAnnotation({ id: annId(), kind: 'polyline', viewId, points: merged, color: drawColor });
+            addAnnotation({ id: annId(), kind: 'polyline', viewId, points: merged, styleId: drawStyleId });
           }
           onToolDone?.();
           return { stage: 'join:first', pts: [] };
@@ -579,12 +618,12 @@ export function SvgAnnotationLayer({
   }, [
     activeTool, selectedId, annotations, viewId, fromSvgEvent,
     snapThreshold, addAnnotation, deleteAnnotation, updateAnnotation,
-    drawColor, onSelectAnnotation, onToolDone,
+    drawColor, onSelectAnnotation, onToolDone, idlePick,
   ]);
 
   // ── Per-annotation double-click (text re-edit) ─────────────────────────
   const handleAnnDblClick = useCallback((ann: DrawingAnnotation, e: React.MouseEvent) => {
-    if (activeTool !== 'select' && activeTool !== 'text') return;
+    if (activeTool !== 'select' && activeTool !== 'text' && !(idlePick && !activeTool)) return;
     e.stopPropagation();
     if (ann.kind === 'text') {
       setTextOverlay({
@@ -593,7 +632,7 @@ export function SvgAnnotationLayer({
         editId: ann.id, initValue: ann.text,
       });
     }
-  }, [activeTool]);
+  }, [activeTool, idlePick]);
 
   // ── Pointer-down on annotation (select + drag-move) ────────────────────
   const handleAnnPointerDown = useCallback((ann: DrawingAnnotation, e: React.PointerEvent) => {
@@ -615,19 +654,23 @@ export function SvgAnnotationLayer({
   const SW = strokeSvg;
   const FS = fontSizeSvg;
 
-  function dashArray(style: 'solid' | 'dashed' | 'dotted' | undefined, sw: number): string | undefined {
-    if (!style || style === 'solid') return undefined;
-    if (style === 'dashed') return `${sw * 6} ${sw * 3}`;
-    if (style === 'dotted') return `${sw * 1} ${sw * 3}`;
-    return undefined;
-  }
-
   function renderAnnotation(ann: DrawingAnnotation) {
-    const col  = ann.color ?? dimColor;
-    const sw   = (ann.lineWeight ?? 1) * SW;
+    // A dimension resolves against its own vocabulary further down; everything
+    // else is inked from the draw style, with the annotation's pre-style
+    // fields still folded in so old drawings keep their appearance.
+    const dp = ann.kind === 'dimension' ? null : resolveDrawStyle(ann, drawStyles);
+    const col  = dp ? dp.lineColor : (ann.color ?? dimColor);
+    const sw   = dp ? dp.lineWeight * SW : (ann.lineWeight ?? 1) * SW;
+    // Dash length is measured from the host's BASE stroke, not from this
+    // line's own weight — see `dimGeometry`. Passing `sw` would make a 0.25×
+    // dashed line read as solid.
+    const dash = dp ? dashFor(dp.lineStyle, SW) : undefined;
     const isSel = ann.id === selectedId;
 
-    const clickProps = (activeTool === 'eraser' || activeTool === 'select' || activeTool === 'join' || activeTool === 'trim')
+    // The tool that decides how a click on a shape is read: the armed one, or
+    // Select when idle picking is on and nothing is armed.
+    const pickTool: SvgAnnotationTool | null = activeTool ?? (idlePick ? 'select' : null);
+    const clickProps = (pickTool === 'eraser' || pickTool === 'select' || pickTool === 'join' || pickTool === 'trim')
       ? {
           onClick:       (ev: React.MouseEvent)        => handleAnnClick(ann, ev),
           onDoubleClick: (ev: React.MouseEvent)        => handleAnnDblClick(ann, ev),
@@ -635,7 +678,7 @@ export function SvgAnnotationLayer({
             handleAnnPointerDown(ann, ev),
           style: { cursor: activeTool === 'select' ? 'move' : 'pointer' } as React.CSSProperties,
         }
-      : (activeTool === 'text'
+      : (pickTool === 'text'
           ? { onDoubleClick: (ev: React.MouseEvent) => handleAnnDblClick(ann, ev) }
           : {});
 
@@ -645,13 +688,16 @@ export function SvgAnnotationLayer({
       // ── Text ──────────────────────────────────────────────────────────
       case 'text': {
         const s  = toSvg(ann.x, ann.y);
-        const fs = ann.fontSize ?? FS;
+        // A legacy `fontSize` was stored in absolute host units, which cannot
+        // be turned into a multiplier without knowing this host's base — so it
+        // still wins outright where one exists.
+        const fs = ann.fontSize ?? dp!.textSize * FS;
         return (
           <g key={ann.id} {...clickProps}>
             {selectionOverlay}
             <text x={s.x} y={s.y}
-              fill={col} fontSize={fs}
-              fontWeight={(ann.bold ?? fontBold) ? 'bold' : 'normal'}
+              fill={dp!.textColor} fontSize={fs}
+              fontWeight={dp!.textBold ? 'bold' : 'normal'}
               transform={ann.rotation ? `rotate(${ann.rotation},${s.x},${s.y})` : undefined}
               vectorEffect="non-scaling-stroke">
               {ann.text}
@@ -663,49 +709,57 @@ export function SvgAnnotationLayer({
       case 'dimension': {
         const { p1, p2, offsetDir, textOverride } = ann;
         const s1 = toSvg(p1.x, p1.y), s2 = toSvg(p2.x, p2.y);
-        const dx = s2.x - s1.x, dy = s2.y - s1.y;
-        const lenSvg = Math.hypot(dx, dy);
-        if (lenSvg < 0.5) return null;
-        const ux = dx / lenSvg, uy = dy / lenSvg;
+        if (Math.hypot(s2.x - s1.x, s2.y - s1.y) < 0.5) return null;
         // `offsetDir` was measured against the baseline's LOGICAL normal, so
         // the normal it is applied along has to be that same one carried into
         // SVG — not `perp(s2 − s1)`, which a flipped Y axis turns around and
         // which put the line on the side nobody clicked. See offsetNormalSvg.
         const n = offsetNormalSvg(p1, p2, toSvg);
         if (!n) return null;
-        const nx = n.x, ny = n.y;
+
         const logLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        const svgPerLog = logLen > 1e-9 ? lenSvg / logLen : 1;
-        const offSvg = offsetDir * svgPerLog;
-        const OVER = SW * 3, GAP = SW * 1.5, TICK = SW * 4;
-        const d1  = { x: s1.x + nx * offSvg, y: s1.y + ny * offSvg };
-        const d2  = { x: s2.x + nx * offSvg, y: s2.y + ny * offSvg };
-        const e1a = { x: s1.x + nx * GAP,  y: s1.y + ny * GAP  };
-        const e1b = { x: s1.x + nx * (offSvg + OVER), y: s1.y + ny * (offSvg + OVER) };
-        const e2a = { x: s2.x + nx * GAP,  y: s2.y + ny * GAP  };
-        const e2b = { x: s2.x + nx * (offSvg + OVER), y: s2.y + ny * (offSvg + OVER) };
-        const t1a = { x: d1.x + (ux + nx) * TICK * 0.5, y: d1.y + (uy + ny) * TICK * 0.5 };
-        const t1b = { x: d1.x - (ux + nx) * TICK * 0.5, y: d1.y - (uy + ny) * TICK * 0.5 };
-        const t2a = { x: d2.x + (ux + nx) * TICK * 0.5, y: d2.y + (uy + ny) * TICK * 0.5 };
-        const t2b = { x: d2.x - (ux + nx) * TICK * 0.5, y: d2.y - (uy + ny) * TICK * 0.5 };
-        const mid  = { x: (d1.x + d2.x) / 2, y: (d1.y + d2.y) / 2 };
-        let ang = Math.atan2(uy, ux) * 180 / Math.PI;
-        if (ang > 90) ang -= 180;
-        if (ang < -90) ang += 180;
-        const label = textOverride ?? (logLen >= 1000 ? `${(logLen / 1000).toFixed(3)} m` : `${Math.round(logLen)}`);
-        const bgW = label.length * FS * 0.62, bgH = FS * 1.4;
+        const svgPerLog = logLen > 1e-9
+          ? Math.hypot(s2.x - s1.x, s2.y - s1.y) / logLen
+          : 1;
+
+        const props = resolveDimStyle(ann, dimStyles);
+        const label = textOverride ?? formatDimLabel(logLen, props);
+        const d = dimDrawing({
+          s1, s2, n, offset: offsetDir * svgPerLog,
+          baseStroke: SW, baseFont: FS, props, label,
+        });
+        if (!d) return null;
+
         return (
           <g key={ann.id} {...clickProps}>
             {selectionOverlay}
-            <line x1={e1a.x} y1={e1a.y} x2={e1b.x} y2={e1b.y} stroke={col} strokeWidth={sw} vectorEffect="non-scaling-stroke" />
-            <line x1={e2a.x} y1={e2a.y} x2={e2b.x} y2={e2b.y} stroke={col} strokeWidth={sw} vectorEffect="non-scaling-stroke" />
-            <line x1={d1.x}  y1={d1.y}  x2={d2.x}  y2={d2.y}  stroke={col} strokeWidth={sw} vectorEffect="non-scaling-stroke" />
-            <line x1={t1a.x} y1={t1a.y} x2={t1b.x} y2={t1b.y} stroke={col} strokeWidth={sw * 1.8} vectorEffect="non-scaling-stroke" />
-            <line x1={t2a.x} y1={t2a.y} x2={t2b.x} y2={t2b.y} stroke={col} strokeWidth={sw * 1.8} vectorEffect="non-scaling-stroke" />
-            <g transform={`translate(${mid.x},${mid.y}) rotate(${ang})`}>
-              <rect x={-bgW / 2} y={-bgH / 2} width={bgW} height={bgH} fill="white" fillOpacity={0.92} rx={FS * 0.15} />
-              <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fill={col} fontSize={FS} fontWeight="600">{label}</text>
-            </g>
+            {d.extensions.map((e, i) => (
+              <line key={`e${i}`} x1={e.a.x} y1={e.a.y} x2={e.b.x} y2={e.b.y}
+                stroke={props.lineColor} strokeWidth={d.strokeWidth} vectorEffect="non-scaling-stroke" />
+            ))}
+            <line x1={d.dimLine.a.x} y1={d.dimLine.a.y} x2={d.dimLine.b.x} y2={d.dimLine.b.y}
+              stroke={props.lineColor} strokeWidth={d.strokeWidth}
+              strokeDasharray={d.dash} vectorEffect="non-scaling-stroke" />
+            {d.ticks.map((t, i) => (
+              t.kind === 'line'
+                ? <line key={`t${i}`} x1={t.a.x} y1={t.a.y} x2={t.b.x} y2={t.b.y}
+                    stroke={props.lineColor} strokeWidth={d.tickStrokeWidth} vectorEffect="non-scaling-stroke" />
+                : t.kind === 'dot'
+                  ? <circle key={`t${i}`} cx={t.c.x} cy={t.c.y} r={t.r} fill={props.lineColor} />
+                  : <polygon key={`t${i}`} points={t.points.map((q) => `${q.x},${q.y}`).join(' ')} fill={props.lineColor} />
+            ))}
+            {d.text && (
+              <g transform={`translate(${d.text.x},${d.text.y}) rotate(${d.text.angle})`}>
+                {d.background && (
+                  <rect x={d.background.x} y={d.background.y}
+                    width={d.background.width} height={d.background.height}
+                    fill="white" fillOpacity={0.92} rx={d.background.rx} />
+                )}
+                <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
+                  fill={d.text.color} fontSize={d.text.size}
+                  fontWeight={d.text.bold ? '600' : 'normal'}>{label}</text>
+              </g>
+            )}
           </g>
         );
       }
@@ -718,10 +772,10 @@ export function SvgAnnotationLayer({
         const last   = svgPts[svgPts.length - 1];
         const dxA = second.x - first.x, dyA = second.y - first.y;
         const dlA = Math.hypot(dxA, dyA) || 1;
-        const arrow = FS * 0.5;
+        const arrow = dp!.arrowSize * FS;
         const polyStr = svgPts.map((p) => `${p.x},${p.y}`).join(' ');
         const txtLen  = Math.min((ann.text?.length || 4), 30) * FS * 0.6;
-        const fs = ann.fontSize ?? FS;
+        const fs = ann.fontSize ?? dp!.textSize * FS;
         return (
           <g key={ann.id} {...clickProps}>
             {selectionOverlay}
@@ -731,7 +785,8 @@ export function SvgAnnotationLayer({
               fill={col}
             />
             <line x1={last.x} y1={last.y} x2={last.x + txtLen} y2={last.y} stroke={col} strokeWidth={sw} vectorEffect="non-scaling-stroke" />
-            <text x={last.x + FS * 0.2} y={last.y - FS * 0.2} fill={col} fontSize={fs}>{ann.text}</text>
+            <text x={last.x + FS * 0.2} y={last.y - FS * 0.2} fill={dp!.textColor} fontSize={fs}
+              fontWeight={dp!.textBold ? 'bold' : 'normal'}>{ann.text}</text>
           </g>
         );
       }
@@ -743,7 +798,7 @@ export function SvgAnnotationLayer({
             {selectionOverlay}
             <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y}
               stroke={col} strokeWidth={sw}
-              strokeDasharray={dashArray(ann.strokeStyle, SW)}
+              strokeDasharray={dash}
               vectorEffect="non-scaling-stroke" />
           </g>
         );
@@ -776,14 +831,14 @@ export function SvgAnnotationLayer({
             {selectionOverlay}
             {ann.closed ? (
               <polygon points={ptStr}
-                fill={ann.fill ?? 'none'} fillOpacity={ann.fillOpacity ?? 0}
+                fill={dp!.fillColor} fillOpacity={dp!.fillOpacity}
                 stroke={col} strokeWidth={sw}
-                strokeDasharray={dashArray((ann as any).strokeStyle, SW)}
+                strokeDasharray={dash}
                 vectorEffect="non-scaling-stroke" />
             ) : (
               <polyline points={ptStr} fill="none"
                 stroke={col} strokeWidth={sw}
-                strokeDasharray={dashArray((ann as any).strokeStyle, SW)}
+                strokeDasharray={dash}
                 vectorEffect="non-scaling-stroke" />
             )}
           </g>
@@ -803,9 +858,9 @@ export function SvgAnnotationLayer({
           <g key={ann.id} transform={rotAttr} {...clickProps}>
             {selectionOverlay}
             <rect x={rx} y={ry} width={rw} height={rh}
-              fill={ann.fill ?? 'none'} fillOpacity={ann.fillOpacity ?? 0}
+              fill={dp!.fillColor} fillOpacity={dp!.fillOpacity}
               stroke={col} strokeWidth={sw}
-              strokeDasharray={dashArray(ann.strokeStyle, SW)}
+              strokeDasharray={dash}
               vectorEffect="non-scaling-stroke" />
           </g>
         );
@@ -819,9 +874,9 @@ export function SvgAnnotationLayer({
           <g key={ann.id} {...clickProps}>
             {selectionOverlay}
             <circle cx={sc.x} cy={sc.y} r={rSvg}
-              fill={ann.fill ?? 'none'} fillOpacity={ann.fillOpacity ?? 0}
+              fill={dp!.fillColor} fillOpacity={dp!.fillOpacity}
               stroke={col} strokeWidth={sw}
-              strokeDasharray={dashArray(ann.strokeStyle, SW)}
+              strokeDasharray={dash}
               vectorEffect="non-scaling-stroke" />
           </g>
         );
@@ -831,10 +886,12 @@ export function SvgAnnotationLayer({
         const pts    = ann.points.map((p) => toSvg(p.x, p.y));
         const ptStr  = pts.map((p) => `${p.x},${p.y}`).join(' ');
         const patId  = `ann-hatch-${ann.id}`;
+        // Unchanged from before: a hatch with no colour of its own takes the
+        // line colour, which the style now sets.
         const fc     = ann.fillColor ?? col;
-        const pat    = ann.pattern ?? 'diagonal';
-        const ts     = FS * 2.5 * (ann.hatchSpacing ?? 1.0);
-        const angle  = ann.hatchAngle ?? 0;
+        const pat    = dp!.hatchPattern;
+        const ts     = FS * 2.5 * dp!.hatchSpacing;
+        const angle  = dp!.hatchAngle;
         const xform  = angle !== 0 ? `rotate(${angle})` : undefined;
         const patternContent = buildHatchContent(pat, fc, ts, SW);
         return (
@@ -851,7 +908,7 @@ export function SvgAnnotationLayer({
             <polygon points={ptStr}
               color={fc}
               fill={pat === 'solid' ? fc : pat === 'none' ? 'none' : patternContent ? `url(#${patId})` : 'none'}
-              fillOpacity={ann.fillOpacity ?? 0.4}
+              fillOpacity={ann.fillOpacity ?? dp!.hatchOpacity}
               stroke={col} strokeWidth={sw}
               vectorEffect="non-scaling-stroke" />
           </g>
@@ -1033,15 +1090,15 @@ export function SvgAnnotationLayer({
   ];
   const usesDrawCapture = !!activeTool && DRAW_CAPTURE_TOOLS.includes(activeTool);
 
-  // ── Shared hatch defs (for hatch tool preview and placed annotations) ──
-  const hatchTileSize = FS * 2.5 * hatchSpacing;
+  // No shared hatch defs: a placed hatch builds its own `ann-hatch-<id>`
+  // pattern just above the polygon that uses it, and nothing here ever
+  // referenced the shared `hatch-*` names. Emitting them anyway collided with
+  // the section and elevation viewers, which DO define those ids for the
+  // drawing's own material hatches — and in SVG the first definition wins, so
+  // one of the two silently lost its tile size.
 
   return (
     <>
-      <defs>
-        <SvgHatchDefs tileSize={hatchTileSize} extraAngle={hatchAngle} spacing={1} />
-      </defs>
-
       {activeTool === 'select' && (
         <rect
           x={cx0} y={cy0} width={cx1 - cx0} height={cy1 - cy0}

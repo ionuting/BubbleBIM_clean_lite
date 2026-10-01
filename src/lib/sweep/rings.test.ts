@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeSweepSolids,
+  frameOf,
   pathLength,
   solidTriangles,
   sweepFootprint,
@@ -207,5 +208,99 @@ describe('footprint & length', () => {
   it('pathLength counts the closing segment of a loop', () => {
     expect(pathLength(hPath([[0, 0], [4000, 0], [4000, 3000]]))).toBeCloseTo(7000, 6);
     expect(pathLength(hPath([[0, 0], [4000, 0], [4000, 4000], [0, 4000]], 1000, true))).toBeCloseTo(16000, 6);
+  });
+});
+
+// ── The frame, and the raking runs it makes possible ────────────────────────
+
+const rakedPath = (pts: [number, number, number][], closed = false): SweepPath => ({
+  points: pts.map(([x, y, z]) => ({ x, y, z })),
+  closed,
+  kind: 'raked',
+});
+
+const near = (a: Pt3, b: [number, number, number]) => {
+  expect(a.x).toBeCloseTo(b[0], 6);
+  expect(a.y).toBeCloseTo(b[1], 6);
+  expect(a.z).toBeCloseTo(b[2], 6);
+};
+
+describe('frameOf', () => {
+  it('a level run keeps the old plan normal and stands the profile up', () => {
+    const f = frameOf({ x: 1, y: 0, z: 0 });
+    near(f.s, [0, 1, 0]);   // left of travel
+    near(f.u, [0, 0, 1]);   // up
+  });
+
+  it('a vertical run lays the profile flat in the plan, as it always did', () => {
+    near(frameOf({ x: 0, y: 0, z: 1 }).s, [1, 0, 0]);
+    near(frameOf({ x: 0, y: 0, z: 1 }).u, [0, 1, 0]);
+    near(frameOf({ x: 0, y: 0, z: -1 }).s, [1, 0, 0]);
+  });
+
+  it('a raking run stays upright: the profile does not roll with the slope', () => {
+    const t = { x: Math.SQRT1_2, y: 0, z: Math.SQRT1_2 };   // 45° climb due east
+    const f = frameOf(t);
+    near(f.s, [0, 1, 0]);                                    // still horizontal
+    expect(f.u.z).toBeCloseTo(Math.SQRT1_2, 6);              // tilted back by 45°
+    expect(f.u.x).toBeCloseTo(-Math.SQRT1_2, 6);
+  });
+
+  it('the frame is orthonormal and right-handed, whatever the slope', () => {
+    for (const t of [
+      { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 },
+      { x: 0.6, y: 0, z: 0.8 }, { x: 0.36, y: 0.48, z: 0.8 },
+    ]) {
+      const f = frameOf(t);
+      expect(Math.hypot(f.s.x, f.s.y, f.s.z)).toBeCloseTo(1, 9);
+      expect(Math.hypot(f.u.x, f.u.y, f.u.z)).toBeCloseTo(1, 9);
+      expect(f.s.x * f.u.x + f.s.y * f.u.y + f.s.z * f.u.z).toBeCloseTo(0, 9);
+    }
+  });
+});
+
+describe('computeSweepSolids — raking runs', () => {
+  it('a raked prism measures its own cross-section, not its shadow in plan', () => {
+    // 3-4-5: 3000 along, 4000 up → a run of 5000.
+    const path = rakedPath([[0, 0, 0], [3000, 0, 4000]]);
+    const { solids } = computeSweepSolids(path, square100, 'miter');
+    expect(solids).toHaveLength(1);
+    const v = sweepVolume(solids, triangulateSimple(square100));
+    expect(v).toBeCloseTo(100 * 100 * 5000, 3);
+    expect(pathLength(path)).toBeCloseTo(5000, 6);
+  });
+
+  it('a corner that only changes slope miters, and the run stays one solid', () => {
+    // Level, then climbing: the joint is a miter in the vertical plane only.
+    const path = rakedPath([[0, 0, 0], [3000, 0, 0], [6000, 0, 3000]]);
+    const { solids, diagnostics } = computeSweepSolids(path, square100, 'miter');
+    expect(solids).toHaveLength(1);
+    expect(solids[0].rings).toHaveLength(3);
+    expect(diagnostics).toEqual([]);
+    // Watertight: the signed volume is positive and at least the two legs'.
+    const v = sweepVolume(solids, triangulateSimple(square100));
+    expect(v).toBeGreaterThan(100 * 100 * (3000 + Math.hypot(3000, 3000)) * 0.9);
+  });
+
+  it('a level run is untouched by any of this', () => {
+    const path = hPath([[0, 0], [4000, 0]]);
+    const { solids } = computeSweepSolids(path, square100, 'miter');
+    const r = solids[0].rings[0];
+    // s = left of +X = +Y, u = +Z: profile x runs north, profile y runs up.
+    near(r[0], [0, 0, 1000]);
+    near(r[1], [0, 100, 1000]);
+    near(r[2], [0, 100, 1100]);
+  });
+});
+
+describe('sweepSegments — raking runs', () => {
+  it('carries the true 3-D axis and length, not the plan projection', () => {
+    const [seg] = sweepSegments(rakedPath([[0, 0, 0], [3000, 0, 4000]]));
+    expect(seg.lengthMm).toBeCloseTo(5000, 6);
+    expect(seg.axis.x).toBeCloseTo(0.6, 9);
+    expect(seg.axis.z).toBeCloseTo(0.8, 9);
+    // The reference direction stays horizontal, so an exported profile does
+    // not roll: Y = axis × refDir is the frame's own up.
+    expect(seg.refDir.z).toBeCloseTo(0, 9);
   });
 });

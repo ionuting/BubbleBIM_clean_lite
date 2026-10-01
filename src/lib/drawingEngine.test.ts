@@ -4,7 +4,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
-import { computeSectionView, type DrawingShape, type SectionCut } from './drawingEngine';
+import { computeElevationView, computeSectionView, type DrawingShape, type SectionCut } from './drawingEngine';
+import { createRoofForStorey } from '@/lib/roof';
+import { BUILTIN_MATERIAL_CONFIG } from '@/lib/materialConfig';
 
 // ── Fixture: a 6 × 4 m box, walls on all four sides, one column, a slab ─────
 //
@@ -290,5 +292,418 @@ describe('computeSectionView — roofs and stairs', () => {
     const vs = s[0].pts.map((p) => p.v);
     expect(Math.max(...vs)).toBe(1700);
     expect(Math.min(...vs)).toBe(1550);
+  });
+});
+
+// ── Roof trim ───────────────────────────────────────────────────────────────
+//
+// A gable over the 6 × 4 m box: eaves along the long sides (y = 0 and y = 4000),
+// ridge along x at y = 2000. The east and west walls run under the ridge, so a
+// roof that trims them turns their tops into gables.
+
+function withRoof(over: Record<string, unknown> = {}, wallOver: Record<string, unknown> = {}) {
+  const tuned = baseNodes.map((n) => (n.type === 'wall' ? { ...n, properties: { ...n.properties, ...wallOver } } : n));
+  const built = createRoofForStorey('s1', tuned, baseEdges, { generateLevel: 'envelope' });
+  const nodes = built.nodes.map((n) => (n.type === 'roof' ? { ...n, properties: { ...n.properties, ...over } } : n));
+  return { nodes, edges: built.edges, roofId: built.roofId };
+}
+
+const vRange = (shapes: DrawingShape[]) => {
+  const vs = shapes.flatMap((s) => s.pts.map((p) => p.v));
+  return { min: Math.min(...vs), max: Math.max(...vs) };
+};
+/** A section straight along the ridge line, so the east and west walls are cut at their apex. */
+const RIDGE_CUT = { x1: -1000, y1: 2000, x2: 7000, y2: 2000 };
+const tall = cut({ line: RIDGE_CUT, lookSide: 'left', elevMin: -1000, elevMax: 9000 });
+
+describe('computeSectionView — roof trim', () => {
+  it('a wall taller than the roof is cut back to it, with no property to set', () => {
+    const plain = computeSectionView(baseNodes.map((n) => n.id === 'east'
+      ? { ...n, properties: { ...n.properties, height: 6000 } } : n), baseEdges, null, tall);
+    expect(vRange(byNode(plain, 'east')).max).toBeCloseTo(6000, 0);
+
+    const { nodes, edges } = withRoof({}, {});
+    const roofed = computeSectionView(
+      nodes.map((n) => n.id === 'east' ? { ...n, properties: { ...n.properties, height: 6000 } } : n),
+      edges, null, tall);
+    const top = vRange(byNode(roofed, 'east')).max;
+    expect(top).toBeLessThan(6000);
+    expect(top).toBeGreaterThan(3000);   // cut at the ridge, not at the eave
+  });
+
+  it('roof_attach grows a wall up to the roof and folds its top into a gable', () => {
+    const { nodes, edges } = withRoof({}, { roof_attach: 'True' });
+
+    // Cut along y at mid-span, looking east: the east wall shows in projection,
+    // where a folded top actually reads.
+    const alongY = cut({
+      line: { x1: 3000, y1: -1000, x2: 3000, y2: 5000 },
+      lookSide: 'right', elevMin: -1000, elevMax: 9000,
+    });
+    const r = computeSectionView(nodes, edges, null, alongY);
+    const east = byNode(r, 'east');
+    expect(east.length).toBeGreaterThan(0);
+    // A rectangle has four corners; a gable has an apex on top of that.
+    const gable = east.find((s) => s.pts.length > 4);
+    expect(gable).toBeDefined();
+    const vs = gable!.pts.map((p) => p.v);
+    expect(Math.max(...vs)).toBeGreaterThan(3000);
+
+    // Along the ridge the same wall is CUT, at its apex — the highest it gets.
+    const apex = vRange(byNode(computeSectionView(nodes, edges, null, tall), 'east')).max;
+    expect(apex).toBeCloseTo(Math.max(...vs), 0);
+
+    // An eave wall only rises the little the overhang puts above it, and stays flat.
+    const north = byNode(computeSectionView(nodes, edges, null, tall), 'north');
+    const northTop = vRange(north).max;
+    expect(northTop).toBeGreaterThan(3000);
+    expect(northTop).toBeLessThan(apex - 500);
+    expect(north.every((s) => s.pts.length === 4)).toBe(true);
+  });
+
+  it('trim_below = False on the roof, and a higher trim_priority on the wall, both opt out', () => {
+    const off = withRoof({ trim_below: 'False' }, { roof_attach: 'True' });
+    expect(vRange(byNode(computeSectionView(off.nodes, off.edges, null, tall), 'east')).max).toBeCloseTo(3000, 0);
+
+    const outranks = withRoof({}, { roof_attach: 'True', trim_priority: 200 });
+    expect(vRange(byNode(computeSectionView(outranks.nodes, outranks.edges, null, tall), 'east')).max)
+      .toBeCloseTo(3000, 0);
+  });
+
+  it('trim_offset_mm drops the cut toward the rafters', () => {
+    const flush = withRoof({}, {});
+    const dropped = withRoof({ trim_offset_mm: -500 }, {});
+    const tallEast = (b: { nodes: BubbleGraphNode[]; edges: BubbleGraphEdge[] }) => vRange(byNode(
+      computeSectionView(
+        b.nodes.map((n) => n.id === 'east' ? { ...n, properties: { ...n.properties, height: 6000 } } : n),
+        b.edges, null, tall), 'east')).max;
+    expect(tallEast(dropped)).toBeCloseTo(tallEast(flush) - 500, 0);
+  });
+});
+
+// ── The gable as its own construction ───────────────────────────────────────
+//
+// Cut along the ridge, the east wall is cut across its thickness, so the width
+// of each shape in u IS the thickness of the body that produced it.
+
+describe('computeSectionView — gable structure', () => {
+  const eastAt = (wallOver: Record<string, unknown>) => {
+    const { nodes, edges } = withRoof({}, { roof_attach: 'True', ...wallOver });
+    return byNode(computeSectionView(nodes, edges, null, tall), 'east').filter(isCutShape);
+  };
+
+  it('a wall with no gable properties stays one body', () => {
+    expect(eastAt({})).toHaveLength(1);
+  });
+
+  /** The two bodies of a split wall, lower first. */
+  const split = (parts: DrawingShape[]) =>
+    [...parts].sort((a, b) => Math.max(...a.pts.map((p) => p.v)) - Math.max(...b.pts.map((p) => p.v)));
+  const mid = (s: DrawingShape) => (uRange([s]).min + uRange([s]).max) / 2;
+
+  it('a gable in another material splits the wall in two at the cut', () => {
+    const parts = eastAt({ gable_material: 'wood' });
+    expect(parts).toHaveLength(2);
+    const [box, gable] = split(parts);
+
+    // They meet: the box top is the gable's base, and the apex is above both.
+    const boxTop = Math.max(...box.pts.map((p) => p.v));
+    expect(Math.min(...gable.pts.map((p) => p.v))).toBeCloseTo(boxTop, 0);
+    expect(Math.max(...gable.pts.map((p) => p.v))).toBeGreaterThan(boxTop);
+    // With a real material config loaded, the two read as different materials.
+    const { nodes, edges } = withRoof({}, { roof_attach: 'True', gable_material: 'wood' });
+    const painted = split(
+      byNode(computeSectionView(nodes, edges, BUILTIN_MATERIAL_CONFIG, tall), 'east').filter(isCutShape),
+    );
+    expect(painted[1].fillColor).not.toBe(painted[0].fillColor);
+    expect(painted[1].hatch).toBe('diagonal');   // wood
+
+    // The material alone changes nothing about where it sits: still 250 wide.
+    expect(uRange([gable]).max - uRange([gable]).min).toBeCloseTo(250, 0);
+  });
+
+  it('a thinner gable is cut at its own thickness', () => {
+    const [box, gable] = split(eastAt({ gable_thickness_mm: 100 }));
+    expect(uRange([gable]).max - uRange([gable]).min).toBeCloseTo(100, 0);
+    expect(uRange([box]).max - uRange([box]).min).toBeCloseTo(250, 0);
+    // Centred on the wall axis until an offset says otherwise.
+    expect(mid(gable)).toBeCloseTo(mid(box), 0);
+  });
+
+  it('an offset slides the gable off the wall axis', () => {
+    const centred = split(eastAt({ gable_thickness_mm: 100 }))[1];
+    const shifted = split(eastAt({ gable_thickness_mm: 100, gable_offset_mm: 75 }))[1];
+    expect(Math.abs(mid(shifted) - mid(centred))).toBeCloseTo(75, 0);
+  });
+
+  it('a wall the roof does not cut has no gable to configure', () => {
+    // The north wall runs along the eave: it is never folded, so the gable
+    // properties leave it a single flat-topped body.
+    const { nodes, edges } = withRoof({}, { roof_attach: 'True', gable_material: 'wood', gable_thickness_mm: 100 });
+    const north = byNode(computeSectionView(nodes, edges, null, tall), 'north');
+    expect(north).toHaveLength(1);
+    expect(north[0].pts).toHaveLength(4);
+  });
+});
+
+describe('computeSectionView — roof trim on columns', () => {
+  const column: BubbleGraphNode = {
+    id: 'col', type: 'column', name: 'col', x: 1000, y: 1000, z: 0, parentId: 's1',
+    properties: { column_type: 'C30x30', roof_attach: 'True' },
+  };
+
+  it('a column set to attach grows to the slope and takes its slope on top', () => {
+    const base = createRoofForStorey('s1', [...baseNodes, column], baseEdges, { generateLevel: 'envelope' });
+    const r = computeSectionView(base.nodes, base.edges, null, cut({
+      line: { x1: 1000, y1: -1000, x2: 1000, y2: 5000 },
+      lookSide: 'right', elevMin: -1000, elevMax: 9000,
+    }));
+    const col = byNode(r, 'col');
+    expect(col.length).toBeGreaterThan(0);
+    const vs = col.flatMap((s) => s.pts.map((p) => p.v));
+    // It rose above the storey, and its top is sloped rather than flat.
+    expect(Math.max(...vs)).toBeGreaterThan(3000);
+    const tops = col.flatMap((s) => s.pts.filter((p) => p.v > 100).map((p) => p.v));
+    expect(Math.max(...tops) - Math.min(...tops)).toBeGreaterThan(50);
+  });
+
+  it('without a roof it stays a plain box at the storey top', () => {
+    const r = computeSectionView([...baseNodes, column], baseEdges, null, cut({
+      line: { x1: 1000, y1: -1000, x2: 1000, y2: 5000 },
+      lookSide: 'right', elevMin: -1000, elevMax: 9000,
+    }));
+    const vs = byNode(r, 'col').flatMap((s) => s.pts.map((p) => p.v));
+    expect(Math.max(...vs)).toBeCloseTo(3000, 0);
+  });
+});
+
+// ── Elevations ──────────────────────────────────────────────────────────────
+//
+// An elevation is the same projection as a section, with the plane pushed
+// outside the building. These pin the two things that follow from that — every
+// element reaches the drawing, and every face is seen rather than cut — plus
+// the handedness of the four directions.
+
+const win = (id: string, over: Record<string, unknown> = {}): BubbleGraphNode => ({
+  id, type: 'window', name: id, x: 0, y: 0, z: 0, parentId: 's1',
+  properties: { width: 1200, height: 1400, sill_height: 900, offset: 2000, ...over },
+});
+
+const closedOf = (shapes: DrawingShape[]) => shapes.filter((s) => s.closed);
+
+describe('computeElevationView — handedness and the axis grid', () => {
+  it('looking north puts east on the right; looking south puts it on the left', () => {
+    const n = computeElevationView(baseNodes, baseEdges, null, 'N');
+    expect(uRange(byNode(n, 'east')).min).toBeGreaterThan(uRange(byNode(n, 'west')).max);
+    const s = computeElevationView(baseNodes, baseEdges, null, 'S');
+    expect(uRange(byNode(s, 'east')).max).toBeLessThan(uRange(byNode(s, 'west')).min);
+  });
+
+  it('a facade meets the axes that run across it: numbered on N/S, lettered on E/W', () => {
+    const n = computeElevationView(baseNodes, baseEdges, null, 'N');
+    expect(n.axes.map((a) => a.kind)).toEqual(['X', 'X']);
+    expect(n.axes.map((a) => a.label)).toEqual(['1', '2']);
+    expect(n.axes.map((a) => a.u)).toEqual([0, 6000]);
+    const e = computeElevationView(baseNodes, baseEdges, null, 'E');
+    expect(e.axes.map((a) => a.label)).toEqual(['A', 'B']);
+    expect(e.axes.map((a) => a.u)).toEqual([0, 4000]);
+  });
+
+  it('a storey marks two levels, and the shared face between two storeys only one', () => {
+    const upper: BubbleGraphNode = {
+      id: 's2', type: 'storey', name: 'E1', x: 0, y: 0, z: 0, parentId: null,
+      properties: { bottomElevation: 3000, topElevation: 6000, axesX: [0, 6000], axesY: [0, 4000] },
+    };
+    const r = computeElevationView([...baseNodes, upper], baseEdges, null, 'N');
+    expect(r.levels.map((l) => l.vMm)).toEqual([0, 3000, 6000]);
+    expect(r.levels.map((l) => l.label)).toEqual(['+0.000', '+3.000', '+6.000']);
+  });
+});
+
+describe('computeElevationView — what reaches the drawing', () => {
+  it('nothing is cut: every face is seen, and seen faces carry a fill', () => {
+    const r = computeElevationView(baseNodes, baseEdges, null, 'N');
+    expect(r.shapes.every((s) => !isCutShape(s))).toBe(true);
+    expect(closedOf(byNode(r, 'south')).every((s) => s.fillColor !== 'none')).toBe(true);
+    // The same wall in a section is an outline over whatever is behind it.
+    const sec = computeSectionView(baseNodes, baseEdges, null,
+      cut({ line: { x1: -1000, y1: 3000, x2: 7000, y2: 3000 }, lookSide: 'right' }));
+    expect(byNode(sec, 'south').every((s) => s.fillColor === 'none')).toBe(true);
+  });
+
+  it('the roof, the slab, the footing, the column and the stair all show up', () => {
+    const roof: BubbleGraphNode = {
+      id: 'roof', type: 'roof', name: 'roof', x: 0, y: 0, z: 0, parentId: 's1',
+      properties: { roof_type: 'gable', pitch_deg: 30, overhang_mm: 0, ridge_direction: 'x' },
+    };
+    const room: BubbleGraphNode = {
+      id: 'room', type: 'room', name: 'room', x: 0, y: 0, z: 0, parentId: 's1',
+      properties: { contour_offset: 0 },
+    };
+    const foot: BubbleGraphNode = {
+      id: 'ft', type: 'foundation', name: 'ft', x: 3000, y: 2000, z: 0, parentId: 's1',
+      properties: { width: 1000, depth: 500 },
+    };
+    const col = ax('K', 0, 0, { bimX: 3000, bimY: 2000, has_column: 'True', column_type: 'C30x30' });
+    const flight: BubbleGraphNode = {
+      id: 'f', type: 'stair_flight', name: 'f', x: 0, y: 0, z: 0, parentId: 's1',
+      properties: {
+        ax: 1000, ay: 2000, az: 0, bx: 1000 + 9 * 280, by: 2000, bz: 10 * 170,
+        steps: 10, riser_mm: 170, tread_mm: 280, width_mm: 1000, thickness_mm: 150,
+      },
+    };
+    const r = computeElevationView(
+      [...baseNodes, roof, room, foot, col, flight],
+      [...baseEdges, edge('roof', 'A'), edge('roof', 'B'), edge('roof', 'C'), edge('roof', 'D'),
+        edge('room', 'A'), edge('room', 'B'), edge('room', 'C'), edge('room', 'D')],
+      null, 'N',
+    );
+    for (const id of ['roof', 'room', 'ft', 'K', 'f']) {
+      expect(byNode(r, id).length, `${id} is missing from the elevation`).toBeGreaterThan(0);
+    }
+    // A buried footing is a dashed outline, not a painted face.
+    expect(byNode(r, 'ft').every((s) => s.lineWeight === 'hidden' && s.fillColor === 'none')).toBe(true);
+    // No vertical limits given, so the roof is kept above the top storey.
+    expect(Math.max(...byNode(r, 'roof').flatMap((s) => s.pts.map((p) => p.v)))).toBeGreaterThan(3000);
+  });
+
+  it('vertical limits clip the facade', () => {
+    const r = computeElevationView(baseNodes, baseEdges, null, 'N', 0, 1000);
+    const vs = r.shapes.flatMap((s) => s.pts.map((p) => p.v));
+    expect(Math.max(...vs)).toBeCloseTo(1000, 6);
+    expect(Math.min(...vs)).toBeCloseTo(0, 6);
+  });
+});
+
+describe('computeElevationView — windows and doors', () => {
+  const nodes = [...baseNodes, win('w1')];
+  const edges = [...baseEdges, edge('south', 'w1')];
+
+  it('a window is drawn once: a frame, a pane and a sill line', () => {
+    const r = computeElevationView(nodes, edges, null, 'N');
+    const parts = byNode(r, 'w1');
+    expect(parts).toHaveLength(3);
+    expect(closedOf(parts)).toHaveLength(2);
+  });
+
+  it('the wall behind it is one silhouette, not the pieces it was cut into', () => {
+    // The wall geometry splits this wall into four solid bodies — two piers,
+    // the parapet and the lintel. Drawn separately they would seam the facade;
+    // the opening is painted over the top anyway.
+    const r = computeElevationView(nodes, edges, null, 'N');
+    const wall = byNode(r, 'south');
+    expect(wall).toHaveLength(1);
+    const vs = wall[0].pts.map((p) => p.v);
+    expect(Math.min(...vs)).toBe(0);
+    expect(Math.max(...vs)).toBe(3000);
+    // A section still shows the pieces: there the gaps between them ARE the
+    // openings, and a reader needs to see them.
+    const sec = computeSectionView(nodes, edges, null,
+      cut({ line: { x1: -1000, y1: 2000, x2: 7000, y2: 2000 }, lookSide: 'right' }));
+    expect(byNode(sec, 'south').length).toBeGreaterThan(1);
+  });
+
+  it('the window sits in front of its own wall, not behind it', () => {
+    const r = computeElevationView(nodes, edges, null, 'N');
+    const wallDepth = Math.min(...byNode(r, 'south').map((s) => s.depthMm));
+    expect(byNode(r, 'w1').every((s) => s.depthMm < wallDepth)).toBe(true);
+    // Painter's order: the wall is laid down first, the window over it.
+    const lastWall = r.shapes.map((s) => s.nodeId).lastIndexOf('south');
+    expect(r.shapes.findIndex((s) => s.nodeId === 'w1')).toBeGreaterThan(lastWall);
+  });
+
+  it('the frame spans the opening and the pane is inset inside it', () => {
+    const r = computeElevationView(nodes, edges, null, 'N');
+    const [frame, pane] = closedOf(byNode(r, 'w1'));
+    expect(uRange([frame]).max - uRange([frame]).min).toBeCloseTo(1200, 3);
+    const fv = frame.pts.map((p) => p.v);
+    expect(Math.min(...fv)).toBeCloseTo(900, 3);
+    expect(Math.max(...fv)).toBeCloseTo(2300, 3);
+    expect(uRange([pane]).min).toBeGreaterThan(uRange([frame]).min);
+    expect(uRange([pane]).max).toBeLessThan(uRange([frame]).max);
+  });
+
+  it('a two-sash type is drawn as two panes on a mullion', () => {
+    const r = computeElevationView(
+      [...baseNodes, win('w1', { double: true })], edges, null, 'N',
+    );
+    const panes = byNode(r, 'w1').filter((s) => s.closed && s.lineWeight === 'projected');
+    expect(panes).toHaveLength(2);
+    expect(uRange([panes[0]]).max).toBeLessThan(uRange([panes[1]]).min);
+  });
+
+  it('a door stands on the floor and has no sill line', () => {
+    const r = computeElevationView(
+      [...baseNodes, { ...win('d1'), type: 'door', properties: { width: 900, height: 2100, sill_height: 0, offset: 2000 } }],
+      [...baseEdges, edge('south', 'd1')], null, 'N',
+    );
+    const parts = byNode(r, 'd1');
+    expect(parts.every((s) => s.closed)).toBe(true);
+    const leaf = parts.find((s) => s.lineWeight === 'projected')!;
+    expect(Math.min(...leaf.pts.map((p) => p.v))).toBeCloseTo(0, 3);
+  });
+});
+
+describe('computeSectionView — joinery', () => {
+  const nodes = [...baseNodes, win('w1')];
+  const edges = [...baseEdges, edge('south', 'w1')];
+
+  // The window sits 2000 mm along the south wall and is 1200 wide, so a marker
+  // at x = 2600 runs straight through the middle of it.
+  const across = { x1: 2600, y1: -1000, x2: 2600, y2: 5000 };
+
+  it('a section through a window cuts its head, its sill and the glass between', () => {
+    const r = computeSectionView(nodes, edges, null, cut({ line: across, lookSide: 'left' }));
+    const parts = byNode(r, 'w1');
+    expect(parts).toHaveLength(3);
+    expect(parts.every(isCutShape)).toBe(true);
+    // All three are as narrow as the wall is thick — this is a cross-section
+    // of the joinery, not a view of the opening.
+    expect(uRange(parts).max - uRange(parts).min).toBeCloseTo(250, 3);
+
+    const vOf = (s: DrawingShape) => ({ lo: Math.min(...s.pts.map((p) => p.v)), hi: Math.max(...s.pts.map((p) => p.v)) });
+    const sorted = [...parts].sort((a, b) => vOf(a).lo - vOf(b).lo);
+    expect(vOf(sorted[0]).lo).toBeCloseTo(900, 3);    // sill sits on the opening's bottom
+    expect(vOf(sorted[2]).hi).toBeCloseTo(2300, 3);   // head on its top
+    // The glass is the thin one in the middle.
+    const glass = sorted[1];
+    expect(uRange([glass]).max - uRange([glass]).min).toBeLessThan(20);
+    expect(vOf(glass).lo).toBeGreaterThan(900);
+    expect(vOf(glass).hi).toBeLessThan(2300);
+  });
+
+  it('a door cut through is a leaf standing on the floor, with no sill under it', () => {
+    const d = { ...win('d1'), type: 'door', properties: { width: 900, height: 2100, sill_height: 0, offset: 2000 } };
+    const r = computeSectionView(
+      [...baseNodes, d as BubbleGraphNode], [...baseEdges, edge('south', 'd1')],
+      null, cut({ line: { ...across, x1: 2450, x2: 2450 }, lookSide: 'left' }),
+    );
+    const parts = byNode(r, 'd1');
+    expect(parts).toHaveLength(2);       // head and leaf; no sill
+    expect(Math.min(...parts.flatMap((s) => s.pts.map((p) => p.v)))).toBeCloseTo(0, 3);
+  });
+
+  it('a window in the wall beyond the plane is seen, not cut', () => {
+    const r = computeSectionView(nodes, edges, null,
+      cut({ line: { x1: -1000, y1: 2000, x2: 7000, y2: 2000 }, lookSide: 'right' }));
+    const parts = byNode(r, 'w1');
+    expect(parts).toHaveLength(3);                       // frame, pane, sill line
+    expect(parts.some(isCutShape)).toBe(true);           // the frame reads as joinery
+    expect(uRange(parts).max - uRange(parts).min).toBeGreaterThan(1200);
+  });
+
+  it('a window in the wall behind the viewer is not in the drawing at all', () => {
+    // Same marker, looking the other way: the south wall — and its window —
+    // are now behind the plane.
+    const r = computeSectionView(nodes, edges, null,
+      cut({ line: { x1: -1000, y1: 2000, x2: 7000, y2: 2000 }, lookSide: 'left' }));
+    expect(byNode(r, 'south')).toHaveLength(0);
+    expect(byNode(r, 'w1')).toHaveLength(0);
+  });
+
+  it('depth 0 leaves only what the plane actually touches', () => {
+    const r = computeSectionView(nodes, edges, null,
+      cut({ line: { x1: -1000, y1: 2000, x2: 7000, y2: 2000 }, lookSide: 'right', cutDepth: 0 }));
+    expect(byNode(r, 'w1')).toHaveLength(0);
   });
 });

@@ -126,6 +126,26 @@ export interface SymRenderParams {
   [k: string]: number | undefined;
 }
 
+/**
+ * How far an `sa` arc actually turns, in degrees, going from `a0` to `a1`
+ * the way its `clockwise` flag says.
+ *
+ * Angles are mathematical — measured from +x, counter-clockwise as they
+ * appear on screen, because the renderers negate the sine to undo SVG's
+ * downward y. SVG's sweep flag 1 turns clockwise on screen, which in these
+ * angles is DECREASING; flag 0 turns counter-clockwise, increasing. So the
+ * turn is `a0 − a1` one way and `a1 − a0` the other, wrapped into [0, 360).
+ *
+ * This is what the large-arc flag must be read off. `|a1 − a0| > 180`, which
+ * it once was, ignores the direction: a quarter arc written as 270° → 0°
+ * came out as the three-quarter circle round the other way, and every door
+ * swung through the wall it was hung in.
+ */
+export function arcSweptDeg(a0: number, a1: number, clockwise: boolean): number {
+  const d = clockwise ? a0 - a1 : a1 - a0;
+  return ((d % 360) + 360) % 360;
+}
+
 // ─── Expression evaluator ─────────────────────────────────────────────────────
 
 export function evalSymExpr(
@@ -274,11 +294,12 @@ export function renderSymbolSVGString(
         const y0 = cy - r * Math.sin(a0r);
         const x1 = cx + r * Math.cos(a1r);
         const y1 = cy - r * Math.sin(a1r);
-        const large  = Math.abs(p.a1 - p.a0) > 180 ? 1 : 0;
+        const large  = arcSweptDeg(p.a0, p.a1, !!p.clockwise) > 180 ? 1 : 0;
         const sweep  = p.clockwise ? 1 : 0;
+        const n1 = (v: number) => (Math.abs(v) < 0.05 ? 0 : v).toFixed(1);
         parts.push(
-          `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)}` +
-          ` A ${r.toFixed(1)} ${r.toFixed(1)} 0 ${large} ${sweep} ${x1.toFixed(1)} ${y1.toFixed(1)}"` +
+          `<path d="M ${n1(x0)} ${n1(y0)}` +
+          ` A ${r.toFixed(1)} ${r.toFixed(1)} 0 ${large} ${sweep} ${n1(x1)} ${n1(y1)}"` +
           ` fill="none" stroke="${p.stroke}" stroke-width="${p.weight}"/>`,
         );
         break;
@@ -403,11 +424,13 @@ export function renderSymbolInlineElements(
         const y0 = cy - r * Math.sin(a0r);
         const x1 = cx + r * Math.cos(a1r);
         const y1 = cy - r * Math.sin(a1r);
-        const large = Math.abs(p.a1 - p.a0) > 180 ? 1 : 0;
+        const large = arcSweptDeg(p.a0, p.a1, !!p.clockwise) > 180 ? 1 : 0;
         const sweep = p.clockwise ? 1 : 0;
+        // cos(270°) is −1.8e-16, which `toFixed` prints as "-0.00".
+        const n2 = (v: number) => (Math.abs(v) < 0.005 ? 0 : v).toFixed(2);
         parts.push(
-          `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)}` +
-          ` A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} ${sweep} ${x1.toFixed(2)} ${y1.toFixed(2)}"` +
+          `<path d="M ${n2(x0)} ${n2(y0)}` +
+          ` A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} ${sweep} ${n2(x1)} ${n2(y1)}"` +
           ` fill="none" stroke="${p.stroke}" stroke-width="${p.weight}"/>`,
         );
         break;

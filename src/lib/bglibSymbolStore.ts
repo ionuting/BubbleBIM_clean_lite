@@ -273,6 +273,58 @@ export function invalidateAutoSymbolCache(elementType?: string): void {
 }
 
 /**
+ * Write a symbol drawn in the app into the auto-symbol folder, and forget what
+ * was cached for that element type so the next read sees it.
+ *
+ * It lands as a plain `.bglib.json` with no DXF behind it, which is exactly
+ * what a drawn symbol is — the format is the library's, the drawing is ours.
+ * Returns the id it was saved under, or an error message.
+ */
+export async function saveAutoSymbol(
+  elementType: string,
+  symbol: BglibSymbol,
+): Promise<{ typeId: string } | { error: string }> {
+  try {
+    const resp = await fetch(
+      `${API_BASE}/api/library/bglib/save-symbol?element_type=${encodeURIComponent(elementType)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(symbol),
+      },
+    );
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => null) as { detail?: string } | null;
+      return { error: detail?.detail ?? `Salvarea a eșuat (${resp.status}).` };
+    }
+    const data = await resp.json() as { typeId: string };
+    invalidateAutoSymbolCache(elementType);
+    return { typeId: data.typeId };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Backend-ul nu răspunde.' };
+  }
+}
+
+/** Remove a symbol drawn in the app. One that came from a DXF is refused. */
+export async function deleteAutoSymbol(elementType: string, typeId: string): Promise<{ error?: string }> {
+  try {
+    const resp = await fetch(
+      `${API_BASE}/api/library/bglib/save-symbol`
+      + `?element_type=${encodeURIComponent(elementType)}&type_id=${encodeURIComponent(typeId)}`,
+      { method: 'DELETE' },
+    );
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => null) as { detail?: string } | null;
+      return { error: detail?.detail ?? `Ștergerea a eșuat (${resp.status}).` };
+    }
+    invalidateAutoSymbolCache(elementType);
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Backend-ul nu răspunde.' };
+  }
+}
+
+/**
  * Fetch the auto-symbol for a type ID from the backend.
  * The backend looks for `library/windows/symbols2d/{typeId}.dxf`, auto-parses it,
  * caches the .bglib.json, and returns the parsed symbol data.
@@ -362,13 +414,13 @@ export async function initAutoSymbolList(elementType: string): Promise<void> {
 }
 
 /** List all available auto-symbols for an element type (metadata only, no full data). */
-export async function listAutoSymbols(elementType: string): Promise<Array<{ typeId: string; hasBglib: boolean; dxfFile: string }>> {
+export async function listAutoSymbols(elementType: string): Promise<Array<{ typeId: string; hasBglib: boolean; dxfFile: string | null }>> {
   try {
     const resp = await fetch(
       `${API_BASE}/api/library/bglib/auto-symbols?element_type=${encodeURIComponent(elementType)}`,
     );
     if (!resp.ok) return [];
-    const data = await resp.json() as { symbols: Array<{ typeId: string; hasBglib: boolean; dxfFile: string }> };
+    const data = await resp.json() as { symbols: Array<{ typeId: string; hasBglib: boolean; dxfFile: string | null }> };
     return data.symbols ?? [];
   } catch {
     return [];

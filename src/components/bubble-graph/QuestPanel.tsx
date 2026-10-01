@@ -11,11 +11,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Check } from 'lucide-react';
 import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes } from '@/store';
 import { evaluateQuestline } from '@/lib/quests/questline';
+import { evaluateEconomist, type EconomySnapshot } from '@/lib/quests/economist';
+import { useGame } from '@/store/gameStore';
 
 interface QuestPanelProps {
   nodes: BubbleGraphNode[];
   edges: BubbleGraphEdge[];
   buildingAxes: BuildingAxes;
+  /** Cost state for the "Economist" questline; omitted where quantities are excluded. */
+  economy?: EconomySnapshot;
 }
 
 const COLLAPSE_KEY = 'bb.quest.collapsed';
@@ -63,11 +67,35 @@ function ProgressRing({ pct, done, pulse }: { pct: number; done: boolean; pulse:
   );
 }
 
-export function QuestPanel({ nodes, edges, buildingAxes }: QuestPanelProps) {
-  const progress = useMemo(
+export function QuestPanel({ nodes, edges, buildingAxes, economy }: QuestPanelProps) {
+  const playful = useGame((s) => s.playful);
+  const questline = useGame((s) => s.questline);
+  const setQuestline = useGame((s) => s.setQuestline);
+  const record = useGame((s) => s.record);
+
+  const building = useMemo(
     () => evaluateQuestline(nodes, edges, buildingAxes),
     [nodes, edges, buildingAxes],
   );
+  const economist = useMemo(() => (economy ? evaluateEconomist(economy) : null), [economy]);
+
+  // Once the building is complete the Economist line takes over — the next
+  // thing to learn is what the building costs. A person can flip back.
+  const autoAdvanced = useRef(false);
+  useEffect(() => {
+    if (building.allDone && economist && questline === 'first_building' && !autoAdvanced.current) {
+      autoAdvanced.current = true;
+      setQuestline('economist');
+    }
+  }, [building.allDone, economist, questline, setQuestline]);
+
+  const showEconomist = questline === 'economist' && economist !== null;
+  const progress = showEconomist ? economist : building;
+
+  // Milestones, logged once each, for the phases that will read them.
+  useEffect(() => {
+    for (const s of progress.steps) if (s.done) record(`quest.${showEconomist ? 'economist' : 'first_building'}.${s.id}`);
+  }, [progress, showEconomist, record]);
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => localStorage.getItem(COLLAPSE_KEY) === '1',
@@ -96,6 +124,8 @@ export function QuestPanel({ nodes, edges, buildingAxes }: QuestPanelProps) {
     if (progress.allDone && !wasAllDone.current) setCollapsed(true);
     wasAllDone.current = progress.allDone;
   }, [progress.allDone]);
+
+  if (!playful) return null;
 
   if (dismissed) {
     // A tiny re-open affordance so the feature is never fully lost.
@@ -147,7 +177,7 @@ export function QuestPanel({ nodes, edges, buildingAxes }: QuestPanelProps) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontWeight: 600, fontSize: 11.5, letterSpacing: 0.1 }}>
-              {allDone ? 'Building complete' : 'First building'}
+              {showEconomist ? (allDone ? 'Under budget' : 'Economist') : (allDone ? 'Building complete' : 'First building')}
             </span>
             <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10 }}>
               {completed}/{total}
@@ -221,7 +251,17 @@ export function QuestPanel({ nodes, edges, buildingAxes }: QuestPanelProps) {
             );
           })}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            {economist ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setQuestline(showEconomist ? 'first_building' : 'economist'); }}
+                title={showEconomist ? 'Back to the building guide' : 'Switch to the cost questline'}
+                style={{ fontSize: 10, color: 'hsl(var(--muted-foreground))', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+              >
+                {showEconomist ? '← Building' : 'Economist →'}
+              </button>
+            ) : <span />}
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setDismissed(true); }}

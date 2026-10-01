@@ -7,6 +7,16 @@
  */
 
 import { create } from 'zustand';
+import { normaliseViewer3DType, type Viewer3DType } from '@/lib/viewer3dType';
+import type { DrawingView } from '@/lib/views/drawingViews';
+import { withBuiltins, type DimOverride, type DimStyle } from '@/lib/drawing/dimStyle';
+import {
+  withDrawBuiltins,
+  type DrawOverride, type DrawStyle, type HatchPatternId,
+} from '@/lib/drawing/drawStyle';
+
+export type { DimStyle, DimOverride, DimStyleProps } from '@/lib/drawing/dimStyle';
+export type { DrawStyle, DrawOverride, DrawStyleProps, DrawKind } from '@/lib/drawing/drawStyle';
 
 // ─── Types (cloned from viewer's bubbleGraphSlice) ────────────────────────
 
@@ -119,12 +129,27 @@ export interface WorldLocation {
   offsetN: number;   // additional North offset in metres (ENU)
   offsetZ: number;   // additional vertical offset in metres
   rotation: number;  // heading/yaw in degrees (0 = North, CW)
+  /**
+   * Projected CRS the model's grid coordinates belong to, e.g. 'EPSG:3844'
+   * (Stereo 70). Only used when georeferencing an export; the globe works
+   * from lat/lng and needs none.
+   */
+  crs?: string;
+  /**
+   * True once someone has actually placed this model. The default below is a
+   * viewpoint, not a claim — without this flag an untouched project would
+   * export an IFC asserting it stands in central Bucharest, which is a far
+   * worse failure than exporting no position at all.
+   */
+  georeferenced?: boolean;
 }
 
 export const DEFAULT_WORLD_LOCATION: WorldLocation = {
   lat: 44.4268, lng: 26.1025, alt: 0,
   offsetE: 0, offsetN: 0, offsetZ: 0,
   rotation: 0,
+  crs: 'EPSG:3844',
+  georeferenced: false,
 };
 
 /** An imported BIM model placed on the globe with its own geo-position. */
@@ -146,24 +171,51 @@ export interface AnnPt { x: number; y: number; }
 interface AnnBase {
   id: string;
   viewId: string;   // storey id (floor plan) or viewType:storeyId (section/elevation)
+  /**
+   * The named style this annotation follows, and the fields it does
+   * differently. Dimensions resolve through `dimStyles`, everything else
+   * through `drawStyles`.
+   *
+   * `color` and `lineWeight` below predate styles. They are still honoured —
+   * folded in beneath `override` — so a drawing made before styles existed
+   * keeps the appearance it had.
+   */
+  styleId?: string;
   color?: string;
   lineWeight?: number;
 }
 
-export type HatchPatternId =
-  | 'diagonal' | 'crosshatch' | 'dots' | 'solid' | 'none'
-  | 'concrete' | 'brick' | 'stone' | 'wave'
-  | 'wood' | 'insulation' | 'earth' | 'steel' | 'glass' | 'sand';
+/**
+ * Everything but a dimension. Split out because the two resolve against
+ * different style vocabularies, so one shared `override` field would have to
+ * be a union that neither resolver could accept.
+ */
+interface DrawAnnBase extends AnnBase {
+  override?: DrawOverride;
+}
 
-export interface TextAnn     extends AnnBase { kind: 'text';      x: number;     y: number;      text: string; fontSize?: number; rotation?: number; bold?: boolean; }
-export interface DimAnn      extends AnnBase { kind: 'dimension'; p1: AnnPt;     p2: AnnPt;      offsetDir: number; textOverride?: string; }
-export interface LeaderAnn   extends AnnBase { kind: 'leader';    points: AnnPt[]; text: string; fontSize?: number; }
-export interface LineAnn     extends AnnBase { kind: 'line';      p1: AnnPt;     p2: AnnPt;      dashed?: boolean; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
-export interface ArcAnn      extends AnnBase { kind: 'arc';       cx: number;    cy: number;     radius: number; startAngle: number; endAngle: number; }
-export interface PolylineAnn extends AnnBase { kind: 'polyline';  points: AnnPt[]; closed?: boolean; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
-export interface HatchAnn    extends AnnBase { kind: 'hatch';     points: AnnPt[]; pattern?: HatchPatternId; fillColor?: string; fillOpacity?: number; hatchSpacing?: number; hatchAngle?: number; }
-export interface RectAnn     extends AnnBase { kind: 'rect';      x: number; y: number; width: number; height: number; rotation?: number; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
-export interface CircleAnn   extends AnnBase { kind: 'circle';    cx: number; cy: number; radius: number; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
+/** Defined with the styles that configure it; re-exported so importers of
+ *  `@/store` are unaffected. */
+export type { HatchPatternId } from '@/lib/drawing/drawStyle';
+
+export interface TextAnn     extends DrawAnnBase { kind: 'text';      x: number;     y: number;      text: string; fontSize?: number; rotation?: number; bold?: boolean; }
+/**
+ * A linear dimension.
+ *
+ * `styleId` names the style it follows and `override` holds only the fields
+ * it does differently — the CAD arrangement, so editing a style restyles every
+ * dimension using it while one awkward dimension can still be nudged on its
+ * own. Both are optional: a dimension drawn before styles existed has neither
+ * and resolves through the default style, keeping its old appearance.
+ */
+export interface DimAnn      extends AnnBase { kind: 'dimension'; p1: AnnPt;     p2: AnnPt;      offsetDir: number; textOverride?: string; styleId?: string; override?: DimOverride; }
+export interface LeaderAnn   extends DrawAnnBase { kind: 'leader';    points: AnnPt[]; text: string; fontSize?: number; }
+export interface LineAnn     extends DrawAnnBase { kind: 'line';      p1: AnnPt;     p2: AnnPt;      dashed?: boolean; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
+export interface ArcAnn      extends DrawAnnBase { kind: 'arc';       cx: number;    cy: number;     radius: number; startAngle: number; endAngle: number; }
+export interface PolylineAnn extends DrawAnnBase { kind: 'polyline';  points: AnnPt[]; closed?: boolean; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
+export interface HatchAnn    extends DrawAnnBase { kind: 'hatch';     points: AnnPt[]; pattern?: HatchPatternId; fillColor?: string; fillOpacity?: number; hatchSpacing?: number; hatchAngle?: number; }
+export interface RectAnn     extends DrawAnnBase { kind: 'rect';      x: number; y: number; width: number; height: number; rotation?: number; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
+export interface CircleAnn   extends DrawAnnBase { kind: 'circle';    cx: number; cy: number; radius: number; fill?: string; fillOpacity?: number; strokeStyle?: 'solid' | 'dashed' | 'dotted'; }
 
 export type DrawingAnnotation = TextAnn | DimAnn | LeaderAnn | LineAnn | ArcAnn | PolylineAnn | HatchAnn | RectAnn | CircleAnn;
 
@@ -200,7 +252,8 @@ export type ViewTabType =
   | 'terrain'
   | 'ifc-tiles'
   | 'fem'
-  | 'composer';
+  | 'composer'
+  | 'topology';
 
 export interface ViewTab {
   id: string;
@@ -220,7 +273,8 @@ export interface ViewTab {
  * Viewer3DType — selects which 3D rendering engine to use for 3d-model tabs.
  *
  * - 'babylon':  Babylon.js – full-featured, optimized for large scenes
- * - 'ara3d':    Three.js (raw) – lighter alternative
+ * - 'tiles':    BubbleBIM IFC Tiles – the model as the exported IFC, tiled and
+ *               streamed by our own renderer (replaces the former 'ara3d')
  * - 'webifc':   That Open Components (OBC) – Three.js-based, IFC hierarchy
  * - 'opengeo':  OpenGeometry WASM kernel – boolean-ready, IFC/STEP/STL export
  * - 'brep':     Internal B-rep kernel – diagnostic view that renders the new
@@ -229,7 +283,7 @@ export interface ViewTab {
  * Switch is instant and persistent (stored in Zustand).
  * All viewers use the same geometry calculations (bimGeometry.ts).
  */
-export type Viewer3DType = 'ara3d' | 'webifc' | 'opengeo' | 'brep';
+export { normaliseViewer3DType, type Viewer3DType };
 
 // ─── Composer (RoomX) Types ───────────────────────────────────────────────
 
@@ -357,6 +411,10 @@ export interface BubbleGraphStore {
   selectedNodeIds: string[];
   setSelectedNodeIds: (ids: string[]) => void;
 
+  // ── 2D views of the project (plans, sections, elevations) — lib/views ──
+  drawingViews: DrawingView[];
+  setDrawingViews: (views: DrawingView[]) => void;
+
   // ── Drawing annotations (persistent, per-view) ────────────────────────
   annotations: DrawingAnnotation[];
   selectedAnnotationId: string | null;
@@ -366,6 +424,24 @@ export interface BubbleGraphStore {
   clearViewAnnotations: (viewId: string) => void;
   setAnnotations:       (anns: DrawingAnnotation[]) => void;
   selectAnnotation:     (id: string | null) => void;
+
+  /**
+   * Named dimension styles, saved with the project — a drawing standard
+   * belongs to the drawing set, not to whoever's browser last opened it.
+   * `upsertDimStyle` both adds and edits, because the panel that writes them
+   * does not distinguish: editing a field on a style it has just created is
+   * the same gesture as editing one that has existed for a year.
+   */
+  dimStyles: DimStyle[];
+  setDimStyles:   (styles: DimStyle[]) => void;
+  upsertDimStyle: (style: DimStyle) => void;
+  deleteDimStyle: (id: string) => void;
+
+  /** The same arrangement for text, leaders, lines, shapes and hatches. */
+  drawStyles: DrawStyle[];
+  setDrawStyles:   (styles: DrawStyle[]) => void;
+  upsertDrawStyle: (style: DrawStyle) => void;
+  deleteDrawStyle: (id: string) => void;
 
   // ── Plan authoring tools (floor-plan section / wall) ───────────────────
   /** Active plan tool: draw-section (2-click) | section-on-axis (click grid line) */
@@ -383,6 +459,17 @@ export interface BubbleGraphStore {
   setActiveStoreyId: (id: string | null) => void;
   worldLocation: WorldLocation;
   setWorldLocation: (loc: WorldLocation) => void;
+  /** The project's terrain, edited by the Terrain tab and read by everything else. Null until touched. */
+  terrain: import('@/lib/terrain').TerrainModel | null;
+  setTerrain: (model: import('@/lib/terrain').TerrainModel | null) => void;
+  /**
+   * Which stored project this tab has open.
+   *
+   * Every save sends it, so two tabs holding two projects write to two files
+   * instead of the last one winning. Empty until the first load answers.
+   */
+  projectSlug: string;
+  setProjectSlug: (slug: string) => void;
 
   // ── Globe instances (imported .bbim models placed on the globe) ────────
   globeInstances: GlobeInstance[];
@@ -431,6 +518,7 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
   buildingAxes: { xValues: [], yValues: [] },
   activeStoreyId: null,
   worldLocation: { ...DEFAULT_WORLD_LOCATION },
+  terrain: null,
 
   flowNodes: [],
   setFlowNodes: (nodes) => set({ flowNodes: nodes }),
@@ -478,8 +566,8 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
   setActiveTabId: (id) => set({ activeTabId: id }),
 
   // ── 3D Viewer selection ────────────────────────────────────────────────
-  viewer3DType: 'ara3d',
-  setViewer3DType: (type) => set({ viewer3DType: type }),
+  viewer3DType: 'tiles',
+  setViewer3DType: (type) => set({ viewer3DType: normaliseViewer3DType(type) }),
 
   // ── IFC Plan View data ────────────────────────────────────────────────
   ifcPlanData: null,
@@ -503,6 +591,9 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
   selectedNodeIds: [],
   setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),
 
+  drawingViews: [],
+  setDrawingViews: (views) => set({ drawingViews: views }),
+
   annotations: [],
   selectedAnnotationId: null,
   addAnnotation:        (a)      => set((s) => ({ annotations: [...s.annotations, a] })),
@@ -511,6 +602,30 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
   clearViewAnnotations: (vId)    => set((s) => ({ annotations: s.annotations.filter((a) => a.viewId !== vId), selectedAnnotationId: null })),
   setAnnotations:       (anns)   => set({ annotations: anns }),
   selectAnnotation:     (id)     => set({ selectedAnnotationId: id }),
+
+  dimStyles: withBuiltins(undefined),
+  setDimStyles:   (styles) => set({ dimStyles: withBuiltins(styles) }),
+  upsertDimStyle: (style)  => set((s) => ({
+    dimStyles: s.dimStyles.some((x) => x.id === style.id)
+      ? s.dimStyles.map((x) => (x.id === style.id ? style : x))
+      : [...s.dimStyles, style],
+  })),
+  // A built-in stays: dimensions point at it by id, and `resolveDimStyle`
+  // would silently fall back for every one of them.
+  deleteDimStyle: (id) => set((s) => ({
+    dimStyles: s.dimStyles.filter((x) => x.id !== id || x.builtin),
+  })),
+
+  drawStyles: withDrawBuiltins(undefined),
+  setDrawStyles:   (styles) => set({ drawStyles: withDrawBuiltins(styles) }),
+  upsertDrawStyle: (style)  => set((s) => ({
+    drawStyles: s.drawStyles.some((x) => x.id === style.id)
+      ? s.drawStyles.map((x) => (x.id === style.id ? style : x))
+      : [...s.drawStyles, style],
+  })),
+  deleteDrawStyle: (id) => set((s) => ({
+    drawStyles: s.drawStyles.filter((x) => x.id !== id || x.builtin),
+  })),
 
   planTool: null,
   setPlanTool: (tool) => set({ planTool: tool }),
@@ -523,7 +638,15 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
     set((s) => ({ bubbleGraphPanelVisible: !s.bubbleGraphPanelVisible })),
   setBuildingAxes: (axes) => set({ buildingAxes: axes }),
   setActiveStoreyId: (id) => set({ activeStoreyId: id }),
-  setWorldLocation: (loc) => set({ worldLocation: loc }),
+  // Setting a location at all IS the act of placing the model — whether that
+  // came from the globe UI or from loading a project that had one. Callers
+  // can still pass `georeferenced: false` to say "moved, but not surveyed".
+  projectSlug: '',
+  setProjectSlug: (slug) => set({ projectSlug: slug }),
+  setWorldLocation: (loc) => set({
+    worldLocation: { ...loc, georeferenced: loc.georeferenced ?? true },
+  }),
+  setTerrain: (model) => set({ terrain: model }),
 
   globeInstances: [],
   addGlobeInstance: (inst) => set((s) => ({ globeInstances: [...s.globeInstances, inst] })),
@@ -555,7 +678,7 @@ export const useBubbleGraphStore = create<BubbleGraphStore>()((set) => ({
   restoreViewState: (viewTabs, activeTabId, viewer3DType) => set({
     viewTabs,
     activeTabId,
-    viewer3DType,
+    viewer3DType: normaliseViewer3DType(viewer3DType),
     selectedNodeId: null,
     selectedNodeIds: [],
   }),

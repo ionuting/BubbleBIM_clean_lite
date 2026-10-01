@@ -32,6 +32,12 @@ export interface SectionMarkerLayerProps {
   clientToBim: (clientX: number, clientY: number) => { x: number; y: number };
   onOpen: (nodeId: string) => void;
   onUpdateProps: (nodeId: string, patch: Record<string, unknown>) => void;
+  /**
+   * When given, a plain click on a marker SELECTS it and a double-click
+   * opens it. Without it a click opens directly (print/embedded hosts).
+   */
+  onSelect?: (nodeId: string) => void;
+  selectedId?: string | null;
   /** False in print/embedded hosts: draw, but no handles. */
   interactive?: boolean;
 }
@@ -74,6 +80,7 @@ function isOrtho(line: PlanCut): 'h' | 'v' | null {
 
 export function SectionMarkerLayer({
   nodes, edges, toSvg, scale, clientToBim, onOpen, onUpdateProps, interactive = true,
+  onSelect, selectedId = null,
 }: SectionMarkerLayerProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -122,7 +129,7 @@ export function SectionMarkerLayer({
       setDrag(null);
       if (!d) return;
       if (!d.moved) {
-        if (d.handle === 'move') onOpen(d.nodeId);
+        if (d.handle === 'move') { if (onSelect) onSelect(d.nodeId); else onOpen(d.nodeId); }
         return;
       }
       if (d.handle === 'depth') {
@@ -148,7 +155,7 @@ export function SectionMarkerLayer({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [drag, clientToBim, onOpen, onUpdateProps]);
+  }, [drag, clientToBim, onOpen, onUpdateProps, onSelect]);
 
   const startDrag = useCallback((e: React.MouseEvent, node: BubbleGraphNode, spec: SectionSpec, handle: Handle) => {
     if (!interactive || e.button !== 0) return;
@@ -229,7 +236,10 @@ export function SectionMarkerLayer({
                 </linearGradient>
               </defs>
             )}
-            {bandDepth > 0 && (
+            {/* The depth band is an editing aid — it shows what the section
+                will take in while its depth is dragged. On paper (print,
+                export) a marker is its line, its heads and its label. */}
+            {interactive && bandDepth > 0 && (
               <polygon
                 points={`${sA.x},${sA.y} ${sA.x + nx * bandDepth},${sA.y + ny * bandDepth} ${sB.x + nx * bandDepth},${sB.y + ny * bandDepth} ${sB.x},${sB.y}`}
                 fill={spec.depthMode === 'infinite' ? `url(#${gradId})` : color + '18'}
@@ -237,8 +247,8 @@ export function SectionMarkerLayer({
                 pointerEvents="none"
               />
             )}
-            {/* Depth line — draggable */}
-            {spec.depthMode !== 'infinite' && (
+            {/* Depth line — draggable, so an editing aid too */}
+            {interactive && spec.depthMode !== 'infinite' && (
               <line
                 x1={sA.x + nx * handleDepthPx} y1={sA.y + ny * handleDepthPx}
                 x2={sB.x + nx * handleDepthPx} y2={sB.y + ny * handleDepthPx}
@@ -248,6 +258,9 @@ export function SectionMarkerLayer({
               />
             )}
             {/* Main cut line */}
+            {selectedId === n.id && (
+              <line x1={sA.x} y1={sA.y} x2={sB.x} y2={sB.y} stroke="#2563eb" strokeOpacity={0.35} strokeWidth="8" strokeLinecap="square" pointerEvents="none" />
+            )}
             <line x1={sA.x} y1={sA.y} x2={sB.x} y2={sB.y} stroke={color} strokeWidth="2" strokeLinecap="square" pointerEvents="none" />
             {/* Endpoint circles + arrows (drag = move the endpoint) */}
             {([sA, sB] as const).map((pt, i) => (
@@ -265,7 +278,9 @@ export function SectionMarkerLayer({
               </g>
             ))}
             {/* Mid grip: click opens, drag moves the whole marker */}
-            <g onMouseDown={onHandleDown('move')} style={{ cursor: interactive ? 'grab' : cursor }}>
+            <g onMouseDown={onHandleDown('move')}
+              onDoubleClick={onSelect ? (e) => { e.stopPropagation(); onOpen(n.id); } : undefined}
+              style={{ cursor: interactive ? 'grab' : cursor }}>
               <circle cx={mid.x} cy={mid.y} r={6} fill="white" stroke={color} strokeWidth="1.5" />
               <circle cx={mid.x} cy={mid.y} r={2} fill={color} />
             </g>

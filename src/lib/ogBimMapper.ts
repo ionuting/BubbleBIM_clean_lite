@@ -31,18 +31,26 @@ import { yawForPlanDir, yawForPlanDirX } from '@/lib/geom/plan2d';
 import { flightProfile, invertedTeeProfile } from '@/lib/stair/profile';
 import { buildHelixGeometry } from '@/lib/stair/helixMesh';
 import { computeSweep, sweepBufferGeometry } from '@/lib/sweep';
+import { computeSketch } from '@/lib/sketch';
+import { computeDome, domePanelGeometry } from '@/lib/dome';
+import { computeSite, findSiteNode, terrainBufferGeometry } from '@/lib/terrain';
+import { currentTerrainModel } from '@/lib/terrain/current';
+import { computeScatter, type ScatterInstance } from '@/lib/scatter';
+import { scatterGeometries } from '@/lib/scatter/mesh';
+import { terrainItemInstances } from '@/lib/scatter/terrainItems';
 import { resolveVisuals, applyNodeColorOverrides, resolveWindowGlazing } from '@/lib/materialConfig';
 import type { MaterialConfig } from '@/lib/materialConfig';
-import { buildOpeningMeshes3, applyNodeLocalTransformThree } from '@/lib/bimGeometryThree';
+import { buildOpeningMeshes3, applyNodeLocalTransformThree, roofFaceGeometry, roofSurfaceNode } from '@/lib/bimGeometryThree';
 import {
   resolveCoveringLayers, roomHasCovering, syntheticCoveringNodeForLayer,
 } from '@/lib/roomCovering';
 import { resolveWallLayers, syntheticWallNodeForLayer } from '@/lib/wallLayers';
 import { renderBandsOf } from '@/lib/zones/heightZones';
+import { ornamentLook, shellOrnaments } from '@/lib/ornament';
 import {
-  computeFaceBasis, computeRoofFaces, orientPointsToward, parseTimberSection, placeDormer, placeSkylight,
+  computeFaceBasis, computeRoofFaces, orientPointsToward, parseTimberSection, placeDormer, placeEyebrow, placeSkylight, eyebrowIntentOf, dormerIntentOf, gabletIntentOf, placeGablet,
   ROOF_LINEAR_DETAIL_TYPES, ROOF_ROUND_DETAIL_TYPES, ROOF_SHEET_DETAIL_TYPES,
-  type DormerPlacement, type Pt3, type RoofFace3D, type SkylightPlacement, type WallPane,
+  type DormerPlacement, type EyebrowNotch, type Pt3, type RoofFace3D, type SkylightPlacement, type Tri, type WallPane,
 } from '@/lib/roof';
 import {
   attachHeightAlong, attachesToRoof, isTrimmed, nodesCuttingRoof, planeZ, roofTrim, roofTrimsNode,
@@ -159,40 +167,10 @@ function extrudePolygon(
   }
 }
 
-/**
- * The node a roof FACE should be styled from.
- *
- * A roof carries two materials: `material` is the framing (timber), while
- * `covering_material` is what you actually see from outside — tiles, sheet,
- * membrane. The visible surface must follow the covering, so it wins here and
- * `material` only stands in when no covering is named.
- *
- * Returning a synthetic node rather than a bare material id keeps the per-node
- * `color_3d` / `color_2d` overrides working, since applyMat reads them off the
- * node it is given.
- */
-function roofSurfaceNode(n: BubbleGraphNode): BubbleGraphNode {
-  const covering = String(n.properties.covering_material ?? '').trim();
-  if (!covering) return n;
-  return { ...n, properties: { ...n.properties, material: covering } };
-}
-
 /** Pitched roof face from BIM mm 3D vertices (fan triangulation). */
 function pitchedFaceMesh(face: RoofFace3D): THREE.Mesh | null {
-  const verts = face.vertices;
-  if (verts.length < 3) return null;
-  const positions: number[] = [];
-  for (const v of verts) {
-    positions.push(v.x * MM, v.z * MM, -v.y * MM);
-  }
-  const indices: number[] = [];
-  for (let i = 1; i < verts.length - 1; i++) {
-    indices.push(0, i, i + 1);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
+  const geo = roofFaceGeometry(face);
+  if (!geo) return null;
   return new THREE.Mesh(
     geo,
     new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, flatShading: true }),
@@ -200,26 +178,38 @@ function pitchedFaceMesh(face: RoofFace3D): THREE.Mesh | null {
 }
 
 /**
- * Extruded SOLID slab for a pitched roof face — same triangulated footprint as
- * `pitchedFaceMesh`, but as a boolean-ready `Solid` (`Polygon.extrude`) so a
- * skylight can be cut into it. Only built for faces that actually host a
- * skylight; every other face keeps the cheap flat `pitchedFaceMesh` fast path.
+ * Extruded SOLID slab for a pitched roof face — the same outline as
+ * `pitchedFaceMesh`, but a real `Solid`, so a skylight can be cut into it and
+ * so the drawings can hide what stands behind it.
  *
- * No rotation is used anywhere in this file's roof-cutting code: `face.vertices`
- * (and every cutter below) are passed as already-WORLD-SPACE 3D points, and
- * `Polygon.extrude()` extrudes along the polygon's OWN plane normal (confirmed
- * against the wall-solid code above, which extrudes a Y=0 footprint upward by
- * leaving rotation at identity) — so the extrude direction falls out of vertex
- * winding alone, with no dependency on the WASM kernel's Euler-angle convention.
+ * No rotation is used anywhere in this file's roof code: `face.vertices` (and
+ * every cutter below) are already WORLD-SPACE points.
+ *
+ * `Polygon.extrude()` extrudes straight UP, always — measured, not assumed: a
+ * polygon on a 30° slope extruded by 0.2 grows exactly 0.2 in Y and not at all
+ * in X or Z. (The comment this replaces claimed it followed the polygon's own
+ * normal, which is true only for the horizontal polygons the walls and slabs
+ * use, where "up" and "the normal" are the same direction.) A vertical polygon
+ * has no vertical extrusion at all and the kernel refuses it — which is why a
+ * gable end cannot come through here.
+ *
+ * So a slab of PERPENDICULAR thickness `t` on a face whose normal makes
+ * `cos = |n.z|` with the vertical needs `t / cos` of vertical extrusion. Left
+ * uncorrected — as it was — a 40 mm covering came out 35 mm thick at 30° and
+ * thinner the steeper the roof.
  */
 function pitchedFaceSolid(face: RoofFace3D, thicknessM: number): Solid | null {
   if (face.vertices.length < 3) return null;
   try {
     const basis = computeFaceBasis(face);
+    // `computeFaceBasis` points the normal upward, so n.z is the cosine of the
+    // pitch. A face too near vertical has no usable vertical extrusion.
+    const cosPitch = basis ? Math.abs(basis.n.z) : 1;
+    if (cosPitch < 0.05) return null;
     const oriented = basis ? orientPointsToward(face.vertices, basis.n) : face.vertices;
     const corners = oriented.map((v) => new Vector3(v.x * MM, v.z * MM, -v.y * MM));
     const polygon = new Polygon({ vertices: corners, color: 0xffffff });
-    return polygon.extrude(thicknessM);
+    return polygon.extrude(thicknessM / cosPitch);
   } catch (err) {
     console.warn('[ogBimMapper] pitchedFaceSolid failed:', err);
     return null;
@@ -384,6 +374,33 @@ function wallPaneSolid(pane: WallPane, thicknessMm: number, outward: Pt3): Solid
   }
 }
 
+/** A closed triangle solid (BIM mm) as a mesh; shared corners merged so curved parts shade smooth. */
+function triSolidMesh(tris: Tri[]): THREE.Mesh | null {
+  if (!tris.length) return null;
+  const index = new Map<string, number>();
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const t of tris) {
+    for (const p of t) {
+      const key = `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`;
+      let i = index.get(key);
+      if (i === undefined) {
+        i = positions.length / 3;
+        index.set(key, i);
+        positions.push(p.x * MM, p.z * MM, -p.y * MM);
+      }
+      indices.push(i);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  // Closed and wound outward (BIM → Three is a proper rotation), so one side
+  // is enough — and drawing the inside too would shade through thin parts.
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ side: THREE.FrontSide }));
+}
+
 /** Flat mesh for one dormer wall pane (visual fallback / always rendered alongside the solid). */
 function wallPaneMesh(pane: WallPane): THREE.Mesh | null {
   const positions: number[] = [];
@@ -419,10 +436,14 @@ function timberMemberMesh(n: BubbleGraphNode): THREE.Mesh | null {
   );
   const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
   mesh.position.copy(mid);
-  // Align local +Z with member axis
-  const quat = new THREE.Quaternion();
-  quat.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
-  mesh.quaternion.copy(quat);
+  // Local +Z along the member, local +X (the section's width) horizontal and
+  // across it — the frame the IFC export writes (`memberFrame`), so a rafter's
+  // depth stands upright in both instead of rolling with the shortest turn.
+  const z = dir.clone().normalize();
+  const horiz = Math.hypot(z.x, z.z);
+  const x = horiz < 1e-6 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(z.z / horiz, 0, -z.x / horiz);
+  const y = new THREE.Vector3().crossVectors(z, x);
+  mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   return mesh;
 }
 
@@ -1489,6 +1510,16 @@ export function buildOGScene(
       tag(mesh, 'shell', n.id, resolveStoreyId(n, nodeMap));
       scene.add(mesh as THREE.Object3D);
     }
+    // What the envelope carries on its face: surrounds, sills, corners
+    // (lib/ornament) — the same solids the IFC export writes.
+    for (const part of shellOrnaments(n, nodeMap, edges)) {
+      const mesh = triSolidMesh(part.solids.flat());
+      if (!mesh) continue;
+      applyMat(mesh, 'covering', ornamentLook(n, part), matConfig);
+      tag(mesh, 'shell', n.id, resolveStoreyId(n, nodeMap));
+      mesh.name = part.label;
+      scene.add(mesh);
+    }
   }
 
   // Standalone covering nodes (skip pitched roof coverings — rendered via roof faces)
@@ -1541,18 +1572,70 @@ export function buildOGScene(
       skyByFace.set(placement.face.id, arr);
     }
 
+    // Eyebrow dormers: the covering lifted over an arched window — one solid
+    // each for hood, tympanum and glass (lib/roof/eyebrow.ts), laid over the
+    // slope rather than notched into it.
+    const eyebrowByFace = new Map<string, EyebrowNotch[]>();
+    for (const dm of dormerNodes) {
+      if (dm.properties.dormer_type !== 'eyebrow') continue;
+      const g = placeEyebrow(faces, eyebrowIntentOf(dm, coveringThicknessM * 1000));
+      if (!g) continue; // not over this roof
+      if (!g.ok) console.warn(`[ogBimMapper] eyebrow ${dm.id}: ${g.diagnostics.join('; ')}`);
+      const notches = eyebrowByFace.get(g.face.id) ?? [];
+      notches.push(g.notch);
+      eyebrowByFace.set(g.face.id, notches);
+      const storeyOf = resolveStoreyId(dm, nodeMap);
+      const soffit = triSolidMesh(g.soffit);
+      if (soffit) {
+        applyMat(soffit, 'beam', { ...dm, properties: { ...dm.properties, material: String(dm.properties.soffit_material ?? 'Lemn masiv'), color_3d: dm.properties.soffit_color ?? undefined } }, matConfig);
+        tag(soffit, 'dormer', dm.id, storeyOf);
+        scene.add(soffit);
+      }
+      const hood = triSolidMesh(g.hood);
+      if (hood) {
+        applyMat(hood, 'roof', roofSurfaceNode(n), matConfig);
+        tag(hood, 'dormer', dm.id, storeyOf);
+        scene.add(hood);
+      }
+      const wall = triSolidMesh(g.tympanum);
+      if (wall) {
+        applyMat(wall, 'wall', { ...dm, properties: { ...dm.properties, material: String(dm.properties.material ?? 'Tencuială de var') } }, matConfig);
+        tag(wall, 'dormer', dm.id, storeyOf);
+        scene.add(wall);
+      }
+      const pane = triSolidMesh(g.glass);
+      if (pane) {
+        applyMat(pane, 'window', { ...dm, properties: { material: 'glass' } }, matConfig);
+        tag(pane, 'dormer', dm.id, storeyOf);
+        scene.add(pane);
+      }
+    }
+
+    // Frontons (gablets): their own solids on the slope, nothing cut from it.
+    for (const dm of dormerNodes) {
+      if (dm.properties.dormer_type !== 'gablet') continue;
+      const g = placeGablet(faces, gabletIntentOf(dm, coveringThicknessM * 1000));
+      if (!g) continue; // not over this roof
+      if (!g.ok) { console.warn(`[ogBimMapper] gablet ${dm.id}: ${g.diagnostics.join('; ')}`); continue; }
+      const storeyOf = resolveStoreyId(dm, nodeMap);
+      const parts: Array<[Tri[], string, BubbleGraphNode]> = [
+        [g.pediment, 'wall', { ...dm, properties: { ...dm.properties, material: String(dm.properties.material ?? 'Lemn masiv') } }],
+        [g.roof.flat(), 'roof', roofSurfaceNode(n)],
+        [g.decor.flat(), 'covering', { ...dm, properties: { ...dm.properties, material: String(dm.properties.decor_material ?? 'Tablă'), color_3d: dm.properties.decor_color ?? undefined } }],
+      ];
+      for (const [tris, kind, look] of parts) {
+        const mesh = triSolidMesh(tris);
+        if (!mesh) continue;
+        applyMat(mesh, kind, look, matConfig);
+        tag(mesh, 'dormer', dm.id, storeyOf);
+        scene.add(mesh);
+      }
+    }
+
     const dormerByFace = new Map<string, { node: BubbleGraphNode; placement: DormerPlacement }[]>();
     for (const dm of dormerNodes) {
-      const placement = placeDormer(faces, {
-        planX: dm.x,
-        planY: dm.y,
-        widthMm: Number(dm.properties.width_mm ?? 1200),
-        depthMm: Number(dm.properties.depth_mm ?? 900),
-        wallHeightMm: Number(dm.properties.wall_height_mm ?? 1200),
-        roofType: (String(dm.properties.roof_type ?? 'gable') === 'shed' ? 'shed' : 'gable'),
-        pitchDeg: Number(dm.properties.pitch_deg ?? 25),
-        overhangMm: Number(dm.properties.overhang_mm ?? 200),
-      });
+      if (dm.properties.dormer_type === 'eyebrow' || dm.properties.dormer_type === 'gablet') continue;
+      const placement = placeDormer(faces, dormerIntentOf(dm));
       if (!placement) continue; // not over this roof
       if (!placement.ok) console.warn(`[ogBimMapper] dormer ${dm.id}: ${placement.diagnostics.join('; ')}`);
       const arr = dormerByFace.get(placement.face.id) ?? [];
@@ -1563,9 +1646,14 @@ export function buildOGScene(
     for (const face of faces) {
       const skyHits = skyByFace.get(face.id) ?? [];
       const dormerHits = dormerByFace.get(face.id) ?? [];
+      const eyebrowHits = eyebrowByFace.get(face.id) ?? [];
 
       let faceMesh: THREE.Mesh | null = null;
-      if (skyHits.length > 0 || dormerHits.length > 0 || punchFootprints.length > 0) {
+      // Every sloping face is built as a solid, not only the ones something is
+      // cut out of: a roof with a real body is what lets the section and the
+      // elevation know that it hides the wall behind it. A gable end is
+      // vertical, so it has no vertical extrusion and stays a surface.
+      if (face.role === 'slope') {
         try {
           const solid = pitchedFaceSolid(face, coveringThicknessM);
           if (solid) {
@@ -1584,6 +1672,14 @@ export function buildOGScene(
                 const top = h.placement.frontWall.corners[2].z;  // frontTopL.z — wall-plate height
                 const padM = Math.max(coveringThicknessM * 0.05, 0.01);
                 return dormerNotchSolid(h.placement.notchFootprint, front.z - padM * 1000, top + padM * 1000);
+              }),
+              // An eyebrow opens the slope under its hood, so its window looks into the attic.
+              ...eyebrowHits.map((nt) => {
+                const hw = nt.widthMm / 2;
+                const corner = (a: number, b: number) => ({
+                  x: nt.front.x + nt.along.x * a + nt.up.x * b, y: nt.front.y + nt.along.y * a + nt.up.y * b, z: 0,
+                });
+                return dormerNotchSolid([corner(-hw, 0), corner(hw, 0), corner(hw, nt.depthMm), corner(-hw, nt.depthMm)], nt.zMinMm, nt.zMaxMm);
               }),
             ].filter((c): c is Solid => !!c);
             faceMesh = cutters.length
@@ -1805,6 +1901,89 @@ export function buildOGScene(
     applyMat(mesh, 'sweep', n, matConfig);
     tag(mesh, 'sweep', n.id, resolveStoreyId(n, nodeMap));
     scene.add(mesh);
+  }
+
+  // Sketches: an outline drawn in the plan, extruded or swept along itself.
+  for (const n of nodes.filter((n) => n.type === 'sketch')) {
+    const res = computeSketch(n, nodeMap, edges);
+    if (!res.placed || res.solids.length === 0) continue;
+    const geo = sweepBufferGeometry(res.solids, res.placed);
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ color: nodeHex('sketch'), roughness: 0.7 }),
+    );
+    applyMat(mesh, 'sketch', n, matConfig);
+    tag(mesh, 'sketch', n.id, resolveStoreyId(n, nodeMap));
+    scene.add(mesh);
+  }
+
+  // Domes: Voronoi ribs standing on an inflated shell, glass panels in the
+  // cells. Same pure compute as the plan, the quantities and the IFC export.
+  for (const n of nodes.filter((n) => n.type === 'dome')) {
+    const res = computeDome(n, nodeMap, edges);
+    if (res.placed && res.memberSolids.length) {
+      const ribs = sweepBufferGeometry(res.memberSolids, res.placed);
+      if (ribs) {
+        const mesh = new THREE.Mesh(ribs, new THREE.MeshStandardMaterial({ color: nodeHex('dome'), roughness: 0.6 }));
+        applyMat(mesh, 'dome', n, matConfig);
+        tag(mesh, 'dome', n.id, resolveStoreyId(n, nodeMap));
+        scene.add(mesh);
+      }
+    }
+    const glass = domePanelGeometry(res.panels, res.intent.glassThicknessMm);
+    if (glass) {
+      const mesh = new THREE.Mesh(glass, new THREE.MeshStandardMaterial({
+        color: 0x7dd3fc, roughness: 0.1, transparent: true, opacity: 0.45,
+      }));
+      applyMat(mesh, 'dome_panel', { ...n, properties: { ...n.properties, material: res.intent.glassMaterial } }, matConfig);
+      tag(mesh, 'dome', n.id, resolveStoreyId(n, nodeMap));
+      scene.add(mesh);
+    }
+  }
+
+  // The site: computed once for the planting that stands on it and for the
+  // ground itself.
+  const siteNode = findSiteNode(nodes);
+  const site = siteNode ? computeSite(siteNode, nodeMap, edges, currentTerrainModel()) : null;
+
+  // ── Scatter: vegetation and rocks, on the ground the site gives ──────────
+  // The same three merged meshes Ara3D builds — foliage, wood, stone — so
+  // the kernel viewer, the OG plan and the HTML export show the planting
+  // too. Graph scatter nodes and the terrain model's hand-placed items go
+  // through one instance list: a brush-placed tree and a scattered one are
+  // the same tree.
+  {
+    const heightAt = site?.frame ? site.heightAtBim : null;
+    const emit = (inst: ScatterInstance[], n: BubbleGraphNode, type: string) => {
+      if (!inst.length) return;
+      const g = scatterGeometries(inst);
+      const parts: [THREE.BufferGeometry | null, string][] = [
+        [g.foliage, 'scatter'], [g.wood, 'scatter_wood'], [g.stone, 'scatter_rock'],
+      ];
+      for (const [geo, key] of parts) {
+        if (!geo) continue;
+        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: nodeHex(key), roughness: 0.9 }));
+        applyMat(mesh, key, n, matConfig);
+        tag(mesh, type, n.id, resolveStoreyId(n, nodeMap));
+        scene.add(mesh);
+      }
+    };
+    for (const n of nodes.filter((n) => n.type === 'scatter')) {
+      emit(computeScatter(n, nodeMap, edges, heightAt).instances, n, 'scatter');
+    }
+    if (site && siteNode && site.intent.showIn3d) emit(terrainItemInstances(site), siteNode, 'site');
+  }
+
+  // The site's ground, placed by its frame — see lib/terrain.
+  if (site && siteNode && site.intent.showIn3d && site.frame) {
+    const geo = terrainBufferGeometry(site);
+    if (geo) {
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: nodeHex('site'), roughness: 0.95, side: THREE.DoubleSide }));
+      applyMat(mesh, 'site', siteNode, matConfig);
+      tag(mesh, 'site', siteNode.id, resolveStoreyId(siteNode, nodeMap));
+      scene.add(mesh);
+    }
   }
 
   // Round detail members (gutters, downpipes) → cylinders.

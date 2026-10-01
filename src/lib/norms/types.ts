@@ -91,6 +91,9 @@ export interface NodeMeasures {
   /** Openings in a wall: how many, and their widths summed (lintel length = widths + bearings). */
   opening_count: number;
   opening_width_m: number;
+  /** Earthworks (site node): what is dug out and what is added, m³. */
+  cut_volume_m3: number;
+  fill_volume_m3: number;
   /**
    * Shell regions (contour + cell holes — see lib/shell/region.ts). `net_solid`
    * is the PLIN: contour area minus the cells, i.e. the footing area of a
@@ -137,6 +140,8 @@ export const EMPTY_MEASURES: NodeMeasures = {
   is_interior: 0,
   opening_count: 0,
   opening_width_m: 0,
+  cut_volume_m3: 0,
+  fill_volume_m3: 0,
   outer_perimeter_m: 0,
   hole_perimeter_m: 0,
   hole_area_m2: 0,

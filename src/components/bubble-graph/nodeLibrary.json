@@ -22,6 +22,13 @@
       "color": "#14b8a6"
     },
     {
+      "id": "circulation",
+      "label": "Circulation",
+      "description": "Stairs and vertical circulation",
+      "icon": "◱",
+      "color": "#0891b2"
+    },
+    {
       "id": "envelope",
       "label": "Envelope",
       "description": "Building envelope",
@@ -77,7 +84,191 @@
       "description": "Structural column",
       "defaultProperties": {
         "column_type": "C30x30",
+        "material": "Beton C30/37",
+        "roof_attach": "False",
+        "trim_priority": 10
+      }
+    },
+    {
+      "id": "sweep",
+      "label": "Sweep",
+      "category": "structure",
+      "color": "#14b8a6",
+      "description": "Profil 2D extrudat pe o linie de ghidaj din axe — 1 ax = vertical, 2 = segment, 3+ = polilinie",
+      "defaultProperties": {
+        "profile": "rect",
+        "p_w_mm": 300,
+        "p_h_mm": 600,
+        "anchor_x": "mid",
+        "anchor_y": "max",
+        "level": "top",
+        "offset_z_mm": 0,
+        "offset_x_mm": 0,
+        "rotation_deg": 0,
+        "mirror": "False",
+        "corners": "miter",
+        "closed": "False",
+        "height_mm": 0,
+        "ifc_type": "auto",
         "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "sketch",
+      "label": "Schiță",
+      "category": "structure",
+      "color": "#D97706",
+      "description": "Contur desenat în plan, cu corp 3D — extrudare, sweep pe traseu, array. Legat de 1–2 axe (Reper) devine relativ la ele.",
+      "defaultProperties": {
+        "outline": "[]",
+        "closed": "True",
+        "op": "extrude",
+        "level": "bottom",
+        "offset_z_mm": 0,
+        "height_mm": 1000,
+        "profile": "rect",
+        "p_w_mm": 100,
+        "p_h_mm": 200,
+        "anchor_x": "mid",
+        "anchor_y": "max",
+        "offset_x_mm": 0,
+        "rotation_deg": 0,
+        "mirror": "False",
+        "corners": "miter",
+        "array_count": 1,
+        "array_dx_mm": 0,
+        "array_dy_mm": 0,
+        "array_dz_mm": 0,
+        "array_along": "vector",
+        "array_step_mm": 0,
+        "array_fit": "False",
+        "ref_dx_mm": 0,
+        "ref_dy_mm": 0,
+        "ref_rot_deg": 0,
+        "ref_mirror": "False",
+        "ifc_type": "auto",
+        "element_type": "",
+        "material": "Beton C30/37"
+      }
+    },
+    {
+      "id": "dome",
+      "label": "Dom",
+      "category": "envelope",
+      "color": "#33546a",
+      "description": "Dom cu nervuri Voronoi și panouri de sticlă — 1 ax + rază = bază circulară, 3+ axe = contur (filetabil)",
+      "defaultProperties": {
+        "base_radius_mm": 0,
+        "base_fillet_mm": 0,
+        "dome_height_mm": 3000,
+        "dome_bulge": 1,
+        "level": "top",
+        "offset_z_mm": 0,
+        "resolution": 28,
+        "cell_count": 40,
+        "cell_seed": 1,
+        "relax_iterations": 3,
+        "profile": "rect",
+        "p_w_mm": 60,
+        "p_h_mm": 120,
+        "anchor_y": "max",
+        "glass_thickness_mm": 12,
+        "planarity_tol_mm": 10,
+        "material": "Otel S235",
+        "glass_material": "Sticla"
+      }
+    },
+    {
+      "id": "dome_entrance",
+      "label": "Intrare dom",
+      "category": "envelope",
+      "color": "#0d7390",
+      "description": "Intrare tip iglu: boltă unită cu domul, legată de dom și de un ax exterior",
+      "defaultProperties": {
+        "width_mm": 1200,
+        "cell_count": 8
+      }
+    },
+    {
+      "id": "site",
+      "label": "Teren",
+      "category": "hierarchy",
+      "color": "#5c8c4d",
+      "description": "Terenul din modulul Terrain, ancorat pe un ax; cota de acolo e cota de referință a etajului",
+      "defaultProperties": {
+        "rotation_deg": 0,
+        "offset_z_mm": -450,
+        "excavate_foundations": "False",
+        "working_space_mm": 500,
+        "bedding_mm": 100,
+        "pit_slope_deg": 45,
+        "show_in_3d": "True"
+      }
+    },
+    {
+      "id": "terrain_pad",
+      "label": "Platformă teren",
+      "category": "hierarchy",
+      "color": "#a16207",
+      "description": "Platformă / terasă / săpătură în teren: contur dintr-o schiță (ex. Dreptunghi) sau 3+ axe, cotă parametrică, trecere verticală sau în pantă",
+      "defaultProperties": {
+        "level_mm": 0,
+        "level_mode": "storey",
+        "transition": "vertical",
+        "slope_deg": 45,
+        "mode": "both",
+        "closed": "True"
+      }
+    },
+    {
+      "id": "scatter",
+      "label": "Vegetație / pietre",
+      "category": "envelope",
+      "color": "#4d7c0f",
+      "description": "Copaci, arbuști, pietre — împrăștiate pe o schiță închisă sau înșirate pe un traseu / axe; cota din teren",
+      "defaultProperties": {
+        "kind": "tree",
+        "mode": "auto",
+        "count": 0,
+        "spacing_mm": 4000,
+        "seed": 1,
+        "size_mm": 4000,
+        "height_mm": 6000,
+        "size_jitter": 0.3,
+        "min_gap_mm": 2500,
+        "edge_margin_mm": 0,
+        "closed": "False",
+        "material": "Vegetatie"
+      }
+    },
+    {
+      "id": "facade",
+      "label": "Fațadă",
+      "category": "envelope",
+      "color": "#0369a1",
+      "description": "Generator de fațadă: 2 axe = un panou vertical, 3+ = shell poligonal; tipare grilă / țesut / hexagonal / Voronoi; sticlă, panouri opace sau casete profilate",
+      "defaultProperties": {
+        "pattern": "grid",
+        "cell_w_mm": 1500,
+        "cell_h_mm": 1500,
+        "cell_count": 0,
+        "seed": 1,
+        "relax_iterations": 2,
+        "panel_kind": "glass",
+        "mullion_w_mm": 60,
+        "mullion_d_mm": 120,
+        "glass_thickness_mm": 24,
+        "panel_thickness_mm": 40,
+        "cassette_depth_mm": 250,
+        "cassette_bevel_mm": 120,
+        "offset_mm": 0,
+        "height_mm": 0,
+        "offset_z_mm": 0,
+        "flip": "False",
+        "closed": "True",
+        "material": "Aluminiu",
+        "glass_material": "Sticla",
+        "panel_material": "Aluminiu compozit"
       }
     },
     {
@@ -112,7 +303,12 @@
         "has_windows": "False",
         "windows": "[]",
         "has_doors": "False",
-        "doors": "[]"
+        "doors": "[]",
+        "roof_attach": "False",
+        "trim_priority": 10,
+        "gable_material": "",
+        "gable_thickness_mm": 0,
+        "gable_offset_mm": 0
       }
     },
     {
@@ -219,6 +415,14 @@
       }
     },
     {
+      "id": "cell",
+      "label": "Cell",
+      "category": "envelope",
+      "color": "#c084fc",
+      "description": "Hole inside a shell contour: the void of a cellular raft or the bay of a beam grid",
+      "defaultProperties": {}
+    },
+    {
       "id": "roof",
       "label": "Roof",
       "category": "envelope",
@@ -237,7 +441,10 @@
         "covering_material": "Tigla ceramica",
         "covering_thickness_mm": 40,
         "thickness": 200,
-        "material": "Lemn rasinos"
+        "material": "Lemn rasinos",
+        "trim_below": "True",
+        "trim_offset_mm": 0,
+        "trim_priority": 100
       }
     },
     {
@@ -359,6 +566,49 @@
     { "id": "gutter", "label": "Gutter", "category": "envelope", "color": "#9ea9b8", "description": "Generated gutter (jgheab)", "defaultProperties": { "generated": true } },
     { "id": "downpipe", "label": "Downpipe", "category": "envelope", "color": "#949eae", "description": "Generated downpipe (burlan)", "defaultProperties": { "generated": true } },
     { "id": "snow_guard", "label": "Snow guard", "category": "envelope", "color": "#808a99", "description": "Generated snow guard (parazăpezi)", "defaultProperties": { "generated": true } },
+    {
+      "id": "stairwell",
+      "label": "Stairwell",
+      "category": "circulation",
+      "color": "#0891b2",
+      "description": "Parametric stair + stairwell — steps solved from the storey height",
+      "defaultProperties": {
+        "stair_type": "straight",
+        "width_mm": 1000,
+        "direction_deg": 0,
+        "turn": "left",
+        "turn_style": "landing",
+        "winder_count": 3,
+        "spiral_inner_mm": 100,
+        "spiral_structure": "steps",
+        "sizing": "auto",
+        "riser_mm": 170,
+        "tread_mm": 0,
+        "landing_depth_mm": 0,
+        "structure": "concrete",
+        "thickness_mm": 150,
+        "material": "concrete_reinforced",
+        "gen_void": "True",
+        "void_clearance_mm": 50,
+        "gen_railing": "False",
+        "railing_height_mm": 900,
+        "railing_side": "both",
+        "gen_base_beam": "True",
+        "base_beam_web_mm": 300,
+        "base_beam_flange_mm": 600,
+        "base_beam_flange_h_mm": 150,
+        "base_beam_depth_mm": 400,
+        "generate_level": "flights"
+      }
+    },
+    { "id": "stair_flight", "label": "Stair flight", "category": "circulation", "color": "#0e7490", "description": "Generated flight (rampă)", "defaultProperties": { "generated": true } },
+    { "id": "stair_base_beam", "label": "Stair base beam", "category": "circulation", "color": "#0e7490", "description": "Generated foundation beam at the flight's base (grindă T întors)", "defaultProperties": { "generated": true } },
+    { "id": "stair_winder", "label": "Stair winder", "category": "circulation", "color": "#0e7490", "description": "Generated winder step (treaptă balansată / sector de spirală)", "defaultProperties": { "generated": true } },
+    { "id": "stair_column", "label": "Stair pole", "category": "circulation", "color": "#0e7490", "description": "Generated centre pole of a spiral stair", "defaultProperties": { "generated": true } },
+    { "id": "stair_helix", "label": "Spiral flight", "category": "circulation", "color": "#0e7490", "description": "Generated monolithic spiral — helical waist with steps (beton monolit)", "defaultProperties": { "generated": true } },
+    { "id": "stair_landing", "label": "Stair landing", "category": "circulation", "color": "#155e75", "description": "Generated landing (podest)", "defaultProperties": { "generated": true } },
+    { "id": "stair_tread", "label": "Stair tread", "category": "circulation", "color": "#22d3ee", "description": "Generated step (treaptă)", "defaultProperties": { "generated": true } },
+    { "id": "stair_railing", "label": "Stair railing", "category": "circulation", "color": "#67e8f9", "description": "Generated railing (balustradă)", "defaultProperties": { "generated": true, "section": "T5x5" } },
     {
       "id": "storey",
       "label": "Storey",

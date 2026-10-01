@@ -292,6 +292,30 @@
       }
     },
     {
+      "id": "W60",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "Wall 60cm",
+      "description": "Wall thickness 600mm",
+      "material": "Caramida",
+      "section": {
+        "type": "rectangle",
+        "thickness": 600,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#f59e0b",
+      "parameters": {
+        "thickness": { "value": 600, "unit": "mm", "editable": true },
+        "material": { "value": "Caramida", "editable": true }
+      }
+    },
+    {
       "id": "SLAB10",
       "family": "slab",
       "type": "slab",
@@ -361,6 +385,246 @@
       "parameters": {
         "thickness": { "value": 200, "unit": "mm", "editable": true },
         "material": { "value": "Beton C30/37", "editable": true }
+      }
+    },
+    {
+      "id": "TF14",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "Timber frame 14cm",
+      "description": "Timber-frame partition, 140mm build-up",
+      "material": "Lemn (cadre)",
+      "section": {
+        "type": "rectangle",
+        "thickness": 140,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#f59e0b",
+      "parameters": {
+        "thickness": { "value": 140, "unit": "mm", "editable": true },
+        "material": { "value": "Lemn (cadre)", "editable": true }
+      }
+    },
+    {
+      "id": "TF20",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "Timber frame 20cm",
+      "description": "Timber-frame exterior wall, 200mm build-up",
+      "material": "Lemn (cadre)",
+      "section": {
+        "type": "rectangle",
+        "thickness": 200,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#f59e0b",
+      "parameters": {
+        "thickness": { "value": 200, "unit": "mm", "editable": true },
+        "material": { "value": "Lemn (cadre)", "editable": true }
+      }
+    },
+    {
+      "id": "TF25",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "Timber frame 25cm",
+      "description": "Timber-frame exterior wall, 250mm build-up",
+      "material": "Lemn (cadre)",
+      "section": {
+        "type": "rectangle",
+        "thickness": 250,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#f59e0b",
+      "parameters": {
+        "thickness": { "value": 250, "unit": "mm", "editable": true },
+        "material": { "value": "Lemn (cadre)", "editable": true }
+      }
+    },
+    {
+      "id": "CLT100",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "CLT 10cm",
+      "description": "3-layer CLT panel, 100mm",
+      "material": "CLT",
+      "section": {
+        "type": "rectangle",
+        "thickness": 100,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#d97706",
+      "parameters": {
+        "thickness": { "value": 100, "unit": "mm", "editable": true },
+        "material": { "value": "CLT", "editable": true }
+      }
+    },
+    {
+      "id": "CLT120",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "CLT 12cm",
+      "description": "3-layer CLT panel, 120mm",
+      "material": "CLT",
+      "section": {
+        "type": "rectangle",
+        "thickness": 120,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#d97706",
+      "parameters": {
+        "thickness": { "value": 120, "unit": "mm", "editable": true },
+        "material": { "value": "CLT", "editable": true }
+      }
+    },
+    {
+      "id": "CLT140",
+      "family": "wall",
+      "type": "wall",
+      "category": "walls",
+      "label": "CLT 14cm",
+      "description": "5-layer CLT panel, 140mm",
+      "material": "CLT",
+      "section": {
+        "type": "rectangle",
+        "thickness": 140,
+        "height": "storeyHeight"
+      },
+      "extrusion": {
+        "direction": "fromNodeToNode",
+        "anchor": "centerBottom",
+        "axis": "vertical"
+      },
+      "color": "#d97706",
+      "parameters": {
+        "thickness": { "value": 140, "unit": "mm", "editable": true },
+        "material": { "value": "CLT", "editable": true }
+      }
+    },
+    {
+      "id": "TJ20",
+      "family": "slab",
+      "type": "slab",
+      "category": "slabs",
+      "label": "Timber joists 20cm",
+      "description": "Timber joist floor, 200mm",
+      "material": "Lemn (grinzi)",
+      "section": {
+        "type": "polygon",
+        "thickness": 200,
+        "boundary": "computed"
+      },
+      "extrusion": {
+        "direction": "z",
+        "length": 200,
+        "anchor": "bottom"
+      },
+      "color": "#8b5cf6",
+      "parameters": {
+        "thickness": { "value": 200, "unit": "mm", "editable": true },
+        "material": { "value": "Lemn (grinzi)", "editable": true }
+      }
+    },
+    {
+      "id": "TJ24",
+      "family": "slab",
+      "type": "slab",
+      "category": "slabs",
+      "label": "Timber joists 24cm",
+      "description": "Timber joist floor, 240mm",
+      "material": "Lemn (grinzi)",
+      "section": {
+        "type": "polygon",
+        "thickness": 240,
+        "boundary": "computed"
+      },
+      "extrusion": {
+        "direction": "z",
+        "length": 240,
+        "anchor": "bottom"
+      },
+      "color": "#8b5cf6",
+      "parameters": {
+        "thickness": { "value": 240, "unit": "mm", "editable": true },
+        "material": { "value": "Lemn (grinzi)", "editable": true }
+      }
+    },
+    {
+      "id": "CLT160",
+      "family": "slab",
+      "type": "slab",
+      "category": "slabs",
+      "label": "CLT floor 16cm",
+      "description": "5-layer CLT floor panel, 160mm",
+      "material": "CLT",
+      "section": {
+        "type": "polygon",
+        "thickness": 160,
+        "boundary": "computed"
+      },
+      "extrusion": {
+        "direction": "z",
+        "length": 160,
+        "anchor": "bottom"
+      },
+      "color": "#d97706",
+      "parameters": {
+        "thickness": { "value": 160, "unit": "mm", "editable": true },
+        "material": { "value": "CLT", "editable": true }
+      }
+    },
+    {
+      "id": "CLT200",
+      "family": "slab",
+      "type": "slab",
+      "category": "slabs",
+      "label": "CLT floor 20cm",
+      "description": "7-layer CLT floor panel, 200mm",
+      "material": "CLT",
+      "section": {
+        "type": "polygon",
+        "thickness": 200,
+        "boundary": "computed"
+      },
+      "extrusion": {
+        "direction": "z",
+        "length": 200,
+        "anchor": "bottom"
+      },
+      "color": "#d97706",
+      "parameters": {
+        "thickness": { "value": 200, "unit": "mm", "editable": true },
+        "material": { "value": "CLT", "editable": true }
       }
     }
   ]

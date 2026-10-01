@@ -65,9 +65,11 @@ export interface SystemProfile {
 /** Non-structural partitions that exist in every technology. */
 export const UNIVERSAL_WALL_TYPES: readonly string[] = ['W10', 'W12'];
 
-const MASONRY_WALLS = ['W15', 'W20', 'W25', 'W30', 'W35', 'W40'] as const;
+// W60 is native to masonry and concrete but deliberately NOT to INFILL_WALLS:
+// a 60 cm wall inside an RC frame is not infill, it is structure.
+const MASONRY_WALLS = ['W15', 'W20', 'W25', 'W30', 'W35', 'W40', 'W60'] as const;
 const INFILL_WALLS = ['W15', 'W20', 'W25'] as const;
-const CONCRETE_WALLS = ['W20', 'W25', 'W30', 'W35', 'W40'] as const;
+const CONCRETE_WALLS = ['W20', 'W25', 'W30', 'W35', 'W40', 'W60'] as const;
 const TIMBER_WALLS = ['TF14', 'TF20', 'TF25'] as const;
 const CLT_WALLS = ['CLT100', 'CLT120', 'CLT140'] as const;
 const CONCRETE_SLABS = ['SLAB10', 'SLAB12', 'SLAB15', 'SLAB18', 'SLAB20', 'SLAB25', 'SLAB30'] as const;

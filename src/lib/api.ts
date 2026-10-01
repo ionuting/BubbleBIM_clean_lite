@@ -4,6 +4,8 @@
  */
 
 import { parseAxes } from './utils';
+import { topologyClient } from './topology/client';
+import type { SolidsResult, TopologyRequest, TopologyResult, TopologyStatus } from './topology/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -33,13 +35,35 @@ export interface BuildingAxes {
 }
 
 export interface GraphData {
+  /**
+   * Which stored project this graph IS.
+   *
+   * The client owns it, and sends it back on every save. That is what stops
+   * two tabs holding two projects from writing over each other: each names its
+   * own file instead of both writing to whatever the server last considered
+   * current.
+   */
+  projectSlug?: string;
   nodes: BubbleGraphNode[];
   edges: BubbleGraphEdge[];
   buildingAxes?: BuildingAxes;
   activeStoreyId?: string | null;
   projectName?: string;
   annotations?: import('@/store').DrawingAnnotation[];
+  /** The project's 2D views — see lib/views/drawingViews.ts. */
+  drawingViews?: import('@/lib/views/drawingViews').DrawingView[];
+  /**
+   * Named dimension styles. A drawing standard belongs to the drawing set, so
+   * it travels with the project rather than with the browser that made it.
+   * Absent in projects saved before styles existed — those resolve through the
+   * built-ins, which is what keeps their dimensions looking unchanged.
+   */
+  dimStyles?: import('@/store').DimStyle[];
+  /** Styles for text, leaders, lines, shapes and hatches. Same reasoning. */
+  drawStyles?: import('@/store').DrawStyle[];
   worldLocation?: import('@/store').WorldLocation;
+  /** The site's ground — see lib/terrain. Absent in projects saved before it existed. */
+  terrain?: import('@/lib/terrain').TerrainModel;
   globeInstances?: import('@/store').GlobeInstance[];
   composerShapes?: import('@/store').RoomXShape[];
   /** Open drawing tabs (plans/sections/elevations/…) — persisted so the drawing workspace survives a reload. */
@@ -49,6 +73,8 @@ export interface GraphData {
   structuralSystem?: import('@/lib/systems/structuralSystem').StructuralSystem;
   /** Project-wide material/finish choices (lib/norms/specs.ts). */
   specs?: Record<string, string>;
+  /** Cost scenarios (deltas + cached results) and the target budget. See lib/scenarios. */
+  scenarios?: import('@/lib/scenarios/types').ScenarioPersist;
 }
 
 // ─── API Functions ───────────────────────────────────────────────────────
@@ -70,9 +96,10 @@ export async function checkHealth() {
  * Load graph from backend — normalises axesX/axesY arrays on every storey node
  * (guards against legacy LadybugDB JSON-string serialisation).
  */
-export async function loadGraph(): Promise<GraphData> {
+export async function loadGraph(project?: string): Promise<GraphData> {
   try {
-    const res = await fetch(`${API_BASE}/graph/load`);
+    const q = project ? `?project=${encodeURIComponent(project)}` : '';
+    const res = await fetch(`${API_BASE}/graph/load${q}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data: GraphData = await res.json();
 
@@ -123,6 +150,65 @@ export async function saveGraph(data: GraphData) {
     console.error('❌ Failed to save graph:', err);
     throw err;
   }
+}
+
+// ─── Named projects ─────────────────────────────────────────────────────────
+//
+// One backend, several stored projects. These sit under /api/graph/ because
+// the auth router owns /api/projects for the cloud profile's multi-user store,
+// and two different things behind one path is how a request gets answered by
+// whichever route registered first.
+
+export interface ProjectSummary {
+  slug: string;
+  name: string;
+  nodes: number;
+  edges: number;
+  /** Unix seconds, from the file's mtime. */
+  updated: number;
+  active: boolean;
+}
+
+export async function listProjects(): Promise<{ projects: ProjectSummary[]; active: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/graph/projects`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('❌ Failed to list projects:', err);
+    return { projects: [], active: '' };
+  }
+}
+
+/** Make a project the one a load with no slug returns. */
+export async function openProject(slug: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/graph/projects/open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug }),
+  });
+  return res.ok;
+}
+
+/** Rename a project, moving its commit log with it. Returns the new slug. */
+export async function renameProject(slug: string, name: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/graph/projects/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, name }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+  return body.slug as string;
+}
+
+/** Delete a project. Its history is kept by default, so it stays recoverable. */
+export async function deleteProject(slug: string, keepHistory = true): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/graph/projects/${encodeURIComponent(slug)}?keep_history=${keepHistory}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) throw new Error((await res.json())?.detail ?? `HTTP ${res.status}`);
 }
 
 /**
@@ -676,4 +762,22 @@ export async function getGeometryStatus(): Promise<{ shapely: boolean } | null> 
   } catch {
     return null;
   }
+}
+
+// ── Room topology (topologicpy on PythonOCC) ─────────────────────────────────
+// Answers 503 with the reason when the backend runs without the kernel.
+
+const _topology = topologyClient(API_BASE);
+
+export function getTopologyStatus(): Promise<TopologyStatus> {
+  return _topology.status();
+}
+
+export function analyzeTopology(req: TopologyRequest, signal?: AbortSignal): Promise<TopologyResult> {
+  return _topology.analyze(req, signal);
+}
+
+/** Every element of an IFC as an exact solid — volumes, and what pairs share. */
+export function measureSolids(ifc: string, signal?: AbortSignal): Promise<SolidsResult> {
+  return _topology.solids(ifc, signal);
 }

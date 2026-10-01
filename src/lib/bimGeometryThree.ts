@@ -10,6 +10,8 @@ import { Evaluator, Brush, SUBTRACTION } from 'three-bvh-csg';
 import { MM, NODE_COLOR, type WallSegDesc, type OpeningMeshDesc, type WallGeometry, type NodeLocalTransform, type VoidInfo } from './bimGeometry';
 import { type MaterialVisuals, type WindowGlazingConfig, BUILTIN_WINDOW_GLAZING, hexToRgb01 } from './materialConfig';
 import { WINDOW_TYPE_MAP, DOOR_TYPE_MAP } from './elementLibrary';
+import type { BubbleGraphNode } from '@/store';
+import type { RoofFace3D } from './roof/types';
 
 // ─── CSG evaluator singleton ──────────────────────────────────────────────────
 let _csgEval: Evaluator | null = null;
@@ -99,6 +101,52 @@ export function getMat(
   }
   cache.set(key, mat);
   return mat;
+}
+
+// ─── Roof faces ───────────────────────────────────────────────────────────────
+
+/**
+ * The node a roof FACE should be styled from.
+ *
+ * A roof carries two materials: `material` is the framing (timber), while
+ * `covering_material` is what you actually see from outside — tiles, sheet,
+ * membrane. The visible surface must follow the covering, so it wins here and
+ * `material` only stands in when no covering is named.
+ *
+ * Returning a synthetic node rather than a bare material id keeps the per-node
+ * `color_3d` / `color_2d` overrides working, since the callers read them off
+ * the node they are given.
+ */
+export function roofSurfaceNode(n: BubbleGraphNode): BubbleGraphNode {
+  const covering = String(n.properties.covering_material ?? '').trim();
+  if (!covering) return n;
+  return { ...n, properties: { ...n.properties, material: covering } };
+}
+
+/**
+ * One roof face as Three.js geometry — fan triangulation of its BIM-mm vertices.
+ *
+ * A `RoofFace3D` is planar by construction (every generator lifts a 2D polygon
+ * through a single linear height field — see roof/faceGeometry.ts), and planar
+ * polygons from the skeleton are convex or near enough, so a fan around vertex
+ * 0 is sound here without a full triangulator.
+ *
+ * The surface has NO thickness, matching the fast path the OpenGeometry viewer
+ * uses for faces without skylights. Callers must render it DoubleSide, or the
+ * roof vanishes when seen from below.
+ */
+export function roofFaceGeometry(face: RoofFace3D): THREE.BufferGeometry | null {
+  const verts = face.vertices;
+  if (verts.length < 3) return null;
+  const positions: number[] = [];
+  for (const v of verts) positions.push(v.x * MM, v.z * MM, -v.y * MM);
+  const indices: number[] = [];
+  for (let i = 1; i < verts.length - 1; i++) indices.push(0, i, i + 1);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
 }
 
 // ─── Mesh primitives ──────────────────────────────────────────────────────────

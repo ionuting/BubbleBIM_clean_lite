@@ -7,6 +7,8 @@
  */
 
 import type { HatchPatternId } from '@/store';
+import { DEFAULT_DIM_STYLE_ID } from '@/lib/drawing/dimStyle';
+import { DEFAULT_DRAW_STYLE_ID } from '@/lib/drawing/drawStyle';
 
 const STORAGE_KEY = 'bg_annotation_drawing_settings_v2';
 
@@ -45,6 +47,16 @@ export interface AnnotationDrawingSettings {
   hatchAngle: number;
   /** Opacity for hatch fills. Default 0.4. */
   hatchOpacity: number;
+  /**
+   * Which named dimension style new dimensions are drawn in.
+   *
+   * The styles themselves live in the PROJECT — a drawing standard belongs to
+   * the drawing set. Only the choice of which one is currently armed is a
+   * per-machine preference, which is why the id and not the style is here.
+   */
+  dimStyleId: string;
+  /** Which named draw style new text, leaders, lines and shapes take. */
+  drawStyleId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -63,6 +75,8 @@ export const DEFAULT_ANNOTATION_SETTINGS: AnnotationDrawingSettings = {
   hatchSpacing: 1.0,
   hatchAngle:   0,
   hatchOpacity: 0.4,
+  dimStyleId:   DEFAULT_DIM_STYLE_ID,
+  drawStyleId:  DEFAULT_DRAW_STYLE_ID,
 };
 
 // ─── In-memory state ──────────────────────────────────────────────────────────

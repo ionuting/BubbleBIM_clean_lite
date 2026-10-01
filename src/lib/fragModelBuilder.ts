@@ -6,6 +6,7 @@
  *   beam    → IFCBEAM       slab                    → IFCSLAB
  *   foundation → IFCFOOTING  room                   → IFCSPACE
  *   shell   → IFCROOF        covering               → IFCCOVERING
+ *   roof    → IFCROOF       (one item per solved face)
  *
  * Every item carries a `BubbleId` attribute (= node.id) and all node.properties
  * serialised as IFCLABEL attributes — ready for OBC metadata queries.
@@ -30,7 +31,9 @@ import {
   calcWallGeometry, calcWallJoins, calcRoomPolygon, calcShellPolygon,
   parseContourOffsets, insetPolygon, calcSpanEffectiveEnds,
 } from './bimGeometry';
-import { wallHorizontalProfileLayerMesh, wallSolidLayerMesh, applyOpeningVoids, makeBoxOpeningCutter } from './bimGeometryThree';
+import { wallHorizontalProfileLayerMesh, wallSolidLayerMesh, applyOpeningVoids, makeBoxOpeningCutter, roofFaceGeometry, roofSurfaceNode } from './bimGeometryThree';
+import { computeRoofFaces } from './roof/solver';
+import type { RoofFace3D } from './roof/types';
 import { resolveVisuals, applyNodeColorOverrides, hexToRgb01 } from './materialConfig';
 import { resolveCoveringLayers } from './roomCovering';
 import { resolveWallLayers, syntheticWallNodeForLayer } from './wallLayers';
@@ -44,7 +47,7 @@ export const BIM_MODEL_ID = 'bubblgraph-bim';
 
 /** BIM node types that are rendered as fragments tiles (not Three.js). */
 export const FRAG_ELEMENT_TYPES = new Set([
-  'column', 'ax', 'wall', 'beam', 'slab', 'foundation', 'room', 'shell', 'covering',
+  'column', 'ax', 'wall', 'beam', 'slab', 'foundation', 'room', 'shell', 'covering', 'roof',
 ]);
 
 // ── Colour helpers ─────────────────────────────────────────────────────────────
@@ -58,6 +61,7 @@ const DEFAULT_COLORS: Record<string, [number, number, number]> = {
   room:       [0.40, 0.60, 0.90],
   shell:      [0.70, 0.50, 0.40],
   covering:   [0.60, 0.60, 0.65],
+  roof:       [0.76, 0.25, 0.05],
   window:     [0.30, 0.50, 0.80],
   door:       [0.60, 0.40, 0.25],
 };
@@ -483,6 +487,30 @@ export async function buildBimFragmentsModel(
     }
   }
 
+  // ── Roof (one item per solved face) ───────────────────────────────────────
+  // Without this a roof exists in the Three.js scene but not in the fragments
+  // model, so the Highlighter cannot select it and OBC queries never see it.
+  // One item per face rather than one per roof, so clicking a slope selects
+  // that slope — the same granularity the solver and the takeoff work at.
+  for (const n of nodes.filter((n) => n.type === 'roof')) {
+    let faces: RoofFace3D[];
+    try {
+      faces = computeRoofFaces(n, nodes, edges).faces;
+    } catch (err) {
+      console.warn('[fragModelBuilder] roof solve failed:', n.id, err);
+      continue;
+    }
+    const surfaceNode = roofSurfaceNode(n);
+    for (const face of faces) {
+      const geo = roofFaceGeometry(face);
+      if (!geo) continue;
+      // Flat faces are invisible edge-on from below without DoubleSide.
+      const mat = lambertMat('roof', matConfig, String(surfaceNode.properties.material ?? ''), surfaceNode.properties);
+      mat.side = THREE.DoubleSide;
+      elements.push(el(n, 'IFCROOF', geo, mat, identity));
+    }
+  }
+
   // ── Push to model ─────────────────────────────────────────────────────────
   const valid = elements.filter((e): e is NewElementData => e !== null);
   if (valid.length === 0) return;
@@ -493,24 +521,38 @@ export async function buildBimFragmentsModel(
 }
 
 /**
- * Query the fragments model for a node's localId by its BubbleId string.
- * Returns null if the model doesn't exist or the node isn't found.
+ * Every localId of a graph node in the BIM fragments model.
+ *
+ * The model is loaded from the exported IFC, so an element names its node in
+ * `Tag` — `nodeId`, or `nodeId:part` for a node that became several elements
+ * (a dormer's hood and tympanum, a wall's gable). A model built directly
+ * carried the id as `BubbleId`; both are asked.
  */
+export async function getLocalIdsByBubbleId(
+  core: FragmentsModels,
+  bubbleId: string,
+): Promise<number[]> {
+  const model = core.models.list.get(BIM_MODEL_ID);
+  if (!model) return [];
+  const esc = bubbleId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const [byTag, byBubble] = await Promise.all([
+    model.getItemsByQuery({ attributes: { queries: [{ name: /^Tag$/, value: new RegExp(`^${esc}(:.*)?$`) }] } }),
+    model.getItemsByQuery({ attributes: { queries: [{ name: /^BubbleId$/, value: new RegExp(`^${esc}$`) }] } }),
+  ]);
+  return [...new Set([...byTag, ...byBubble])];
+}
+
+/** The first of them — for callers that highlight one item. */
 export async function getLocalIdByBubbleId(
   core: FragmentsModels,
   bubbleId: string,
 ): Promise<number | null> {
-  const model = core.models.list.get(BIM_MODEL_ID);
-  if (!model) return null;
-  const results = await model.getItemsByQuery({
-    attributes: { queries: [{ name: /^BubbleId$/, value: new RegExp(`^${bubbleId}$`) }] },
-  });
-  return results[0] ?? null;
+  return (await getLocalIdsByBubbleId(core, bubbleId))[0] ?? null;
 }
 
 /**
- * Query the fragments model for a BubbleId by localId.
- * Used by Highlighter's onHighlight event to map fragments hits → node IDs.
+ * The graph node a picked item belongs to: its `Tag` (see above), or the
+ * `BubbleId` of a directly built model.
  */
 export async function getBubbleIdByLocalId(
   core: FragmentsModels,
@@ -521,8 +563,11 @@ export async function getBubbleIdByLocalId(
   const items = await model.getItemsData([localId]);
   const item  = items[0];
   if (!item) return null;
-  const bubbleAttr = item['BubbleId'];
-  if (!bubbleAttr) return null;
-  const raw = (bubbleAttr as { value?: unknown }).value;
-  return raw != null ? String(raw) : null;
+  const read = (key: string) => {
+    const attr = item[key] as { value?: unknown } | undefined;
+    return attr && attr.value != null ? String(attr.value) : null;
+  };
+  const tag = read('Tag');
+  if (tag) return tag.split(':')[0] || null;
+  return read('BubbleId');
 }

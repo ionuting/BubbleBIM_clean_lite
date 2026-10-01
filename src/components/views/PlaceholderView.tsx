@@ -19,6 +19,7 @@ const ICONS: Record<ViewTabType, string>       = {
   'table':             '📊',
   'sheet':             '📄',
   'fem':               '🏗',
+  'topology':          '⋈',
 };
 
 const DESCRIPTIONS: Partial<Record<ViewTabType, string>> = {

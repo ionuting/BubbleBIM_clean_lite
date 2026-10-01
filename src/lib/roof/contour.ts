@@ -312,6 +312,11 @@ export function resolveRoofContour(
       baseZ = top;
     }
   }
+  // The eave need not sit at the top of the storey. A roof that bears on the
+  // walls and runs down past them — over a porch, say — has its eave BELOW the
+  // wall plate: `eave_z_offset_mm` moves the eave line (and with it every face,
+  // rafter and export) by that much, negative = lower.
+  baseZ += Number(roof.properties.eave_z_offset_mm ?? 0) || 0;
 
   return {
     points: ensureCcw(withOverhang),

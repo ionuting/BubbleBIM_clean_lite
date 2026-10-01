@@ -18,8 +18,38 @@ import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { cn, parseAxes } from '@/lib/utils';
 import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes, StoreyDiscipline } from '@/store';
 import { useBubbleGraphStore } from '@/store';
-import { getNodeLocalTransform, calcShellPolygon, parseContourOffsets, insetPolygon, calcSpanEffectiveEnds, calcRoomPolygon, getNodeBimPos, collectOpenings, getEndpointAutoOffset, parseBeamDims, calcWallJoins, calcWallGeometry, getWallJoinProp, type OpeningInfo, type WallJoinResult } from '@/lib/bimGeometry';
+import { getNodeLocalTransform, resolveOpeningDims, calcShellPolygon, parseContourOffsets, insetPolygon, calcSpanEffectiveEnds, calcRoomPolygon, getNodeBimPos, getAxRealPos, collectOpenings, getEndpointAutoOffset, parseBeamDims, calcWallJoins, calcWallGeometry, getWallJoinProp, type OpeningInfo, type WallJoinResult } from '@/lib/bimGeometry';
+import { unionWallRings, wallFaces, wallSolidPolygons } from '@/lib/plan/wallSilhouette';
+import { defaultDoorPlanDef } from '@/lib/symbolTemplates/planDefaults';
 import { buildRoofPlan, ROOF_GENERATED_TYPES, type RoofPlan } from '@/lib/roof';
+import { buildStairPlan, STAIR_GENERATED_TYPES, type StairPlan } from '@/lib/stair';
+import { computeSweep } from '@/lib/sweep';
+import {
+  applySketchDim, computeSketch, parseSketchIntent, serialiseOutline, setSketchRefs, sketchDims, sketchOutline,
+  worldToLocal, type SketchFrame, type SketchTransform,
+} from '@/lib/sketch';
+import {
+  dragVertex, paramsForCircle, paramsForRect, translateShape,
+  type ShapeParams, type SketchShape,
+} from '@/lib/sketch/shapes';
+import { computeScatter, scatterSymbol, type ScatterInstance } from '@/lib/scatter';
+import { computeFacade } from '@/lib/facade';
+import { terrainItemInstances } from '@/lib/scatter/terrainItems';
+import { computeSite, findSiteNode } from '@/lib/terrain';
+import { currentTerrainModel } from '@/lib/terrain/current';
+import { getOrderedAnchorNodes } from '@/lib/bimGeometry';
+import type { DrawingAnnotation } from '@/store';
+import { toast } from '@/components/ui/toast';
+import {
+  SKETCH_TOOLS,
+  sketchToolClicks,
+  sketchToolDef,
+  sketchToolOutline,
+  isCurveTool,
+  sketchToolPreview,
+  type SketchTool,
+} from '@/lib/sketch/tools';
+import { computeDome } from '@/lib/dome';
 import { SvgAnnotationLayer, type SvgAnnotationTool } from './SvgAnnotationLayer';
 import { DrawingPropertiesPanel } from './DrawingPropertiesPanel';
 import { RebarLayer } from '@/components/views/armare/RebarLayer';
@@ -28,6 +58,7 @@ import { useArmare } from '@/store/armareStore';
 import {
   resolveVisuals,
   applyNodeColorOverrides,
+  BUILTIN_ELEMENT_DEFAULTS, FALLBACK_VISUALS,
   getSectionLineColor, getSectionLineWeight, getSectionLineStyle,
   getSectionFillColor, getSectionFillOpacity,
   getViewLineColor, getViewLineWeight, getViewLineStyle,
@@ -36,7 +67,8 @@ import {
 } from '@/lib/materialConfig';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
 import { useFitToContent } from '@/hooks/useFitToContent';
-import { expandArrayNodes } from '@/lib/formulaUtils';
+import { expandArrayNodes, safeEval } from '@/lib/formulaUtils';
+import { applyGridEdit, roundToSnap, DEFAULT_SPAN_EDIT_MODE, GRID_MIN_GAP_MM } from '@/lib/grid/axisEdit';
 import { WINDOW_TYPE_MAP } from '@/lib/elementLibrary';
 import {
   commitPlanCut,
@@ -77,6 +109,80 @@ import {
 const SCALE = 0.08; // mm → SVG units
 const PAD   = 60;   // padding inside the building area (for axis bubbles etc.)
 
+// ── Dimension lines ────────────────────────────────────────────────────────────
+//
+// One drawing primitive for every dimension on the plan — the axis chains and
+// the selected sketch's own sizes. Endpoints are SVG units; `offset` hangs
+// the line to the clockwise-perpendicular side of a→b (which, with SVG's y
+// pointing down, is the RIGHT of the segment as read on screen). A dimension
+// that has an `onEdit` reads as a control: its number is a button.
+const DIM_OFF  = 11;   // gap from the measured edge to the dimension line
+const DIM_FONT = 6.5;
+const DIM_TICK = 1.8;
+/** Centre of the number, measured back from the dimension line toward the object. */
+const DIM_TEXT = 2.6 + DIM_FONT * 0.4;
+
+function PlanDim({ a, b, offset, label, color = '#475569', onEdit, hidden }: {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  offset: number;
+  label: string;
+  color?: string;
+  onEdit?: () => void;
+  /** Keep the line, drop the number — while an input sits over it. */
+  hidden?: boolean;
+}) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return null;
+  const d = { x: dx / len, y: dy / len };
+  const n = { x: -d.y, y: d.x };
+  const s = Math.sign(offset) || 1;
+  const A = { x: a.x + n.x * offset, y: a.y + n.y * offset };
+  const B = { x: b.x + n.x * offset, y: b.y + n.y * offset };
+  // Extension lines overshoot the dimension line a touch, the way they are drawn.
+  const ext = offset + s * 2;
+  const t = { x: (d.x + n.x) * Math.SQRT1_2, y: (d.y + n.y) * Math.SQRT1_2 };
+  const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+  const tx = mid.x - n.x * s * DIM_TEXT, ty = mid.y - n.y * s * DIM_TEXT;
+  // Read left-to-right, or bottom-to-top: angles in [−90°, 90°).
+  let ang = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+  if (ang >= 90) ang -= 180; else if (ang < -90) ang += 180;
+  const w = Math.max(10, label.length * DIM_FONT * 0.62 + 4);
+  return (
+    <g style={{ pointerEvents: onEdit ? 'auto' : 'none' }}>
+      <line x1={a.x} y1={a.y} x2={a.x + n.x * ext} y2={a.y + n.y * ext} stroke={color} strokeWidth={0.4} opacity={0.7} />
+      <line x1={b.x} y1={b.y} x2={b.x + n.x * ext} y2={b.y + n.y * ext} stroke={color} strokeWidth={0.4} opacity={0.7} />
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={color} strokeWidth={0.5} />
+      <line x1={A.x - t.x * DIM_TICK} y1={A.y - t.y * DIM_TICK} x2={A.x + t.x * DIM_TICK} y2={A.y + t.y * DIM_TICK} stroke={color} strokeWidth={0.8} />
+      <line x1={B.x - t.x * DIM_TICK} y1={B.y - t.y * DIM_TICK} x2={B.x + t.x * DIM_TICK} y2={B.y + t.y * DIM_TICK} stroke={color} strokeWidth={0.8} />
+      {!hidden && (
+        <g transform={`translate(${tx} ${ty}) rotate(${ang})`}
+          onClick={onEdit ? (e) => { e.stopPropagation(); onEdit(); } : undefined}
+          onMouseDown={onEdit ? (e) => e.stopPropagation() : undefined}
+          style={onEdit ? { cursor: 'text' } : undefined}>
+          <rect x={-w / 2} y={-DIM_FONT * 0.55} width={w} height={DIM_FONT * 1.1} rx={1}
+            fill={onEdit ? '#ffffff' : 'none'} fillOpacity={onEdit ? 0.75 : 0} stroke="none" />
+          <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={DIM_FONT} fill={color} fontFamily="ui-monospace, monospace"
+            style={{ textDecoration: onEdit ? 'underline dotted' : undefined }}>
+            {label}
+          </text>
+          {onEdit && <title>Clic pentru a edita — Enter aplică, Esc anulează</title>}
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** Where an inline value editor sits on the plan and what its Enter does. */
+interface PlanDimEdit {
+  key: string;
+  value: string;
+  at: { x: number; y: number };
+  /** `shift` = the alternate mode (for an axis span: move only the next axis). */
+  commit: (valueMm: number, shift: boolean) => void;
+}
+
 // ── Opening cut-zone helper ────────────────────────────────────────────────────
 //
 // Determines whether the horizontal cut plane passes THROUGH the opening,
@@ -89,15 +195,19 @@ const PAD   = 60;   // padding inside the building area (for axis bubbles etc.)
 //
 type OpeningCutZone = 'cut' | 'sill-visible' | 'above-lintel';
 
+// The dimensions come from `resolveOpeningDims` — the one resolver the wall
+// geometry, the 3D viewers and the IFC export all use. Reading the node's
+// properties here instead would drift from them: the keys it used to read
+// (`sill_height_mm`, `height_mm`) are the LIBRARY's names, never written onto
+// a node, so a window whose sill the user had raised was still judged at the
+// catalogue default — and a door, looked up in the window catalogue, was
+// given a 900 mm sill it does not have.
 function getOpeningCutZone(
   opNode: BubbleGraphNode,
   storeyBottomMm: number,
   cutAbsElevMm: number,
 ): OpeningCutZone {
-  const typeId  = String(opNode.properties.window_type ?? opNode.properties.door_type ?? '');
-  const wType   = WINDOW_TYPE_MAP.get(typeId);
-  const sillH   = Number(opNode.properties.sill_height_mm ?? wType?.sill_height_mm ?? 900);
-  const openH   = Number(opNode.properties.height_mm     ?? wType?.height_mm       ?? 2100);
+  const { height: openH, sillHeight: sillH } = resolveOpeningDims(opNode);
   const sillAbs = storeyBottomMm + sillH;
   const headAbs = sillAbs + openH;
   if (cutAbsElevMm > headAbs) return 'above-lintel';
@@ -155,16 +265,28 @@ function buildSvgHatchPattern(id: string, hatch: HatchPattern, color: string, lw
   }
 }
 
-/** Get the SVG fill value for a section element: either a colour or url(#patternId). */
-function sectionFill(patternId: string, vis: MaterialVisuals): string {
-  if (!vis.hatch || vis.hatch === 'none') return 'none';
-  if (vis.hatch === 'solid') return getSectionFillColor(vis);
-  return `url(#${patternId})`;
+/** Whether these visuals are drawn with an SVG <pattern> (not none / solid). */
+const isPatternHatch = (vis: MaterialVisuals): boolean =>
+  !!vis.hatch && vis.hatch !== 'none' && vis.hatch !== 'solid';
+
+/**
+ * The SVG pattern ID for a section hatch — named after what it looks like
+ * (hatch, colour, weight), not after the material that asked for it. A
+ * material resolves by id, label or alias, and every spelling that lands on
+ * the same visuals lands on the same pattern, so the fill can never point at
+ * a pattern that was defined under another name.
+ */
+function hatchPatId(vis: MaterialVisuals): string {
+  const colour = getSectionFillColor(vis).replace(/[^a-z0-9]/gi, '');
+  const weight = String(getSectionLineWeight(vis)).replace(/[^0-9]/g, 'p');
+  return `bgp_${vis.hatch}_${colour}_${weight}`;
 }
 
-/** Generate a unique SVG pattern ID for a given element type and material id. */
-function hatchPatId(elementType: string, materialKey: string): string {
-  return `bgp_${elementType}_${materialKey.replace(/[^a-z0-9]/gi, '_')}`;
+/** Get the SVG fill value for a section element: either a colour or url(#patternId). */
+function sectionFill(vis: MaterialVisuals): string {
+  if (!vis.hatch || vis.hatch === 'none') return 'none';
+  if (vis.hatch === 'solid') return getSectionFillColor(vis);
+  return `url(#${hatchPatId(vis)})`;
 }
 
 
@@ -201,6 +323,42 @@ interface FloorPlan2DViewerProps {
   embedded?: boolean;
   selectedNodeId?: string | null;
   onSelectNode?: (id: string | null) => void;
+  /** Multi-selection (region select writes it; Delete removes it). */
+  selectedNodeIds?: string[];
+  onSelectNodes?: (ids: string[]) => void;
+  /** The view's own annotation key (lib/views/drawingViews); absent → the key this drawing used before views. */
+  annotationKey?: string;
+}
+
+/**
+ * Node types the plan itself authors, and so may delete. Everything else on
+ * the plan — walls, rooms, columns, beams — is generated from the graph, and
+ * the graph is where it is removed; a Delete here only says so.
+ */
+const PLAN_OWNED_TYPES = new Set(['sketch', 'section', 'view', 'scatter', 'terrain_pad']);
+
+/** Node types whose `x/y` IS a plan position — the only ones a connection line can be drawn between. */
+const PLAN_POINT_TYPES = new Set(['ax', 'column']);
+
+/** A closed outline strokes as a polygon, an open one as a polyline. */
+const closedOutline = (closed: boolean) => closed;
+
+/**
+ * The plan points an annotation occupies — for region selection, which keeps
+ * a shape only when ALL of them fall inside the rectangle (window select).
+ */
+function annotationPoints(a: DrawingAnnotation): { x: number; y: number }[] {
+  switch (a.kind) {
+    case 'text':      return [{ x: a.x, y: a.y }];
+    case 'dimension': return [a.p1, a.p2];
+    case 'line':      return [a.p1, a.p2];
+    case 'leader':
+    case 'polyline':
+    case 'hatch':     return a.points;
+    case 'rect':      return [{ x: a.x, y: a.y }, { x: a.x + a.width, y: a.y + a.height }];
+    case 'arc':
+    case 'circle':    return [{ x: a.cx - a.radius, y: a.cy - a.radius }, { x: a.cx + a.radius, y: a.cy + a.radius }];
+  }
 }
 
 export function FloorPlan2DViewer({
@@ -213,7 +371,11 @@ export function FloorPlan2DViewer({
   embedded = false,
   selectedNodeId = null,
   onSelectNode,
+  selectedNodeIds = [],
+  onSelectNodes,
+  annotationKey,
 }: FloorPlan2DViewerProps) {
+  const annViewId = annotationKey ?? storeyId ?? 'floorplan:all';
   const [zoom, setZoom]   = useState(1);
   const [pan, setPan]     = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -225,7 +387,7 @@ export function FloorPlan2DViewer({
   // Matters most here: the viewBox carries CANVAS_MARGIN of deliberate blank
   // space on every side, so at zoom 1 the building occupies only ~30% of it.
   useFitToContent({
-    svgRef, containerRef, setZoom, setPan, enabled: !embedded,
+    svgRef, containerRef, setZoom, setPan,
     viewKey: `${storeyId ?? ''}:${discipline ?? ''}`,
   });
 
@@ -241,7 +403,8 @@ export function FloorPlan2DViewer({
 
   // Annotation tool state
   const [annTool, setAnnTool] = useState<SvgAnnotationTool | null>(null);
-  const { clearViewAnnotations, setBubbleGraph, selectAnnotation, setPlanTool, setPendingOpenSectionId } = useBubbleGraphStore();
+  const { clearViewAnnotations, setBubbleGraph, selectAnnotation, setPlanTool, setPendingOpenSectionId, deleteAnnotation } = useBubbleGraphStore();
+  const allAnnotations = useBubbleGraphStore((s) => s.annotations);
   const planTool = useBubbleGraphStore((s) => s.planTool);
   const rawNodes = useBubbleGraphStore((s) => s.bubbleGraphNodes);
   const rawEdges = useBubbleGraphStore((s) => s.bubbleGraphEdges);
@@ -253,6 +416,79 @@ export function FloorPlan2DViewer({
   const [hoverSnap, setHoverSnap] = useState<{ x: number; y: number } | null>(null);
   const [hoverRaw, setHoverRaw] = useState<{ x: number; y: number } | null>(null);
   const SNAP_THRESHOLD_MM = 500; // snap radius in mm
+
+  // ── Sketch authoring: clicks in the plan become a `sketch` node ───────────
+  // The clicks land in BIM mm (the plan's own logical space), so what is drawn
+  // is where it is — no conversion, and the 3D body stands exactly there.
+  const [sketchTool, setSketchTool] = useState<SketchTool | null>(null);
+  const [sketchPts, setSketchPts] = useState<{ x: number; y: number }[]>([]);
+  // The rebar panel is a MODE, not furniture: it used to be mounted always,
+  // top-left, over the plan toolbar's first group.
+  const [showRebar, setShowRebar] = useState(false);
+
+  // ── Region (window) selection ─────────────────────────────────────────────
+  // Drag on empty ground with nothing armed. Everything wholly inside the
+  // rectangle — nodes, annotations, rebar forms — becomes the selection, and
+  // one Delete removes the lot. Nodes go through the host's multi-selection;
+  // annotations are held here because the store only knows one at a time.
+  const [marquee, setMarquee] = useState<{ a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
+  const marqueeStart = useRef<{ client: { x: number; y: number }; bim: { x: number; y: number } } | null>(null);
+  const suppressClick = useRef(false);
+  const [annSel, setAnnSel] = useState<string[]>([]);
+  /** The node most recently picked IN THIS PLAN — the one Delete here may act on. */
+  const lastPlanPick = useRef<string | null>(null);
+  // Editing an existing sketch: which vertex (or the whole body) is being
+  // dragged. A ref, so a pointermove does not re-render on every pixel.
+  //
+  // `params`/`outline` are frame-LOCAL (what the node stores); `frame` + `ref`
+  // are how the pointer's BIM position gets back into that space.
+  const sketchDrag = useRef<
+    | { kind: 'vertex'; nodeId: string; index: number; shape: SketchShape; params: ShapeParams; outline: { x: number; y: number }[]; frame: SketchFrame; ref: SketchTransform }
+    | { kind: 'body'; nodeId: string; from: { x: number; y: number }; shape: SketchShape; params: ShapeParams; outline: { x: number; y: number }[]; frame: SketchFrame; ref: SketchTransform }
+    | null
+  >(null);
+
+  /**
+   * Write a sketch edit back — one graph update, one undo step.
+   *
+   * Parametric shapes take new NUMBERS; a free polygon takes new points. The
+   * derived outline is written alongside either way, so nothing reading the
+   * raw property ever sees a stale shape.
+   */
+  const applySketchEdit = useCallback((
+    nodeId: string,
+    edit: { params?: ShapeParams; outline?: { x: number; y: number }[] },
+  ) => {
+    // `params` and `outline` are frame-local, like the properties they write.
+    if (!edit.params && !edit.outline) return;
+    const store = useBubbleGraphStore.getState();
+    setBubbleGraph(
+      store.bubbleGraphNodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const props: Record<string, unknown> = { ...n.properties };
+        if (edit.params) {
+          props.shape_x_mm = Math.round(edit.params.xMm * 10) / 10;
+          props.shape_y_mm = Math.round(edit.params.yMm * 10) / 10;
+          props.shape_w_mm = Math.round(edit.params.wMm * 10) / 10;
+          props.shape_h_mm = Math.round(edit.params.hMm * 10) / 10;
+          props.shape_r_mm = Math.round(edit.params.rMm * 10) / 10;
+        }
+        if (edit.outline) props.outline = serialiseOutline(edit.outline);
+        const next = { ...n, properties: props };
+        // Points are stored frame-LOCAL; only the label position is world.
+        const local = parseSketchIntent(next).outline;
+        if (local.length) {
+          if (!edit.outline) props.outline = serialiseOutline(local);
+          const map = new Map(store.bubbleGraphNodes.map((m) => [m.id, m]));
+          const o = sketchOutline(next, map, store.bubbleGraphEdges);
+          next.x = o.reduce((a, p) => a + p.x, 0) / o.length;
+          next.y = o.reduce((a, p) => a + p.y, 0) / o.length;
+        }
+        return next;
+      }),
+      store.bubbleGraphEdges,
+    );
+  }, [setBubbleGraph]);
 
   // ── Draw Section authoring (store-driven planTool) ─────────────────────────
   const drawSectionMode = planTool === 'draw-section';
@@ -360,20 +596,29 @@ export function FloorPlan2DViewer({
   const setArmareActiveView = useArmare((s) => s.setActiveView);
   const adaugaFormaLaPozitie = useArmare((s) => s.adaugaFormaLaPozitie);
   const armarePlaseaza = armareUnealta !== 'select';
-  const canPickBim = !drawWallMode && !drawSectionMode && !sectionOnAxisMode && !annTool && !armarePlaseaza;
+  const canPickBim = !drawWallMode && !drawSectionMode && !sectionOnAxisMode && !annTool && !armarePlaseaza && !sketchTool;
   const handlePickNode = useCallback((nodeId: string, e: React.MouseEvent) => {
     if (!canPickBim || !onSelectNode || e.shiftKey) return;
     e.stopPropagation();
-    onSelectNode(selectedNodeId === nodeId ? null : nodeId);
+    const next = selectedNodeId === nodeId ? null : nodeId;
+    lastPlanPick.current = next;
+    onSelectNode(next);
   }, [canPickBim, onSelectNode, selectedNodeId]);
   const onContainerClick = useCallback((e: React.MouseEvent) => {
     if (!canPickBim || !onSelectNode || e.shiftKey) return;
+    if (suppressClick.current) { suppressClick.current = false; return; }
     if (e.target === containerRef.current || e.target === svgRef.current) {
       onSelectNode(null);
+      selectAnnotation(null);
+      onSelectNodes?.([]);
+      setAnnSel([]);
     }
-  }, [canPickBim, onSelectNode]);
+  }, [canPickBim, onSelectNode, onSelectNodes]);
   useEffect(() => {
     setArmareActiveView(storeyId ?? 'floorplan');
+    // Forms drawn while this tab had no storeyId were keyed 'floorplan';
+    // fold them into the storey so they neither vanish nor stay orphaned.
+    if (storeyId) useArmare.getState().migrateView('floorplan', storeyId);
   }, [storeyId, setArmareActiveView]);
 
   // Plasează o formă de armare la punctul apăsat (când o unealtă e activă).
@@ -417,9 +662,12 @@ export function FloorPlan2DViewer({
     return pts;
   }, [axisXVals, axisYVals, storeyNodes]);
 
-  // BIM mm coords for any node: ax nodes use storey grid axes, others use node.x/y directly
+  // BIM mm coords for any node. Ax nodes go through the ONE resolver so free
+  // points (bimX/bimY) and grid offsets (ax_dx_mm) land where every other view
+  // puts them; the storey-less fallback keeps legacy graphs on the grid origin.
   const getNodeMmPos = (n: BubbleGraphNode): { x: number; y: number } => {
     if (n.type === 'ax') {
+      if (n.parentId && nodeMap.has(n.parentId)) return getAxRealPos(n, nodeMap);
       return {
         x: axisXVals[Number(n.properties.gridX ?? 0)] ?? (axisXVals[0] ?? 0),
         y: axisYVals[Number(n.properties.gridY ?? 0)] ?? (axisYVals[0] ?? 0),
@@ -432,6 +680,23 @@ export function FloorPlan2DViewer({
   const getNodeSvgPos = (n: BubbleGraphNode) => {
     const { x, y } = getNodeMmPos(n);
     return toSvg(x, y);
+  };
+
+  /** Every plan point a node occupies: its marker line, outline, anchors, or itself. */
+  const nodePlanPoints = (n: BubbleGraphNode): { x: number; y: number }[] => {
+    if (n.type === 'section' || n.type === 'view') {
+      const c = n.properties.plan_cut as { x1?: number; y1?: number; x2?: number; y2?: number } | undefined;
+      if (c && Number.isFinite(c.x1) && Number.isFinite(c.x2)) {
+        return [{ x: c.x1 as number, y: c.y1 as number }, { x: c.x2 as number, y: c.y2 as number }];
+      }
+    }
+    if (n.type === 'sketch') {
+      const o = sketchOutline(n, nodeMap, edges);
+      if (o.length) return o;
+    }
+    const anchors = getOrderedAnchorNodes(n.id, edges, nodeMap);
+    if (anchors.length) return anchors.map(getNodeMmPos);
+    return [getNodeMmPos(n)];
   };
 
   const fromClientPos = clientToBim;
@@ -498,6 +763,143 @@ export function FloorPlan2DViewer({
     setBubbleGraph([...rawNodes, ...newNodes], [...rawEdges, ...newEdges]);
   }, [storeyId, storeyNodes, rawNodes, rawEdges, setBubbleGraph]);
 
+  // Turn the clicked points into a sketch node on the active storey. The tool
+  // decides the starting operation — a contour extrudes, a path sweeps — and
+  // everything after that is the Inspector's job.
+  const commitSketch = useCallback((tool: SketchTool, pts: { x: number; y: number }[]) => {
+    if (!storeyId) return false;
+    const outline = sketchToolOutline(tool, pts);
+    if (!outline) return false;
+    const def = sketchToolDef(tool);
+    // A rectangle stays a rectangle: the two clicks become width and height,
+    // editable by number afterwards. A free contour owns its points; a curve
+    // owns the points it passes through, and its outline is read off it.
+    const curve = isCurveTool(tool);
+    const shape: SketchShape = tool === 'rect' ? 'rect' : tool === 'circle' ? 'circle' : curve ? 'curve' : 'poly';
+    const sp: ShapeParams = tool === 'rect' ? paramsForRect(pts[0], pts[1])
+      : tool === 'circle' ? paramsForCircle(pts[0], pts[1])
+      : { xMm: 0, yMm: 0, wMm: 0, hMm: 0, rMm: 0 };
+    const count = rawNodes.filter((n) => n.type === 'sketch').length;
+    // The node's own x/y is only a label position; the geometry is the outline.
+    const cx = outline.reduce((a, p) => a + p.x, 0) / outline.length;
+    const cy = outline.reduce((a, p) => a + p.y, 0) / outline.length;
+    const node: BubbleGraphNode = {
+      id: `node_${uid()}`,
+      type: 'sketch',
+      name: `${def.label}${count + 1}`,
+      x: cx, y: cy, z: 0,
+      parentId: storeyId,
+      properties: {
+        shape,
+        shape_x_mm: Math.round(sp.xMm * 10) / 10,
+        shape_y_mm: Math.round(sp.yMm * 10) / 10,
+        shape_w_mm: Math.round(sp.wMm * 10) / 10,
+        shape_h_mm: Math.round(sp.hMm * 10) / 10,
+        shape_r_mm: Math.round(sp.rMm * 10) / 10,
+        outline: serialiseOutline(curve ? pts : outline),
+        ...(curve ? { curve_mode: 'fit', curve_degree: 3 } : {}),
+        closed: def.closed ? 'True' : 'False',
+        op: def.op,
+        level: 'bottom',
+        offset_z_mm: 0,
+        height_mm: def.op === 'extrude' ? 1000 : 0,
+        profile: 'rect',
+        p_w_mm: 100,
+        p_h_mm: 200,
+        anchor_x: 'mid',
+        anchor_y: 'max',
+        offset_x_mm: 0,
+        rotation_deg: 0,
+        mirror: 'False',
+        corners: 'miter',
+        array_count: 1,
+        array_dx_mm: 0,
+        array_dy_mm: 0,
+        array_dz_mm: 0,
+        array_along: 'vector',
+        array_step_mm: 0,
+        array_fit: 'False',
+        ref_dx_mm: 0,
+        ref_dy_mm: 0,
+        ref_rot_deg: 0,
+        ref_mirror: 'False',
+        ifc_type: 'auto',
+        element_type: '',
+        material: 'Beton C30/37',
+      },
+    };
+    // Started on an axis point? Then that ax is the reference: the sketch is
+    // stored relative to it and follows it when the grid moves. The rewire
+    // re-expresses the points, so nothing the user just drew shifts.
+    const originAx = storeyNodes.find((n) => {
+      if (n.type !== 'ax' && n.type !== 'column') return false;
+      const q = getNodeMmPos(n);
+      return Math.hypot(q.x - pts[0].x, q.y - pts[0].y) < 1;
+    });
+    let ns: BubbleGraphNode[] = [...rawNodes, node];
+    let es: BubbleGraphEdge[] = rawEdges;
+    if (originAx) ({ nodes: ns, edges: es } = setSketchRefs(ns, es, node.id, [originAx.id]));
+    setBubbleGraph(ns, es);
+    onSelectNode?.(node.id);
+    return true;
+    // getNodeMmPos is a plain per-render resolver over the same inputs as storeyNodes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeyId, rawNodes, rawEdges, storeyNodes, setBubbleGraph, onSelectNode]);
+
+  /** Finish whatever the sketch tool has collected; clears either way. */
+  const finishSketch = useCallback(() => {
+    if (sketchTool) commitSketch(sketchTool, sketchPts);
+    setSketchPts([]);
+    setSketchTool(null);
+  }, [sketchTool, sketchPts, commitSketch]);
+
+  // Vertex and body drags run on window listeners so the pointer can leave the
+  // SVG mid-drag without the shape freezing where it was.
+  //
+  // The listeners registered are STABLE wrappers reading a ref, not the live
+  // callbacks: dragging edits the nodes, which rebuilds `snapPoints` and so
+  // `findSnap`, so a callback registered directly would be a different
+  // function by the time `removeEventListener` ran — the handlers would pile
+  // up instead of coming off.
+  const sketchMoveImpl = useRef<(e: PointerEvent) => void>(() => {});
+  sketchMoveImpl.current = (e: PointerEvent) => {
+    const d = sketchDrag.current;
+    if (!d) return;
+    // Snap in the world, edit in the frame: a corner dragged onto an axis
+    // point lands on it exactly, and a rectangle stays square to its line.
+    const w = worldToLocal(d.frame, d.ref, findSnap(clientToBim(e.clientX, e.clientY)));
+    if (d.kind === 'vertex') {
+      applySketchEdit(d.nodeId, dragVertex(d.shape, d.params, d.outline, d.index, w));
+    } else {
+      const from = worldToLocal(d.frame, d.ref, d.from);
+      applySketchEdit(d.nodeId, translateShape(d.shape, d.params, d.outline, w.x - from.x, w.y - from.y));
+    }
+  };
+
+  const sketchDragHandlers = useRef<{ move: (e: PointerEvent) => void; up: () => void } | null>(null);
+  if (!sketchDragHandlers.current) {
+    const move = (e: PointerEvent) => sketchMoveImpl.current(e);
+    const up = () => {
+      sketchDrag.current = null;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    sketchDragHandlers.current = { move, up };
+  }
+
+  const startSketchDrag = useCallback((d: NonNullable<typeof sketchDrag.current>) => {
+    const h = sketchDragHandlers.current!;
+    sketchDrag.current = d;
+    window.addEventListener('pointermove', h.move);
+    window.addEventListener('pointerup', h.up);
+  }, []);
+
+  // A drag in flight when the plan unmounts would otherwise keep its listeners.
+  useEffect(() => () => {
+    const h = sketchDragHandlers.current;
+    if (h) { window.removeEventListener('pointermove', h.move); window.removeEventListener('pointerup', h.up); }
+  }, []);
+
   const commitSectionLine = useCallback((cut: PlanCut, lookSide: 'left' | 'right') => {
     if (!storeyId) return;
     if (Math.hypot(cut.x2 - cut.x1, cut.y2 - cut.y1) < 100) return;
@@ -562,9 +964,73 @@ export function FloorPlan2DViewer({
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
+  // Delete removes the region selection in one go; Esc drops it. Capture
+  // phase, so this runs before the host's own Delete listener and can stop it
+  // — otherwise the same key would delete the nodes twice over.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        if (marquee || annSel.length) { marqueeStart.current = null; setMarquee(null); setAnnSel([]); }
+        return;
+      }
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (annSel.length === 0 && selectedNodeIds.length === 0) {
+        // A single node picked in this plan: delete it here if the plan
+        // owns it; refuse — audibly — if the graph does. Anything picked
+        // elsewhere keeps its own owner.
+        if (!selectedNodeId || lastPlanPick.current !== selectedNodeId) return;
+        const n = nodeMap.get(selectedNodeId);
+        if (!n) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!PLAN_OWNED_TYPES.has(n.type)) {
+          toast.info('Elementele generate din graf se șterg din graf, nu din plan.');
+          return;
+        }
+        setBubbleGraph(
+          rawNodes.filter((x) => x.id !== n.id),
+          rawEdges.filter((ed) => ed.from !== n.id && ed.to !== n.id),
+        );
+        lastPlanPick.current = null;
+        onSelectNode?.(null);
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (selectedNodeIds.length) {
+        const del = new Set(selectedNodeIds);
+        setBubbleGraph(
+          rawNodes.filter((n) => !del.has(n.id)),
+          rawEdges.filter((ed) => !del.has(ed.from) && !del.has(ed.to)),
+        );
+        onSelectNodes?.([]);
+        onSelectNode?.(null);
+      }
+      for (const id of annSel) deleteAnnotation(id);
+      setAnnSel([]);
+      const arm = useArmare.getState();
+      if (arm.selectieCurenta().length) arm.stergeSelectia();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marquee, annSel, selectedNodeIds, selectedNodeId, rawNodes, rawEdges, setBubbleGraph, onSelectNodes, onSelectNode, deleteAnnotation]);
+
   // ESC cancels draw-wall / section modes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Never steal a key from a field the user is typing in — an armed tool
+      // does not mean every Enter in the app belongs to the drawing.
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (sketchTool && !typing && (e.key === 'Enter' || e.key === 'Escape')) {
+        e.preventDefault();
+        if (e.key === 'Enter') finishSketch();
+        else { setSketchPts([]); setSketchTool(null); setHoverSnap(null); setHoverRaw(null); }
+        return;
+      }
       if (e.key !== 'Escape') return;
       if (drawWallMode) {
         setWallStart(null);
@@ -583,7 +1049,7 @@ export function FloorPlan2DViewer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawWallMode, drawSectionMode, sectionOnAxisMode, setPlanTool]);
+  }, [drawWallMode, drawSectionMode, sectionOnAxisMode, setPlanTool, sketchTool, finishSketch]);
 
   // Entering a plan section tool cancels wall / annotations
   useEffect(() => {
@@ -591,6 +1057,8 @@ export function FloorPlan2DViewer({
       setDrawWallMode(false);
       setWallStart(null);
       setAnnTool(null);
+      setSketchTool(null);
+      setSketchPts([]);
       setSectionStart(null);
       setAxisHover(null);
     }
@@ -617,6 +1085,21 @@ export function FloorPlan2DViewer({
       commitSectionOnAxis(fromClientPos(e.clientX, e.clientY));
       return;
     }
+    // Sketch tool: collect points. Rect and circle commit on their second
+    // click; a contour or path runs until Enter or a double-click.
+    if (sketchTool && e.button === 0 && !e.shiftKey) {
+      const pt = findSnap(fromClientPos(e.clientX, e.clientY));
+      const pts = [...sketchPts, pt];
+      const needed = sketchToolClicks(sketchTool);
+      if (needed > 0 && pts.length >= needed) {
+        commitSketch(sketchTool, pts);
+        setSketchPts([]);
+        setSketchTool(null);
+      } else {
+        setSketchPts(pts);
+      }
+      return;
+    }
     // Draw wall mode: intercept left-click (not shift/middle for pan)
     if (drawWallMode && e.button === 0 && !e.shiftKey) {
       const snap = findSnap(fromClientPos(e.clientX, e.clientY));
@@ -632,8 +1115,14 @@ export function FloorPlan2DViewer({
     if (e.button === 1 || e.shiftKey) {
       setDragging(true);
       lastPos.current = { x: e.clientX, y: e.clientY };
+      return;
     }
-  }, [drawWallMode, wallStart, findSnap, fromClientPos, commitWall, drawSectionMode, sectionOnAxisMode, sectionStart, sectionLine, commitSectionLine, commitSectionOnAxis]);
+    // Idle left-press on empty ground: a possible region selection. It only
+    // becomes one after the pointer moves, so a plain click still deselects.
+    if (e.button === 0 && canPickBim && (e.target === containerRef.current || e.target === svgRef.current)) {
+      marqueeStart.current = { client: { x: e.clientX, y: e.clientY }, bim: fromClientPos(e.clientX, e.clientY) };
+    }
+  }, [drawWallMode, wallStart, findSnap, fromClientPos, commitWall, drawSectionMode, sectionOnAxisMode, sectionStart, sectionLine, commitSectionLine, commitSectionOnAxis, sketchTool, sketchPts, commitSketch, canPickBim]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (drawSectionMode) {
@@ -646,21 +1135,65 @@ export function FloorPlan2DViewer({
       const raw = fromClientPos(e.clientX, e.clientY);
       const hit = findNearestAxisLine(raw, axisXVals, axisYVals, 1000);
       setAxisHover(hit ? { dir: hit.dir, value: hit.value } : null);
-    } else if (drawWallMode) {
+    } else if (drawWallMode || sketchTool) {
       const raw = fromClientPos(e.clientX, e.clientY);
       setHoverRaw(raw);
       setHoverSnap(findSnap(raw));
     } else {
       setHoverRaw(null);
     }
+    const ms = marqueeStart.current;
+    if (ms) {
+      if (marquee || Math.hypot(e.clientX - ms.client.x, e.clientY - ms.client.y) > 4) {
+        setMarquee({ a: ms.bim, b: fromClientPos(e.clientX, e.clientY) });
+      }
+    }
     if (!dragging) return;
     const dx = e.clientX - lastPos.current.x;
     const dy = e.clientY - lastPos.current.y;
     lastPos.current = { x: e.clientX, y: e.clientY };
     setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-  }, [dragging, drawWallMode, drawSectionMode, sectionOnAxisMode, findSnap, fromClientPos, axisXVals, axisYVals]);
+  }, [dragging, drawWallMode, drawSectionMode, sectionOnAxisMode, findSnap, fromClientPos, axisXVals, axisYVals, sketchTool, marquee]);
 
-  const onMouseUp = useCallback(() => setDragging(false), []);
+  /** Resolve the region: window-select everything wholly inside it. */
+  const finishMarquee = useCallback((m: { a: { x: number; y: number }; b: { x: number; y: number } }) => {
+    const x0 = Math.min(m.a.x, m.b.x), x1 = Math.max(m.a.x, m.b.x);
+    const y0 = Math.min(m.a.y, m.b.y), y1 = Math.max(m.a.y, m.b.y);
+    const inside = (pts: { x: number; y: number }[]) =>
+      pts.length > 0 && pts.every((p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1);
+
+    // Only what the plan authored: graph-generated geometry is not the
+    // band's to take, and selecting it here would only promise a Delete
+    // that cannot follow.
+    const nodeIds = storeyNodes
+      .filter((n) => PLAN_OWNED_TYPES.has(n.type) && inside(nodePlanPoints(n)))
+      .map((n) => n.id);
+    const viewIds = new Set([annViewId, 'floorplan:all']);
+    const annIds = allAnnotations
+      .filter((a) => viewIds.has(a.viewId) && inside(annotationPoints(a)))
+      .map((a) => a.id);
+    const arm = useArmare.getState();
+    const armIds = arm.formeCurente().filter((f) => inside([f.pozitie])).map((f) => f.id);
+
+    onSelectNode?.(null);
+    selectAnnotation(null);
+    onSelectNodes?.(nodeIds);
+    setAnnSel(annIds);
+    arm.selecteazaMulte(armIds);
+    // nodeMap is declared further down the component; the closure reads it
+    // live, but naming it here would evaluate it before its declaration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeyNodes, storeyId, allAnnotations, onSelectNode, onSelectNodes, selectAnnotation, edges]);
+
+  const onMouseUp = useCallback(() => {
+    setDragging(false);
+    if (marquee) {
+      finishMarquee(marquee);
+      suppressClick.current = true; // the click that follows must not deselect
+    }
+    marqueeStart.current = null;
+    setMarquee(null);
+  }, [marquee, finishMarquee]);
 
   const { config: matConfig } = useMaterialConfig();
   // Subscribe to window + door symbol config changes so floor-plan re-renders on edit
@@ -688,32 +1221,71 @@ export function FloorPlan2DViewer({
     () => getAnnotationSettings(),
   );
   const [showDrawingPanel, setShowDrawingPanel] = useState(false);
+
+  // ── Parametric dimensions ─────────────────────────────────────────────────
+  // The axis chains are always there to read; typing over a number is what
+  // makes them parametric. One editor at a time; its `commit` knows what the
+  // number means (an axis span, a sketch side, an offset, an array step).
+  const [showDims, setShowDims] = useState(true);
+  const [planDimEdit, setPlanDimEdit] = useState<PlanDimEdit | null>(null);
+  const openDimEdit = useCallback((key: string, valueMm: number, at: { x: number; y: number }, commit: PlanDimEdit['commit']) => {
+    setPlanDimEdit({ key, value: String(Math.round(valueMm)), at, commit });
+  }, []);
+  const commitDimEdit = useCallback((shift: boolean) => {
+    const d = planDimEdit;
+    setPlanDimEdit(null);
+    if (!d) return;
+    let v: number;
+    try { v = safeEval(d.value); } catch { return; }
+    if (!Number.isFinite(v)) return;
+    d.commit(v, shift);
+  }, [planDimEdit]);
+  /** Typing over an axis span: the same edit grid mode makes, linked across storeys. */
+  const commitAxisSpan = useCallback((axis: 'x' | 'y', index: number, spanMm: number, shift: boolean) => {
+    if (!storeyId || spanMm < GRID_MIN_GAP_MM) return;
+    const store = useBubbleGraphStore.getState();
+    const r = applyGridEdit(store.bubbleGraphNodes, store.bubbleGraphEdges, {
+      kind: 'setSpan', storeyId, axis, index, spanMm: roundToSnap(spanMm),
+      mode: shift ? 'neighbour' : DEFAULT_SPAN_EDIT_MODE, scope: 'linked',
+    });
+    if (r.nodes !== store.bubbleGraphNodes) setBubbleGraph(r.nodes, r.edges);
+  }, [storeyId, setBubbleGraph]);
+  /** A property patch on one sketch — for the edits that are not shape numbers. */
+  const patchSketchProps = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    const store = useBubbleGraphStore.getState();
+    setBubbleGraph(
+      store.bubbleGraphNodes.map((n) => (n.id === nodeId ? { ...n, properties: { ...n.properties, ...patch } } : n)),
+      store.bubbleGraphEdges,
+    );
+  }, [setBubbleGraph]);
   useEffect(() => subscribeAnnotationSettings(() => setAnnSettingsState(getAnnotationSettings())), []);
 
-  // Pre-compute SVG hatch pattern defs for all element types that need them
+  // SVG hatch pattern defs for every visuals a section fill can resolve to:
+  // `resolveVisuals` only ever returns a configured material, a configured or
+  // built-in element default, or the fallback — plus a node's own colour
+  // override. One def per distinct look, keyed as `sectionFill` keys it.
   const hatchDefsHtml = useMemo(() => {
-    const ELEMENT_TYPES = ['wall', 'column', 'beam', 'slab', 'foundation', 'shell', 'covering'];
+    const looks: MaterialVisuals[] = [
+      ...Object.values(matConfig?.materials ?? {}),
+      ...Object.values(matConfig?.element_defaults ?? {}),
+      ...Object.values(BUILTIN_ELEMENT_DEFAULTS),
+      FALLBACK_VISUALS,
+    ];
+    for (const n of expandedNodes) {
+      if (!n.properties?.color_2d) continue;
+      looks.push(applyNodeColorOverrides(resolveVisuals(n.type, String(n.properties.material ?? ''), matConfig), n.properties));
+    }
+    const seen = new Set<string>();
     let defs = '';
-    for (const et of ELEMENT_TYPES) {
-      const vis = resolveVisuals(et, undefined, matConfig);
-      if (vis.hatch && vis.hatch !== 'none' && vis.hatch !== 'solid') {
-        // Section fill pattern
-        defs += buildSvgHatchPattern(hatchPatId(et, 'sec'), vis.hatch, getSectionFillColor(vis), getSectionLineWeight(vis));
-        // View (overhead) pattern
-        defs += buildSvgHatchPattern(hatchPatId(et, 'view'), vis.hatch, getViewLineColor(vis), getViewLineWeight(vis));
-      }
-      // Named material patterns
-      if (matConfig?.materials) {
-        for (const [matId, matVis] of Object.entries(matConfig.materials)) {
-          if ((matVis as MaterialVisuals).hatch && (matVis as MaterialVisuals).hatch !== 'none' && (matVis as MaterialVisuals).hatch !== 'solid') {
-            const mv = matVis as MaterialVisuals;
-            defs += buildSvgHatchPattern(hatchPatId(et, `${matId}_sec`), mv.hatch, getSectionFillColor(mv), getSectionLineWeight(mv));
-          }
-        }
-      }
+    for (const vis of looks) {
+      if (!isPatternHatch(vis)) continue;
+      const id = hatchPatId(vis);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      defs += buildSvgHatchPattern(id, vis.hatch, getSectionFillColor(vis), getSectionLineWeight(vis));
     }
     return defs;
-  }, [matConfig]);
+  }, [matConfig, expandedNodes]);
 
   // Full nodeMap (ALL nodes, not just storey-filtered) so calcShellPolygon can resolve
   // ax parent storey and cross-storey edges correctly — same as 3D viewers.
@@ -721,6 +1293,26 @@ export function FloorPlan2DViewer({
 
   // Precompute wall join results for all walls (auto/butt/miter/square_off)
   const wallJoins = useMemo(() => calcWallJoins(expandedNodes, edges), [expandedNodes, edges]);
+
+  /**
+   * The storey's walls as ONE outline.
+   *
+   * A wall that draws its own closed quad shows a seam wherever it meets
+   * another — a line across the poché at every T and every cross, where the
+   * masonry is in fact continuous. So the bodies are unioned and only the
+   * boundary of that union is stroked. Each wall still paints its own fill
+   * below, which is what keeps materials, hatches, selection and picking
+   * exactly as they were; all a wall gives up is its outline.
+   */
+  const wallSilhouette = useMemo(() => {
+    const polys = storeyNodes
+      .filter((n) => n.type === 'wall')
+      .flatMap((wn) => {
+        const geo = calcWallGeometry(wn, nodeMap, edges, wallJoins);
+        return geo ? wallSolidPolygons(geo) : [];
+      });
+    return unionWallRings(polys);
+  }, [storeyNodes, nodeMap, edges, wallJoins]);
 
   // Shell/covering nodes for this storey: either parentId matches OR connected to storey ax nodes.
   // Simpler: just show all shell/covering nodes whose connected anchors are in the current storey.
@@ -751,6 +1343,21 @@ export function FloorPlan2DViewer({
     return out;
   }, [expandedNodes, edges, storeyId]);
 
+  // Stair symbols for the stairwells on this storey. Built from the same cut
+  // plane the walls use, so the break line lands where the plan is actually cut.
+  const stairPlans = useMemo(() => {
+    const wells = expandedNodes.filter((n) =>
+      n.type === 'stairwell' && (!storeyId || n.parentId === storeyId || !n.parentId));
+    const out: { id: string; plan: StairPlan }[] = [];
+    for (const w of wells) {
+      try {
+        const plan = buildStairPlan(w, expandedNodes, edges, (storeyMeta?.properties?.bottomElevation as number ?? 0) + cutHeightMm);
+        if (plan) out.push({ id: w.id, plan });
+      } catch { /* a stair that fails to solve must not take the plan down */ }
+    }
+    return out;
+  }, [expandedNodes, edges, storeyId, storeyMeta, cutHeightMm]);
+
   const storeyDisc = (storeyMeta?.properties?.discipline as StoreyDiscipline) ?? discipline ?? 'architectural';
   const discColor  = DISC_COLORS[storeyDisc];
   const elevBottom = storeyMeta?.properties?.bottomElevation as number | undefined;
@@ -771,7 +1378,8 @@ export function FloorPlan2DViewer({
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
       onClick={onContainerClick}
-      style={{ cursor: drawWallMode ? 'crosshair' : dragging ? 'grabbing' : 'default' }}
+      onDoubleClick={sketchTool ? (e) => { e.preventDefault(); finishSketch(); } : undefined}
+      style={{ cursor: drawWallMode || sketchTool || marquee ? 'crosshair' : dragging ? 'grabbing' : 'default' }}
     >
       <svg
         ref={svgRef}
@@ -850,6 +1458,41 @@ export function FloorPlan2DViewer({
             </g>
           );
         })}
+
+        {/* ── Axis dimension chains: the spans along the bottom and the left,
+            hung just outside the bubbles. Each number is the parameter it
+            shows — type over it and the axis moves (grid mode's setSpan). ── */}
+        {showDims && (() => {
+          const editable = canPickBim && !embedded && !!storeyId && !sketchTool && !drawWallMode;
+          const rowY = CANVAS_MARGIN + H - PAD / 2 + 9;
+          const colX = CANVAS_MARGIN + PAD / 2 - 9;
+          const out: React.ReactNode[] = [];
+          for (let i = 0; i < axisXVals.length - 1; i++) {
+            const span = axisXVals[i + 1] - axisXVals[i];
+            const a = { x: toSvg(axisXVals[i], minY).x, y: rowY };
+            const b = { x: toSvg(axisXVals[i + 1], minY).x, y: rowY };
+            const key = `axx${i}`;
+            out.push(
+              <PlanDim key={key} a={a} b={b} offset={DIM_OFF} label={String(Math.round(span))} color={discColor}
+                hidden={planDimEdit?.key === key}
+                onEdit={editable ? () => openDimEdit(key, span, { x: (a.x + b.x) / 2, y: rowY + DIM_OFF - DIM_TEXT },
+                  (v, shift) => commitAxisSpan('x', i, v, shift)) : undefined} />,
+            );
+          }
+          for (let j = 0; j < axisYVals.length - 1; j++) {
+            const span = axisYVals[j + 1] - axisYVals[j];
+            const a = { x: colX, y: toSvg(minX, axisYVals[j]).y };
+            const b = { x: colX, y: toSvg(minX, axisYVals[j + 1]).y };
+            const key = `axy${j}`;
+            out.push(
+              <PlanDim key={key} a={a} b={b} offset={-DIM_OFF} label={String(Math.round(span))} color={discColor}
+                hidden={planDimEdit?.key === key}
+                onEdit={editable ? () => openDimEdit(key, span, { x: colX - DIM_OFF + DIM_TEXT, y: (a.y + b.y) / 2 },
+                  (v, shift) => commitAxisSpan('y', j, v, shift)) : undefined} />,
+            );
+          }
+          return out;
+        })()}
 
         {/* ── Shell / Roof outlines — overhead view (above cut plane → dashed outline + break ticks, no opaque fill) ── */}
         {shellNodes.map((n) => {
@@ -959,6 +1602,66 @@ export function FloorPlan2DViewer({
           );
         })}
 
+        {/* ── Stair symbols ──
+            Drawing convention, not a projection: steps below the cut are drawn,
+            the break line marks where the cut falls, and the steps above belong
+            to the plan of the storey overhead. */}
+        {stairPlans.map(({ id, plan }) => {
+          const vis = resolveVisuals('stair_flight', undefined, matConfig);
+          const col = getSectionLineColor(vis);
+          const light = getViewLineColor(vis);
+          const ARR = 5 * SCALE;
+          const arrow = plan.upArrow;
+          return (
+            <g key={`stairplan_${id}`} style={{ pointerEvents: 'none' }}>
+              {/* Landings first, so the nosing lines read on top of them. */}
+              {plan.landings.map((poly, i) => (
+                <polygon key={`sl_${id}_${i}`}
+                  points={poly.map((p) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; }).join(' ')}
+                  fill={getSectionFillColor(vis)} fillOpacity={0.35}
+                  stroke={col} strokeWidth={1} />
+              ))}
+              {plan.treads.map((t, i) => {
+                const a = toSvg(t.a.x, t.a.y), b = toSvg(t.b.x, t.b.y);
+                return <line key={`st_${id}_${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={col} strokeWidth={1.1} strokeLinecap="round" />;
+              })}
+              {/* Steps above the cut, ghosted — they belong to the plan above. */}
+              {plan.treadsAboveCut.map((t, i) => {
+                const a = toSvg(t.a.x, t.a.y), b = toSvg(t.b.x, t.b.y);
+                return <line key={`sta_${id}_${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={light} strokeWidth={0.8} strokeDasharray="4 4" opacity={0.45} />;
+              })}
+              {plan.breakLines.map((l, i) => {
+                const a = toSvg(l.a.x, l.a.y), b = toSvg(l.b.x, l.b.y);
+                return <line key={`sb_${id}_${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={col} strokeWidth={1.4} strokeLinecap="round" />;
+              })}
+              {/* Walking line, with the circle at the bottom step and the arrow
+                  at the top — the reader's cue for which way is up. */}
+              <polyline
+                points={plan.walkingLine.map((p) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; }).join(' ')}
+                fill="none" stroke={col} strokeWidth={1.2} />
+              {plan.start && (() => {
+                const q = toSvg(plan.start.x, plan.start.y);
+                return <circle cx={q.x} cy={q.y} r={2.2 * SCALE} fill="none" stroke={col} strokeWidth={1.2} />;
+              })()}
+              {arrow && (() => {
+                const f = toSvg(arrow.a.x, arrow.a.y), t = toSvg(arrow.b.x, arrow.b.y);
+                const dx = t.x - f.x, dy = t.y - f.y, L = Math.hypot(dx, dy) || 1;
+                const ux = dx / L, uy = dy / L, px = -uy, py = ux;
+                return (
+                  <path
+                    d={`M${t.x - ux * ARR + px * ARR * 0.5},${t.y - uy * ARR + py * ARR * 0.5} `
+                      + `L${t.x},${t.y} `
+                      + `L${t.x - ux * ARR - px * ARR * 0.5},${t.y - uy * ARR - py * ARR * 0.5}`}
+                    fill="none" stroke={col} strokeWidth={1.4} strokeLinecap="round" />
+                );
+              })()}
+            </g>
+          );
+        })}
+
         {/* ── Walls + opening symbols (single pass) ── */}
         {storeyNodes.filter((n) => n.type === 'wall').flatMap((wn) => {
           // ── Wall geometry from canonical engine (includes footprint with join corners) ──
@@ -986,27 +1689,29 @@ export function FloorPlan2DViewer({
           const wallBeamVis = resolveVisuals('beam', String(wn.properties?.beam_material ?? ''), matConfig);
           const hasBeam = String(wn.properties.has_beam ?? '').toLowerCase() === 'true';
           const bsec    = String(wn.properties.beam_section ?? 'B20x30');
-          const secLineC = getSectionLineColor(wallVis);
           const secLineW = getSectionLineWeight(wallVis);
           const vwLineW  = getViewLineWeight(wallVis);   // seen/view line weight (thin)
           const secFillO = getSectionFillOpacity(wallVis);
-          const fillVal  = sectionFill(hatchPatId('wall', String(wn.properties?.material ?? 'sec')), wallVis);
+          const fillVal  = sectionFill(wallVis);
 
           // Helpers: SVG positions along wall centreline at mm distance t from join-adjusted start
           const wPt     = (t: number) => toSvg(sxMm + ux * t, szMm + uy * t);
           const wOuter  = (t: number) => { const p = wPt(t); return { x: p.x + px * halfTh, y: p.y + py * halfTh }; };
           const wInner  = (t: number) => { const p = wPt(t); return { x: p.x - px * halfTh, y: p.y - py * halfTh }; };
 
-          // Footprint edge interpolation (f = fraction 0..1 along wall)
-          // Outer edge: fp[0] → fp[1], Inner edge: fp[3] → fp[2]
-          const fpOuterSvg = (f: number) => toSvg(
-            fp[0].x + (fp[1].x - fp[0].x) * f,
-            fp[0].y + (fp[1].y - fp[0].y) * f,
-          );
-          const fpInnerSvg = (f: number) => toSvg(
-            fp[3].x + (fp[2].x - fp[3].x) * f,
-            fp[3].y + (fp[2].y - fp[3].y) * f,
-          );
+          // The footprint's faces at a distance t (mm) along the axis — not at
+          // a fraction of each face: a joined wall's faces differ in length,
+          // and equal fractions turn every opening into a parallelogram.
+          // Outer edge: fp[0] → fp[1], Inner edge: fp[3] → fp[2]. See `wallFaces`.
+          const faces = wallFaces(geo);
+          const fpOuterBim = (t: number) => faces
+            ? faces.outerAt(t)
+            : { x: fp[0].x + (fp[1].x - fp[0].x) * (t / joinLen), y: fp[0].y + (fp[1].y - fp[0].y) * (t / joinLen) };
+          const fpInnerBim = (t: number) => faces
+            ? faces.innerAt(t)
+            : { x: fp[3].x + (fp[2].x - fp[3].x) * (t / joinLen), y: fp[3].y + (fp[2].y - fp[3].y) * (t / joinLen) };
+          const fpOuterSvg = (t: number) => { const p = fpOuterBim(t); return toSvg(p.x, p.y); };
+          const fpInnerSvg = (t: number) => { const p = fpInnerBim(t); return toSvg(p.x, p.y); };
 
           // Opening intervals from geometry engine (mm from join-adjusted start)
           const intervals = geo.openings.map((op) => ({
@@ -1030,18 +1735,19 @@ export function FloorPlan2DViewer({
           // ── Solid wall segment polygons — interpolated from footprint edges ──
           // The footprint already incorporates join geometry (miter/butt corners).
           solidSegs.forEach((seg, i) => {
-            const f0 = seg.s / joinLen; // fraction 0..1
-            const f1 = seg.e / joinLen;
-            const aO = fpOuterSvg(f0), bO = fpOuterSvg(f1);
-            const bI = fpInnerSvg(f1), aI = fpInnerSvg(f0);
+            const aO = fpOuterSvg(seg.s), bO = fpOuterSvg(seg.e);
+            const bI = fpInnerSvg(seg.e), aI = fpInnerSvg(seg.s);
 
             els.push(
               <polygon key={`${wn.id}_s${i}`}
                 points={`${aO.x},${aO.y} ${bO.x},${bO.y} ${bI.x},${bI.y} ${aI.x},${aI.y}`}
                 fill={fillVal}
                 fillOpacity={secFillO}
-                stroke={wallSelected ? '#2563eb' : secLineC}
-                strokeWidth={wallSelected ? secLineW + 1.5 : secLineW}
+                // The outline is drawn once for the whole storey, from the
+                // union of every wall — see `wallSilhouette`. A selected wall
+                // keeps its own stroke, or selecting it would show nothing.
+                stroke={wallSelected ? '#2563eb' : 'none'}
+                strokeWidth={wallSelected ? secLineW + 1.5 : 0}
                 strokeLinejoin="miter"
                 onClick={canPickBim ? (e) => handlePickNode(wn.id, e) : undefined}
                 style={canPickBim ? { cursor: 'pointer' } : undefined} />,
@@ -1063,7 +1769,7 @@ export function FloorPlan2DViewer({
                 `${sE.x - px * hw},${sE.y - py * hw}`,
                 `${s0.x - px * hw},${s0.y - py * hw}`,
               ].join(' ');
-              const bFill    = wbAboveCut ? 'none' : sectionFill(hatchPatId('beam', String(wn.properties?.beam_material ?? 'sec')), wallBeamVis);
+              const bFill    = wbAboveCut ? 'none' : sectionFill(wallBeamVis);
               const bStrokeC = wbAboveCut ? getViewLineColor(wallBeamVis) : getSectionLineColor(wallBeamVis);
               const bStrokeW = getSectionLineWeight(wallBeamVis);
               const bDA      = wbAboveCut ? (lineStyleToDashArray('dashed') ?? '4 2') : lineStyleToDashArray(getSectionLineStyle(wallBeamVis));
@@ -1087,10 +1793,8 @@ export function FloorPlan2DViewer({
           intervals.forEach(({ node: opNode, t0, t1 }, opIdx) => {
             // Opening corners from footprint edges (same basis as wall gap polygons).
             // Centreline + fixed half-thickness misaligns symbols near wall ends/joins.
-            const f0 = t0 / joinLen;
-            const f1 = t1 / joinLen;
-            const sfO = fpOuterSvg(f0), stO = fpOuterSvg(f1);
-            const sfI = fpInnerSvg(f0), stI = fpInnerSvg(f1);
+            const sfO = fpOuterSvg(t0), stO = fpOuterSvg(t1);
+            const sfI = fpInnerSvg(t0), stI = fpInnerSvg(t1);
             const pt0 = { x: (sfO.x + sfI.x) / 2, y: (sfO.y + sfI.y) / 2 };
             const pt1 = { x: (stO.x + stI.x) / 2, y: (stO.y + stI.y) / 2 };
             const openDx = pt1.x - pt0.x;
@@ -1103,16 +1807,9 @@ export function FloorPlan2DViewer({
             const outLen = Math.hypot(outNx, outNy) || 1;
             outNx /= outLen;
             outNy /= outLen;
-            const o0OuterBim = {
-              x: fp[0].x + (fp[1].x - fp[0].x) * f0,
-              y: fp[0].y + (fp[1].y - fp[0].y) * f0,
-            };
-            const o1OuterBim = {
-              x: fp[0].x + (fp[1].x - fp[0].x) * f1,
-              y: fp[0].y + (fp[1].y - fp[0].y) * f1,
-            };
+            const o0OuterBim = fpOuterBim(t0);
+            const o1OuterBim = fpOuterBim(t1);
             const oWmm = Math.hypot(o1OuterBim.x - o0OuterBim.x, o1OuterBim.y - o0OuterBim.y);
-            const oWsvg = oWmm * SCALE;
             // Unique key per interval instance: wall id + node id + instance index
             // (same node can appear multiple times when count > 1)
             const opKey = `${wn.id}_op_${opNode.id}_${opIdx}`;
@@ -1315,29 +2012,24 @@ export function FloorPlan2DViewer({
               //   → XOR with swing property to get final hingeAtStart
               // flip_across (matches 3D placed.scale.z *= -1): mirror to opposite wall face
               //   → panel swings from outer face instead of inner face, sweep direction inverts
-              const swingRight   = String(opNode.properties.swing     ?? 'left').toLowerCase() === 'right';
-              const flipAlong    = String(opNode.properties.flip_along  ?? '').toLowerCase() === 'true';
+              // The leaf, the arc and the sweep direction are the template's
+              // business now. What is still needed here is which face the
+              // symbol is laid out from, for the placement matrix below.
               const flipAcross   = String(opNode.properties.flip_across ?? '').toLowerCase() === 'true';
-              const hingeAtStart = swingRight === flipAlong;
-              const hinge     = hingeAtStart
-                ? (flipAcross ? sfO : sfI)
-                : (flipAcross ? stO : stI);
-              const closedEnd = hingeAtStart
-                ? (flipAcross ? stO : stI)
-                : (flipAcross ? sfO : sfI);
-              const panelDir  = flipAcross ? 1 : -1;
-              const panelEndX = hinge.x + px * panelDir * oWsvg;
-              const panelEndY = hinge.y + py * panelDir * oWsvg;
-              const sweepFlag = (hingeAtStart !== flipAcross) ? 1 : 0;
 
               // Resolve door visual config from the global door symbol registry
               const doorTypeId = String(opNode.properties.door_type ?? 'D-SWING-90x210');
               const swingType  = String(opNode.properties.swing ?? 'left');
               const dCfg = resolveDoorCfg(doorTypeId, swingType);
 
-              // ── Custom SVG symbol from Symbol Studio ──
+              // ── The symbol: a drawn one if there is one, else the
+              //    architectural template for this swing family. Symbol
+              //    Studio has always read those templates; now the plan does
+              //    too, so the editor and the drawing cannot disagree. The
+              //    simple controls still apply — see `defaultDoorPlanDef`. ──
               const doorCustomSym = resolveSymbolDef('door', doorTypeId, 'floorplan')
-                ?? resolveSymbolDef('door', `swing:${swingType}`, 'floorplan');
+                ?? resolveSymbolDef('door', `swing:${swingType}`, 'floorplan')
+                ?? defaultDoorPlanDef(swingType, dCfg);
               if (doorCustomSym) {
                 const oWmm = t1 - t0;
                 const symParams = buildDoorSymRenderParams(dCfg, oWmm, wallThMm);
@@ -1362,53 +2054,42 @@ export function FloorPlan2DViewer({
                 return;
               }
 
-              els.push(
-                <g
-                  key={opKey}
-                  onClick={canPickBim ? (e) => handlePickNode(opNode.id, e) : undefined}
-                  style={canPickBim ? { cursor: 'pointer' } : undefined}
-                >
-                  {/* White gap mask for door (only when showWhiteMask) */}
-                  {dCfg.showWhiteMask && (
-                    <polygon
-                      points={`${sfO.x},${sfO.y} ${stO.x},${stO.y} ${stI.x},${stI.y} ${sfI.x},${sfI.y}`}
-                      fill="white" stroke="none" />
-                  )}
-                  {/* White sector behind swing arc */}
-                  {dCfg.showWhiteMask && (
-                    <path
-                      d={`M ${hinge.x},${hinge.y} L ${panelEndX},${panelEndY} A ${oWsvg},${oWsvg} 0 0 ${sweepFlag} ${closedEnd.x},${closedEnd.y} Z`}
-                      fill="white" stroke="none" />
-                  )}
-                  {/* Wall-break lines (outer jambs) */}
-                  {dCfg.showWallBreaks && (<>
-                    <line x1={sfO.x} y1={sfO.y} x2={sfI.x} y2={sfI.y}
-                      stroke={dCfg.breakLineColor} strokeWidth={dCfg.breakLineWeight} />
-                    <line x1={stO.x} y1={stO.y} x2={stI.x} y2={stI.y}
-                      stroke={dCfg.breakLineColor} strokeWidth={dCfg.breakLineWeight} />
-                  </>)}
-                  {/* Header line at outer wall face */}
-                  <line x1={sfO.x} y1={sfO.y} x2={stO.x} y2={stO.y}
-                    stroke={dCfg.panelColor} strokeWidth={dCfg.panelLineWeight * 1.2} strokeLinecap="square" />
-                  {/* Door panel */}
-                  {dCfg.showDoorPanel && (
-                    <line x1={hinge.x} y1={hinge.y} x2={panelEndX} y2={panelEndY}
-                      stroke={dCfg.panelColor} strokeWidth={dCfg.panelLineWeight} />
-                  )}
-                  {/* Swing arc */}
-                  {dCfg.showSwingArc && (
-                    <path
-                      d={`M ${panelEndX} ${panelEndY} A ${oWsvg} ${oWsvg} 0 0 ${sweepFlag} ${closedEnd.x} ${closedEnd.y}`}
-                      fill="none" stroke={dCfg.arcColor} strokeWidth={dCfg.arcLineWeight} strokeDasharray="4 2" />
-                  )}
-                </g>,
-              );
+              // No procedural fallback any more: `defaultDoorPlanDef` always
+              // returns a symbol, so everything a door draws now comes from
+              // the template above and from nowhere else.
             }
           });
 
           return els;
         })}
 
+
+        {/* ── Wall silhouette: the outline of every wall, drawn once ──
+             Each wall above painted its fill and no stroke; this is the
+             boundary of their union, so a T or a cross shows no seam across
+             the poché. Holes come through as rings of their own, which is
+             what a courtyard needs. */}
+        {wallSilhouette.length > 0 && (() => {
+          const vis = resolveVisuals('wall', '', matConfig);
+          const dash = lineStyleToDashArray(getSectionLineStyle(vis));
+          return (
+            <g pointerEvents="none">
+              {wallSilhouette.map((ring, i) => (
+                <path
+                  key={`wsil${i}`}
+                  d={`${ring.map((p, j) => {
+                    const q = toSvg(p.x, p.y);
+                    return `${j === 0 ? 'M' : 'L'}${q.x},${q.y}`;
+                  }).join(' ')} Z`}
+                  fill="none"
+                  stroke={getSectionLineColor(vis)}
+                  strokeWidth={getSectionLineWeight(vis)}
+                  strokeDasharray={dash ?? undefined}
+                  strokeLinejoin="miter" />
+              ))}
+            </g>
+          );
+        })()}
 
         {/* ── Standalone Beams (node-centric, rendered as plan-view rectangle) ── */}
         {storeyNodes.filter((n) => n.type === 'beam').map((bn) => {
@@ -1447,7 +2128,7 @@ export function FloorPlan2DViewer({
           ].join(' ');
 
           // Appearance from material config: section style when cut, view style when above cut
-          const bFillStr = isAboveCut ? 'none' : sectionFill(hatchPatId('beam', String(bn.properties?.material ?? 'sec')), beamVis);
+          const bFillStr = isAboveCut ? 'none' : sectionFill(beamVis);
           const bStrokeC = isAboveCut ? getViewLineColor(beamVis) : getSectionLineColor(beamVis);
           const bStrokeW = isAboveCut ? getViewLineWeight(beamVis) : getSectionLineWeight(beamVis);
           const bDA      = isAboveCut
@@ -1469,14 +2150,261 @@ export function FloorPlan2DViewer({
           );
         })}
 
-        {/* ── Other edges (non-wall, non-beam structural connections) ── */}
+        {/* ── Sweeps (profil pe linia de ghidaj din axe) — mitered footprint ── */}
+        {storeyNodes.filter((n) => n.type === 'sweep').flatMap((sn) => {
+          const res = computeSweep(sn, nodeMap, edges);
+          if (res.footprint.length === 0) return [];
+          const vis = resolveVisuals('sweep', String(sn.properties?.material ?? ''), matConfig);
+          const isAboveCut = res.zMinMm >= cutAbsElevMm;
+          if (isAboveCut && !showBeamsAboveCut) return [];
+          const fillStr  = isAboveCut ? 'none' : sectionFill(vis);
+          const strokeC  = isAboveCut ? getViewLineColor(vis) : getSectionLineColor(vis);
+          const strokeW  = isAboveCut ? getViewLineWeight(vis) : getSectionLineWeight(vis);
+          const da       = isAboveCut
+            ? (lineStyleToDashArray(getViewLineStyle(vis)) ?? '5 3')
+            : lineStyleToDashArray(getSectionLineStyle(vis));
+          const isSel = selectedNodeId === sn.id;
+          return res.footprint.map((poly, i) => (
+            <polygon key={`${sn.id}_fp${i}`}
+              points={poly.map((p) => { const s = toSvg(p.x, p.y); return `${s.x},${s.y}`; }).join(' ')}
+              fill={fillStr}
+              fillOpacity={isAboveCut ? 0 : getSectionFillOpacity(vis)}
+              stroke={isSel ? '#2563eb' : strokeC}
+              strokeWidth={isSel ? strokeW + 1.5 : strokeW}
+              strokeDasharray={da ?? undefined}
+              opacity={isAboveCut ? 0.55 : 1}
+              onClick={canPickBim ? (e) => handlePickNode(sn.id, e) : undefined}
+              style={canPickBim ? { cursor: 'pointer' } : undefined} />
+          ));
+        })}
+
+        {/* ── Terrain platforms: the boundary, and the level it holds ──
+            A pad has no body — it is an instruction to the ground — so it
+            draws as a dashed boundary with its elevation, the way a site
+            plan states a platform. */}
+        {(() => {
+          const siteNode = findSiteNode(rawNodes);
+          if (!siteNode) return null;
+          const site = computeSite(siteNode, nodeMap, edges, currentTerrainModel());
+          if (site.pads.length === 0) return null;
+          const vis = resolveVisuals('terrain_pad', '', matConfig);
+          return site.pads.map((pad) => {
+            const isSel = selectedNodeId === pad.nodeId;
+            const pts = pad.outline.map((p) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; }).join(' ');
+            const cx = pad.outline.reduce((a, p) => a + p.x, 0) / pad.outline.length;
+            const cy = pad.outline.reduce((a, p) => a + p.y, 0) / pad.outline.length;
+            const c = toSvg(cx, cy);
+            return (
+              <g key={`pad_${pad.nodeId}`}
+                onClick={canPickBim ? (e) => handlePickNode(pad.nodeId, e) : undefined}
+                style={canPickBim ? { cursor: 'pointer' } : undefined}>
+                <polygon points={pts}
+                  fill={getSectionFillColor(vis)} fillOpacity={0.22}
+                  stroke={isSel ? '#2563eb' : getViewLineColor(vis)}
+                  strokeWidth={isSel ? getViewLineWeight(vis) + 1.2 : getViewLineWeight(vis)}
+                  strokeDasharray="6 3" />
+                <text x={c.x} y={c.y} textAnchor="middle" fontSize="7"
+                  fill={isSel ? '#2563eb' : getViewLineColor(vis)} pointerEvents="none">
+                  {`▱ ${(pad.levelMm / 1000).toFixed(2)}`}
+                </text>
+              </g>
+            );
+          });
+        })()}
+
+        {/* ── Facades: the face line at its mullion depth, ticks at the bays ── */}
+        {storeyNodes.filter((n) => n.type === 'facade').flatMap((fn) => {
+          const res = computeFacade(fn, nodeMap, edges);
+          if (res.faces.length === 0) return [];
+          const vis = resolveVisuals('facade', String(fn.properties?.material ?? ''), matConfig);
+          const isSel = selectedNodeId === fn.id;
+          const stroke = isSel ? '#2563eb' : getSectionLineColor(vis);
+          const P = (p: { x: number; y: number }) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; };
+          const d = res.intent.mullionDMm;
+          return res.faces.map((f) => {
+            const band = [f.a, f.b, { x: f.b.x + f.n.x * d, y: f.b.y + f.n.y * d }, { x: f.a.x + f.n.x * d, y: f.a.y + f.n.y * d }];
+            // Bay ticks: the vertical mullions of the bottom row.
+            const as = new Set<number>();
+            for (const c of res.cells) if (c.face === f.index) for (const p of c.poly) if (p.y < 1) as.add(Math.round(p.x));
+            return (
+              <g key={`${fn.id}_f${f.index}`} onClick={canPickBim ? (e) => handlePickNode(fn.id, e) : undefined}
+                style={canPickBim ? { cursor: 'pointer' } : undefined}>
+                <polygon points={band.map(P).join(' ')} fill={getSectionFillColor(vis)} fillOpacity={0.9}
+                  stroke={stroke} strokeWidth={isSel ? getSectionLineWeight(vis) + 1.5 : getSectionLineWeight(vis)} />
+                {[...as].map((a) => {
+                  const p0 = { x: f.a.x + f.u.x * a, y: f.a.y + f.u.y * a };
+                  const p1 = { x: p0.x + f.n.x * (d + 150), y: p0.y + f.n.y * (d + 150) };
+                  return <line key={a} x1={toSvg(p0.x, p0.y).x} y1={toSvg(p0.x, p0.y).y} x2={toSvg(p1.x, p1.y).x} y2={toSvg(p1.x, p1.y).y}
+                    stroke={stroke} strokeWidth={getViewLineWeight(vis)} />;
+                })}
+              </g>
+            );
+          });
+        })}
+
+        {/* ── Scatter: generic planting-plan symbols ──
+            Graph scatter nodes (selectable) and the terrain model's own
+            rocks and plants (not selectable here — they belong to the Terrain
+            tab and the 3D brush) are drawn with the same symbols. */}
+        {(() => {
+          const siteNode = findSiteNode(storeyNodes.length ? rawNodes : []);
+          const site = siteNode ? computeSite(siteNode, nodeMap, edges, currentTerrainModel()) : null;
+          const heightAt = site?.frame ? site.heightAtBim : null;
+          const P = (p: { x: number; y: number }) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; };
+          const draw = (inst: ScatterInstance[], stroke: string, sw: number, keyPrefix: string) =>
+            inst.flatMap((it, i) => scatterSymbol(it).map((pr, j) => pr.kind === 'circle'
+              ? (() => { const c = toSvg(pr.cx, pr.cy); return <circle key={`${keyPrefix}${i}_${j}`} cx={c.x} cy={c.y} r={pr.r * SCALE} fill="none" stroke={stroke} strokeWidth={sw} />; })()
+              : pr.closed
+                ? <polygon key={`${keyPrefix}${i}_${j}`} points={pr.pts.map(P).join(' ')} fill="none" stroke={stroke} strokeWidth={sw} />
+                : <polyline key={`${keyPrefix}${i}_${j}`} points={pr.pts.map(P).join(' ')} fill="none" stroke={stroke} strokeWidth={sw} />));
+          const groups = storeyNodes.filter((n) => n.type === 'scatter').map((sn) => {
+            const res = computeScatter(sn, nodeMap, edges, heightAt);
+            if (res.count === 0) return null;
+            const key = res.intent.kind === 'rock' || res.intent.kind === 'boulder' ? 'scatter_rock' : 'scatter';
+            const vis = resolveVisuals(key, String(sn.properties?.material ?? ''), matConfig);
+            const isSel = selectedNodeId === sn.id;
+            return (
+              <g key={sn.id} onClick={canPickBim ? (e) => handlePickNode(sn.id, e) : undefined}
+                style={canPickBim ? { cursor: 'pointer' } : undefined} opacity={isSel ? 1 : 0.9}>
+                {draw(res.instances, isSel ? '#2563eb' : getViewLineColor(vis), isSel ? getViewLineWeight(vis) + 0.8 : getViewLineWeight(vis), 's')}
+              </g>
+            );
+          });
+          const terrainItems = site && site.frame ? terrainItemInstances(site) : [];
+          return (
+            <>
+              {groups}
+              {terrainItems.length > 0 && (
+                <g pointerEvents="none" opacity={0.85}>
+                  {draw(terrainItems.filter((i) => i.kind !== 'rock'), getViewLineColor(resolveVisuals('scatter', '', matConfig)), 0.5, 'tp')}
+                  {draw(terrainItems.filter((i) => i.kind === 'rock'), getViewLineColor(resolveVisuals('scatter_rock', '', matConfig)), 0.5, 'tr')}
+                </g>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ── Sketches (contur desenat + corp) ──
+            Drawn at the cut plane like any other solid, and each array copy
+            draws itself so a repeat is visibly a repeat. An open path with a
+            swept profile shows its mitered footprint; an `op: none` sketch is
+            a setting-out line, so it gets the thin dashed treatment. */}
+        {storeyNodes.filter((n) => n.type === 'sketch').flatMap((kn) => {
+          const res = computeSketch(kn, nodeMap, edges);
+          const outline = res.intent.outline;
+          if (outline.length < 2) return [];
+          const vis = resolveVisuals('sketch', String(kn.properties?.material ?? ''), matConfig);
+          const isSel = selectedNodeId === kn.id;
+          const failed = res.diagnostics.some((d) => d.severity === 'error');
+          // A hole has no body: it is drawn as the setting-out line it is,
+          // and its host's fill leaves the hole empty.
+          const bodiless = res.intent.op === 'none' || !!res.intent.holeOf;
+          const isAboveCut = !bodiless && !failed && res.zMinMm >= cutAbsElevMm;
+          if (isAboveCut && !showBeamsAboveCut) return [];
+          const ghost = bodiless || isAboveCut;
+          const fillStr = ghost || failed ? 'none' : sectionFill(vis);
+          const strokeC = ghost ? getViewLineColor(vis) : getSectionLineColor(vis);
+          const strokeW = ghost ? getViewLineWeight(vis) : getSectionLineWeight(vis);
+          const da = ghost
+            ? (lineStyleToDashArray(getViewLineStyle(vis)) ?? '5 3')
+            : lineStyleToDashArray(getSectionLineStyle(vis));
+          const pick = canPickBim ? (e: React.MouseEvent) => handlePickNode(kn.id, e) : undefined;
+          const cursor = canPickBim ? { cursor: 'pointer' as const } : undefined;
+          const P = (poly: { x: number; y: number }[]) =>
+            poly.map((p) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; }).join(' ');
+          // A face with holes: one path, the holes as further subpaths, filled
+          // even-odd so the holes stay empty.
+          const D = (poly: { x: number; y: number }[], holes: { x: number; y: number }[][]) =>
+            [poly, ...holes].map((r) => `M ${P(r).replace(/ /g, ' L ')} Z`).join(' ');
+
+          const out: React.ReactNode[] = [];
+          // The body, when the operation produced one.
+          if (!failed) {
+            res.footprint.forEach((poly, i) => out.push((res.footprintHoles[i]?.length ?? 0) > 0 ? (
+              <path key={`${kn.id}_fp${i}`} d={D(poly, res.footprintHoles[i])} fillRule="evenodd"
+                fill={fillStr}
+                fillOpacity={ghost ? 0 : getSectionFillOpacity(vis)}
+                stroke={isSel ? '#2563eb' : strokeC}
+                strokeWidth={isSel ? strokeW + 1.5 : strokeW}
+                strokeDasharray={da ?? undefined}
+                opacity={isAboveCut ? 0.55 : 1}
+                onClick={pick} style={cursor} />
+            ) : (
+              <polygon key={`${kn.id}_fp${i}`} points={P(poly)}
+                fill={fillStr}
+                fillOpacity={ghost ? 0 : getSectionFillOpacity(vis)}
+                stroke={isSel ? '#2563eb' : strokeC}
+                strokeWidth={isSel ? strokeW + 1.5 : strokeW}
+                strokeDasharray={da ?? undefined}
+                opacity={isAboveCut ? 0.55 : 1}
+                onClick={pick} style={cursor} />
+            )));
+          }
+          // ALWAYS the outline the user actually drew. Every failure path in
+          // `computeSketch` returns an empty footprint, so drawing only the
+          // body made a mistyped height or an unclosed contour erase the
+          // drawing outright — with no clue why. A failed sketch now shows
+          // its outline in red and keeps its Inspector diagnostics.
+          out.push(failed || bodiless || res.footprint.length === 0 ? (
+            closedOutline(res.intent.closed) ? (
+              <polygon key={`${kn.id}_out`} points={P(outline)}
+                fill="none" stroke={failed ? '#dc2626' : isSel ? '#2563eb' : strokeC}
+                strokeWidth={isSel ? strokeW + 1 : strokeW} strokeDasharray={failed ? '6 3' : da ?? undefined}
+                onClick={pick} style={cursor} />
+            ) : (
+              <polyline key={`${kn.id}_out`} points={P(outline)}
+                fill="none" stroke={failed ? '#dc2626' : isSel ? '#2563eb' : strokeC}
+                strokeWidth={isSel ? strokeW + 1 : strokeW} strokeDasharray={failed ? '6 3' : da ?? undefined}
+                onClick={pick} style={cursor} />
+            )
+          ) : null);
+          return out;
+        })}
+
+        {/* ── Domes: the cell pattern in plan, as seen from below ──
+            A dome stands above the cut plane, so it is drawn the way anything
+            overhead is: thin dashed lines, no fill. The cells are the whole
+            information — a plain base outline would say nothing the axes do
+            not already say. */}
+        {storeyNodes.filter((n) => n.type === 'dome').flatMap((dn) => {
+          const res = computeDome(dn, nodeMap, edges);
+          if (!res.base) return [];
+          const vis = resolveVisuals('dome', String(dn.properties?.material ?? ''), matConfig);
+          const isSel = selectedNodeId === dn.id;
+          const stroke = isSel ? '#2563eb' : getViewLineColor(vis);
+          const path = (poly: { x: number; y: number }[]) =>
+            poly.map((p) => { const s = toSvg(p.x, p.y); return `${s.x},${s.y}`; }).join(' ');
+          return [
+            <polygon key={`${dn.id}_base`}
+              points={path(res.base)}
+              fill="none" stroke={stroke}
+              strokeWidth={(isSel ? 1.5 : 0.8) * getViewLineWeight(vis) * 2}
+              strokeDasharray={lineStyleToDashArray(getViewLineStyle(vis)) ?? '5 3'}
+              opacity={0.75}
+              onClick={canPickBim ? (e) => handlePickNode(dn.id, e) : undefined}
+              style={canPickBim ? { cursor: 'pointer' } : undefined} />,
+            ...res.cells.map((cell, i) => cell.length < 3 ? null : (
+              <polygon key={`${dn.id}_c${i}`}
+                points={path(cell)}
+                fill="none" stroke={stroke}
+                strokeWidth={getViewLineWeight(vis)}
+                strokeDasharray="4 3"
+                opacity={0.5}
+                pointerEvents="none" />
+            )).filter(Boolean),
+          ];
+        })}
+
+        {/* ── Other edges: connections between POINT elements (ax, column) ──
+            Only nodes that stand at a plan position. A shell, a room, a slab
+            has a graph-canvas position and no plan point of its own; drawn
+            from there, its anchor edges fanned out across the sheet as a
+            spray of dashed lines to every axis it was wired to. */}
         {storeyEdges
           .filter((e) => {
             const f = storeyNodes.find((n) => n.id === e.from);
             const t = storeyNodes.find((n) => n.id === e.to);
-            return f && t
-              && f.type !== 'wall'  && t.type !== 'wall'
-              && f.type !== 'beam'  && t.type !== 'beam';
+            return f && t && PLAN_POINT_TYPES.has(f.type) && PLAN_POINT_TYPES.has(t.type);
           })
           .map((e) => {
             const from = storeyNodes.find((n) => n.id === e.from)!;
@@ -1500,17 +2428,25 @@ export function FloorPlan2DViewer({
           clientToBim={clientToBim}
           onOpen={setPendingOpenSectionId}
           onUpdateProps={updateSectionProps}
-          interactive={canPickBim}
+          interactive={canPickBim && !embedded}
+          onSelect={canPickBim && onSelectNode ? (id) => { lastPlanPick.current = id; onSelectNode(id); } : undefined}
+          selectedId={selectedNodeId}
         />
 
         {/* ── Nodes ── */}
         {storeyNodes.map((node) => {
           if (node.type === 'storey') return null; // skip storey meta-node
           if (node.type === 'wall' || node.type === 'beam') return null; // rendered as geometry lines above
+          if (node.type === 'sweep') return null; // rendered as mitered footprint above
           if (node.type === 'window' || node.type === 'door') return null; // rendered as symbols above
           if (node.type === 'section' || node.type === 'view') return null; // rendered as cut symbols above
           if (node.type === 'shell' || node.type === 'covering') return null; // rendered as overhead outlines above
           if (node.type === 'roof' || ROOF_GENERATED_TYPES.has(node.type)) return null; // rendered by the roof-plan layer above
+          // Hidden because the stair-plan layer above draws them. Matched by the
+          // stairwell tag, not by type alone: `void` is a shared type, and a
+          // void the user placed by hand must still show.
+          if (node.type === 'stairwell') return null;
+          if (STAIR_GENERATED_TYPES.has(node.type) && node.properties.source_stairwell_id) return null;
           if (node.type === 'slab' && !showSlabs) return null; // hidden unless user enables slabs
           if (node.type === 'void') {
             // Void node: dashed orange rect (box) or circle (cylinder) at host position + offset
@@ -1619,9 +2555,8 @@ export function FloorPlan2DViewer({
           const isAxis = node.type === 'ax';
 
           if (isAxis) {
-            // position from axesX[gridX] / axesY[gridY] — NOT from node.x/y (canvas position)
-            const rx = axisXVals[Number(node.properties.gridX ?? 0)] ?? (axisXVals[0] ?? 0);
-            const ry = axisYVals[Number(node.properties.gridY ?? 0)] ?? (axisYVals[0] ?? 0);
+            // position from the shared resolver — NOT from node.x/y (canvas position)
+            const { x: rx, y: ry } = getNodeMmPos(node);
             const sa = toSvg(rx, ry);
             const hasCol = String(node.properties.has_column ?? '').toLowerCase() === 'true';
             // Column section from type string — 'C25x25' → 25 cm × 25 cm → 250 mm | 'CR30' → ∅30 cm circle
@@ -1705,6 +2640,198 @@ export function FloorPlan2DViewer({
         <text x={CANVAS_MARGIN + W - PAD - 20} y={CANVAS_MARGIN + H - PAD / 2 + 20} textAnchor="middle" fontSize="6" fill="#94a3b8">
           {Math.round(40 / SCALE / 1000)} m
         </text>
+
+        {/* ── Region selection: the band, and a box round everything it holds ── */}
+        {(() => {
+          const box = (pts: { x: number; y: number }[], key: string) => {
+            if (!pts.length) return null;
+            const sp = pts.map((p) => toSvg(p.x, p.y));
+            const x0 = Math.min(...sp.map((p) => p.x)) - 3, x1 = Math.max(...sp.map((p) => p.x)) + 3;
+            const y0 = Math.min(...sp.map((p) => p.y)) - 3, y1 = Math.max(...sp.map((p) => p.y)) + 3;
+            return <rect key={key} x={x0} y={y0} width={x1 - x0} height={y1 - y0}
+              fill="#2563eb" fillOpacity={0.06} stroke="#2563eb" strokeWidth={1} strokeDasharray="3 2" pointerEvents="none" />;
+          };
+          const selIds = new Set(selectedNodeIds);
+          const annIds = new Set(annSel);
+          return (
+            <g pointerEvents="none">
+              {storeyNodes.filter((n) => selIds.has(n.id)).map((n) => box(nodePlanPoints(n), `msel_${n.id}`))}
+              {allAnnotations.filter((a) => annIds.has(a.id)).map((a) => box(annotationPoints(a), `asel_${a.id}`))}
+              {marquee && (() => {
+                const a = toSvg(marquee.a.x, marquee.a.y), b = toSvg(marquee.b.x, marquee.b.y);
+                return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)}
+                  fill="#2563eb" fillOpacity={0.08} stroke="#2563eb" strokeWidth={1} strokeDasharray="4 2" />;
+              })()}
+            </g>
+          );
+        })()}
+
+        {/* ── Sketch edit handles: only on the selected sketch, only when no
+            tool is armed, so they never fight the placement clicks. ── */}
+        {!sketchTool && canPickBim && (() => {
+          const sel = storeyNodes.find((n) => n.id === selectedNodeId && n.type === 'sketch');
+          if (!sel) return null;
+          const sres = computeSketch(sel, nodeMap, edges);
+          const si = sres.intent;
+          // Handles sit on the WORLD outline; the drag edits the LOCAL one.
+          // A curve's handles are its own points — the outline is dozens of
+          // chords that only stand for it.
+          const outline = si.outline;
+          if (outline.length === 0) return null;
+          const closed = si.closed;
+          const handles = si.curve ? sres.curvePoints : outline;
+          const drag = { shape: si.shape, params: si.shapeParams, outline: si.curve ? si.curve.points : si.localOutline, frame: sres.frame, ref: si.ref };
+          const P = (p: { x: number; y: number }) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; };
+          const fr = sres.frame;
+          const o = toSvg(fr.origin.x, fr.origin.y);
+          return (
+            <g>
+              {/* The reference: a dot on the origin ax and, with two axes, the
+                  line between them — so it is visible what the sketch is
+                  relative to, and which way "along" runs. */}
+              {fr.refIds.length > 0 && (() => {
+                const L = fr.refLengthMm > 0 ? fr.refLengthMm : 0;
+                const e = toSvg(fr.origin.x + fr.dir.x * L, fr.origin.y + fr.dir.y * L);
+                return (
+                  <g pointerEvents="none">
+                    {L > 0 && (
+                      <line x1={o.x} y1={o.y} x2={e.x} y2={e.y}
+                        stroke="#7c3aed" strokeWidth={1} strokeDasharray="8 3 2 3" opacity={0.8} />
+                    )}
+                    <circle cx={o.x} cy={o.y} r={4} fill="none" stroke="#7c3aed" strokeWidth={1.4} />
+                    <circle cx={o.x} cy={o.y} r={1.2} fill="#7c3aed" />
+                    {L > 0 && <circle cx={e.x} cy={e.y} r={2.5} fill="#7c3aed" opacity={0.8} />}
+                  </g>
+                );
+              })()}
+              {/* The drawn line itself is the grab area for moving the whole
+                  sketch — a fat transparent stroke, the usual CAD affordance. */}
+              {closed ? (
+                <polygon points={outline.map(P).join(' ')}
+                  fill="transparent" stroke="transparent" strokeWidth={6}
+                  style={{ cursor: 'move' }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    startSketchDrag({ kind: 'body', nodeId: sel.id, from: clientToBim(e.clientX, e.clientY), ...drag });
+                  }} />
+              ) : (
+                <polyline points={outline.map(P).join(' ')}
+                  fill="none" stroke="transparent" strokeWidth={6}
+                  style={{ cursor: 'move' }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    startSketchDrag({ kind: 'body', nodeId: sel.id, from: clientToBim(e.clientX, e.clientY), ...drag });
+                  }} />
+              )}
+              {/* A control polygon is drawn: the curve is pulled towards it,
+                  and without it the handles would seem to float. */}
+              {si.curve?.mode === 'control' && handles.length > 1 && (
+                <polyline points={[...handles, ...(closed ? [handles[0]] : [])].map(P).join(' ')}
+                  fill="none" stroke="#D97706" strokeWidth={0.8} strokeDasharray="4 3"
+                  opacity={0.8} pointerEvents="none" />
+              )}
+              {handles.map((p, i) => {
+                const q = toSvg(p.x, p.y);
+                return (
+                  <rect key={i}
+                    x={q.x - 2.6} y={q.y - 2.6} width={5.2} height={5.2}
+                    fill="#fff" stroke="#D97706" strokeWidth={1.2}
+                    style={{ cursor: 'grab' }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      startSketchDrag({ kind: 'vertex', nodeId: sel.id, index: i, ...drag });
+                    }}>
+                    <title>{`Punct ${i + 1} — trage pentru a muta`}</title>
+                  </rect>
+                );
+              })}
+              {/* The sketch's own numbers: sides, radius, segments, the offset
+                  from its reference, the array step. `side` is BIM-left; with
+                  SVG's y flipped, that is the NEGATIVE offset here. */}
+              {showDims && sketchDims(sres).map((dm) => {
+                const a = toSvg(dm.a.x, dm.a.y), b = toSvg(dm.b.x, dm.b.y);
+                const off = -dm.side * DIM_OFF;
+                const key = `sk_${dm.id}`;
+                const color = dm.kind === 'u' || dm.kind === 'v' ? '#7c3aed' : dm.kind === 'step' ? '#0891b2' : '#b45309';
+                const label = `${Math.round(dm.valueMm)}${dm.kind === 'r' ? ' R' : ''}`;
+                const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+                const n = { x: -dy / L, y: dx / L };
+                const at = { x: (a.x + b.x) / 2 + n.x * (off - Math.sign(off) * DIM_TEXT), y: (a.y + b.y) / 2 + n.y * (off - Math.sign(off) * DIM_TEXT) };
+                return (
+                  <PlanDim key={key} a={a} b={b} offset={off} label={label} color={color}
+                    hidden={planDimEdit?.key === key}
+                    onEdit={() => openDimEdit(key, dm.valueMm, at, (v) => {
+                      const edit = applySketchDim(sres, dm, v);
+                      if (!edit) return;
+                      if (edit.params || edit.outline) applySketchEdit(sel.id, edit);
+                      if (edit.props) patchSketchProps(sel.id, edit.props);
+                    })} />
+                );
+              })}
+            </g>
+          );
+        })()}
+
+        {/* ── Inline value editor, over the number it replaces. Inside the SVG
+            so it pans and zooms with the drawing. ── */}
+        {planDimEdit && (
+          <foreignObject x={planDimEdit.at.x - 30} y={planDimEdit.at.y - 6} width={60} height={12}>
+            <input
+              key={planDimEdit.key}
+              type="text"
+              inputMode="decimal"
+              autoFocus
+              value={planDimEdit.value}
+              title="Enter = aplică · Shift+Enter = doar axul următor · Esc = anulează · acceptă formule (3000+500)"
+              style={{
+                width: 60, height: 12, fontSize: DIM_FONT, lineHeight: '12px', padding: '0 2px',
+                textAlign: 'center', border: '0.6px solid #2563eb', borderRadius: 1.5,
+                background: '#fff', color: '#111', outline: 'none', fontFamily: 'ui-monospace, monospace',
+                boxSizing: 'border-box',
+              }}
+              onChange={(e) => setPlanDimEdit({ ...planDimEdit, value: e.target.value })}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') { e.preventDefault(); commitDimEdit(e.shiftKey); }
+                else if (e.key === 'Escape') { e.preventDefault(); setPlanDimEdit(null); }
+              }}
+              onBlur={() => setPlanDimEdit(null)}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </foreignObject>
+        )}
+
+        {/* ── Sketch overlay: the rubber band and the points placed so far ── */}
+        {sketchTool && (() => {
+          const cursor = hoverSnap ?? hoverRaw;
+          const pv = sketchToolPreview(sketchTool, sketchPts, cursor);
+          const P = (p: { x: number; y: number }) => { const q = toSvg(p.x, p.y); return `${q.x},${q.y}`; };
+          return (
+            <g pointerEvents="none">
+              {/* A contour previews as the area it encloses; a path is a run,
+                  so it stays an open polyline rather than a closed loop. */}
+              {pv && (pv.closed ? (
+                <polygon points={pv.points.map(P).join(' ')}
+                  fill="#D97706" fillOpacity={0.12}
+                  stroke="#D97706" strokeWidth={1.2} strokeDasharray="4 2" />
+              ) : (
+                <polyline points={pv.points.map(P).join(' ')}
+                  fill="none"
+                  stroke="#D97706" strokeWidth={1.2} strokeDasharray="4 2" />
+              ))}
+              {sketchPts.map((p, i) => {
+                const q = toSvg(p.x, p.y);
+                return <circle key={i} cx={q.x} cy={q.y} r={2.2} fill="#D97706" stroke="#fff" strokeWidth={0.6} />;
+              })}
+              {cursor && (() => {
+                const q = toSvg(cursor.x, cursor.y);
+                return <circle cx={q.x} cy={q.y} r={3} fill="none" stroke="#D97706" strokeWidth={1} />;
+              })()}
+            </g>
+          );
+        })()}
 
         {/* ── Draw Wall overlay ── */}
         {drawWallMode && hoverRaw && (() => {
@@ -1830,7 +2957,7 @@ export function FloorPlan2DViewer({
 
         {/* ── Annotation layer ── */}
         <SvgAnnotationLayer
-          viewId={storeyId ?? 'floorplan:all'}
+          viewId={annViewId}
           toSvg={toSvg}
           fromSvgEvent={fromSvgEvent}
           activeTool={annTool}
@@ -1850,117 +2977,160 @@ export function FloorPlan2DViewer({
           hatchSpacing={annSettings.hatchSpacing}
           hatchAngle={annSettings.hatchAngle}
           hatchOpacity={annSettings.hatchOpacity}
+          dimStyleId={annSettings.dimStyleId}
+          drawStyleId={annSettings.drawStyleId}
           selectedId={selectedAnnotationId}
           onSelectAnnotation={selectAnnotation}
+          alsoViewIds={storeyId ? ['floorplan:all'] : undefined}
+          idlePick={canPickBim}
         />
         {/* ── Armare 2D: forme, grips, selecție ── */}
         <RebarLayer toSvg={toSvg} fromSvgEvent={fromSvgEvent} scale={SCALE} />
       </svg>
 
       {/* ── Armare 2D: paletă + proprietăți ── */}
-      {!embedded && <RebarPanel />}
+      {!embedded && showRebar && <div className="absolute top-12 left-2 z-20"><RebarPanel /></div>}
 
-      {/* ── Annotation toolbar ── */}
-      {!embedded && <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-background/85 border border-border/60 rounded-md px-1.5 py-1 backdrop-blur-sm shadow-sm">
-        {/* Draw Wall authoring button */}
-        <button
-          title={drawWallMode ? 'Draw Wall — click to place (ESC to cancel)' : 'Draw Wall — click two points to create a wall'}
-          onClick={() => {
-            setDrawWallMode(!drawWallMode);
-            setWallStart(null);
-            setHoverSnap(null);
-            setHoverRaw(null);
-            setAnnTool(null);
-            setPlanTool(null);
-          }}
-          className={cn(
-            'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none font-bold',
-            drawWallMode
-              ? 'bg-orange-500 text-white'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          )}
-        >▭</button>
-        <button
-          title={drawSectionMode ? 'Secțiune — clic A, clic B, apoi clic pe partea privită (Alt = unghi liber, ESC anulează)' : 'Secțiune — clic A, clic B, apoi clic pe partea privită'}
-          onClick={() => {
-            setPlanTool(drawSectionMode ? null : 'draw-section');
-            setSectionStart(null);
-            setSectionLine(null);
-            setHoverSnap(null);
-            setHoverRaw(null);
-            setDrawWallMode(false);
-            setAnnTool(null);
-          }}
-          className={cn(
-            'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none font-bold',
-            drawSectionMode
-              ? 'bg-rose-600 text-white'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          )}
-        >✂</button>
-        <button
-          title={sectionOnAxisMode ? 'Secțiune pe ax — clic lângă un ax, pe partea privită (ESC anulează)' : 'Secțiune pe ax — clic lângă un ax, pe partea privită'}
-          onClick={() => {
-            setPlanTool(sectionOnAxisMode ? null : 'section-on-axis');
-            setAxisHover(null);
-            setDrawWallMode(false);
-            setAnnTool(null);
-          }}
-          className={cn(
-            'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none font-bold',
-            sectionOnAxisMode
-              ? 'bg-rose-600 text-white'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          )}
-        >⊕</button>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        {([
-          { tool: 'select'    as SvgAnnotationTool, icon: '↖',  title: 'Select / move annotation' },
-          { tool: 'text'      as SvgAnnotationTool, icon: 'T',  title: 'Place text label' },
-          { tool: 'dimension' as SvgAnnotationTool, icon: '↔',  title: 'Linear dimension — click p1, p2, then offset side' },
-          { tool: 'leader'    as SvgAnnotationTool, icon: '↗',  title: 'Leader with text — click points, double-click to finish' },
-          { tool: 'line'      as SvgAnnotationTool, icon: '╱',  title: 'Single line' },
-          { tool: 'arc'       as SvgAnnotationTool, icon: '⌒',  title: 'Arc — click center, start point, end point' },
-          { tool: 'polyline'  as SvgAnnotationTool, icon: '╮',  title: 'Polyline — click points, double-click to finish' },
-          { tool: 'rect'      as SvgAnnotationTool, icon: '▭',  title: 'Rectangle — click first corner, then opposite corner' },
-          { tool: 'circle'    as SvgAnnotationTool, icon: '○',  title: 'Circle — click center, then edge point' },
-          { tool: 'hatch'     as SvgAnnotationTool, icon: '▦',  title: 'Hatch fill — click polygon points, double-click to close' },
-          { tool: 'join'      as SvgAnnotationTool, icon: '⋈',  title: 'Join — click two lines/polylines to merge endpoints' },
-          { tool: 'trim'      as SvgAnnotationTool, icon: '✂',  title: 'Trim — click cutter line, then target line near end to trim' },
-          { tool: 'eraser'    as SvgAnnotationTool, icon: '✕',  title: 'Eraser — click an annotation to delete it' },
-        ]).map(({ tool, icon, title }) => (
+      {/* ── Plan toolbar ──────────────────────────────────────────────────
+          Grouped and labelled, because a single row of nineteen glyphs had
+          two of them meaning two things each: ▭ was both Wall and Rectangle,
+          ✂ both Section and Trim. The thirteen annotation tools are not
+          repeated here — they live, labelled, in the Drawing panel, and the
+          button below says which one is armed. */}
+      {!embedded && <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/85 border border-border/60 rounded-md px-2 py-1 backdrop-blur-sm shadow-sm">
+
+        {/* ── Model ─────────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mr-0.5 select-none">Model</span>
           <button
-            key={tool}
-            title={title}
-            onClick={() => setAnnTool(annTool === tool ? null : tool)}
+            title={drawWallMode ? 'Perete — clic pentru a plasa (ESC anulează)' : 'Perete — clic două puncte'}
+            onClick={() => {
+              setDrawWallMode(!drawWallMode);
+              setWallStart(null);
+              setHoverSnap(null);
+              setHoverRaw(null);
+              setAnnTool(null);
+              setPlanTool(null);
+              setSketchTool(null);
+              setSketchPts([]);
+            }}
             className={cn(
-              'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none',
-              annTool === tool
-                ? 'bg-blue-600 text-white'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+              drawWallMode ? 'bg-orange-500 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
-          >{icon}</button>
-        ))}
-        <div className="w-px h-4 bg-border mx-0.5" />
-        <button
-          title="Clear all annotations for this view"
-          onClick={() => clearViewAnnotations(storeyId ?? 'floorplan:all')}
-          className="w-6 h-6 flex items-center justify-center text-xs rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 transition-colors"
-        >🗑</button>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        {/* Drawing properties panel toggle */}
-        <button
-          title="Drawing properties panel"
-          onClick={() => { setShowDrawingPanel(!showDrawingPanel); setShowFilterPanel(false); }}
-          className={cn(
-            'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none',
-            showDrawingPanel ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          >Perete</button>
+          <button
+            title={drawSectionMode ? 'Secțiune — clic A, clic B, apoi pe partea privită (Alt = unghi liber, ESC anulează)' : 'Secțiune — clic A, clic B, apoi pe partea privită'}
+            onClick={() => {
+              setPlanTool(drawSectionMode ? null : 'draw-section');
+              setSectionStart(null);
+              setSectionLine(null);
+              setHoverSnap(null);
+              setHoverRaw(null);
+              setDrawWallMode(false);
+              setAnnTool(null);
+            }}
+            className={cn(
+              'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+              drawSectionMode ? 'bg-rose-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >Secțiune</button>
+          <button
+            title={sectionOnAxisMode ? 'Secțiune pe ax — clic lângă un ax, pe partea privită (ESC anulează)' : 'Secțiune pe ax — clic lângă un ax, pe partea privită'}
+            onClick={() => {
+              setPlanTool(sectionOnAxisMode ? null : 'section-on-axis');
+              setAxisHover(null);
+              setDrawWallMode(false);
+              setAnnTool(null);
+            }}
+            className={cn(
+              'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none font-bold',
+              sectionOnAxisMode ? 'bg-rose-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >⊕</button>
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* ── Sketch: 2D drawn, 3D body ─────────────────────────────────── */}
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mr-0.5 select-none">Schiță 3D</span>
+          {SKETCH_TOOLS.map((t) => (
+            <button
+              key={t.tool}
+              title={`${t.label} — ${t.hint}`}
+              onClick={() => {
+                const next = sketchTool === t.tool ? null : t.tool;
+                setSketchTool(next);
+                setSketchPts([]);
+                setDrawWallMode(false);
+                setWallStart(null);
+                setAnnTool(null);
+                setPlanTool(null);
+              }}
+              className={cn(
+                'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+                sketchTool === t.tool ? 'bg-amber-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >{t.label}</button>
+          ))}
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* ── Annotation: one entry point, not thirteen glyphs ───────────── */}
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mr-0.5 select-none">Desen</span>
+          <button
+            title={annTool ? `Unealtă de desen activă: ${annTool}. Clic pentru panoul de desen.` : 'Panou desen — unelte, culori, hașuri'}
+            onClick={() => { setShowDrawingPanel(!showDrawingPanel); setShowFilterPanel(false); }}
+            className={cn(
+              'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none gap-1',
+              showDrawingPanel || annTool ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >
+            <span>🎨</span>
+            <span>{annTool ?? 'Desen'}</span>
+          </button>
+          {annTool && (
+            <button
+              title="Oprește unealta de desen"
+              onClick={() => setAnnTool(null)}
+              className="w-5 h-6 flex items-center justify-center text-[10px] rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+            >✕</button>
           )}
-        >🎨</button>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        {/* Cut plane / visibility filter button */}
+          <button
+            title="Șterge toate adnotările din acest view"
+            onClick={() => { clearViewAnnotations(storeyId ?? 'floorplan:all'); if (storeyId) clearViewAnnotations('floorplan:all'); }}
+            className="w-6 h-6 flex items-center justify-center text-xs rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 transition-colors"
+          >🗑</button>
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* ── Rebar: a mode, opened on demand ───────────────────────────── */}
         <button
-          title="Cut level & visibility filters"
+          title="Armare 2D — bare, etriere, cofraj"
+          onClick={() => setShowRebar((v) => !v)}
+          className={cn(
+            'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+            showRebar ? 'bg-rose-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          )}
+        >Armare</button>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* ── View ──────────────────────────────────────────────────────── */}
+        <button
+          title="Cote parametrice — deschiderile axelor și dimensiunile schiței selectate; clic pe cifră ca să o schimbi"
+          onClick={() => setShowDims((v) => !v)}
+          className={cn(
+            'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+            showDims ? 'bg-slate-700 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          )}
+        >Cote</button>
+        <button
+          title="Plan de tăiere și filtre de vizibilitate"
           onClick={() => { setShowFilterPanel(!showFilterPanel); setShowDrawingPanel(false); }}
           className={cn(
             'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none',
@@ -1968,6 +3138,15 @@ export function FloorPlan2DViewer({
           )}
         >⚙</button>
       </div>}
+
+      {/* ── Sketch hint bar: says what the armed tool expects ── */}
+      {!embedded && sketchTool && (
+        <div className="absolute top-11 left-2 z-10 text-[10px] bg-amber-600 text-white rounded px-2 py-1 shadow-sm select-none">
+          {sketchToolDef(sketchTool).label} · {sketchToolDef(sketchTool).hint}
+          {sketchPts.length === 0 && ' · Pornit dintr-un punct de ax, desenul rămâne legat de el.'}
+          {sketchPts.length > 0 && ` · ${sketchPts.length} puncte`}
+        </div>
+      )}
 
       {/* ── Drawing properties panel ── */}
       {!embedded && showDrawingPanel && (

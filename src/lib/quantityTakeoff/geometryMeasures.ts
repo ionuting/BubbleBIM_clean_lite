@@ -16,7 +16,13 @@ import {
   resolveStoreyId,
 } from '@/lib/bimGeometry';
 import { computeStairGeometry } from '@/lib/stair';
-import { computeSweep } from '@/lib/sweep';
+import { computeSweep, sweepRole } from '@/lib/sweep';
+import { computeSketch, outlineArea } from '@/lib/sketch';
+import { computeScatter } from '@/lib/scatter';
+import { computeFacade, cassetteVolumeMm3 } from '@/lib/facade';
+import { computeDome } from '@/lib/dome';
+import { computeSite } from '@/lib/terrain';
+import { currentTerrainModel } from '@/lib/terrain/current';
 import {
   WALL_TYPE_MAP,
   BEAM_TYPE_MAP,
@@ -94,11 +100,29 @@ export function getElementTypeId(node: BubbleGraphNode): string {
     case 'door':
       return String(node.properties.door_type ?? '');
     case 'sweep':
-      return String(node.properties.profile ?? 'rect');
+      // The ROLE, not the profile. A cornice and a handrail can be the same
+      // polygon dragged along a line, and they are not the same work — keying
+      // on `profile` billed them identically.
+      return sweepRole(node);
     case 'shell':
       // The ROLE is the element type: an envelope and a beam grid are the same
       // geometry decomposed into completely different work.
       return String(node.properties.shell_role ?? 'envelope');
+    case 'dome':
+      return 'dome';
+    case 'site':
+      return 'site';
+    case 'facade':
+      // What the cells are filled with is the trade: glazing, cladding, cassettes.
+      return String(node.properties.panel_kind ?? 'glass');
+    case 'scatter':
+      // The kind IS the work: trees are planted, rocks are placed.
+      return String(node.properties.kind ?? 'tree');
+    case 'sketch':
+      // Whatever the modeller declared. A drawn outline has no intrinsic
+      // trade, so the type key is theirs to set — that is what makes one
+      // sketch a plinth and another a kerb in the same schedule.
+      return String(node.properties.element_type ?? '') || 'sketch';
     default:
       return '*';
   }
@@ -116,7 +140,11 @@ export function getElementMaterial(node: BubbleGraphNode): string {
     case 'foundation': return FOUNDATION_TYPE_MAP.get(id)?.material ?? '';
     case 'window':     return WINDOW_TYPE_MAP.get(id)?.material ?? String(node.properties.material ?? '');
     case 'door':       return DOOR_TYPE_MAP.get(id)?.material ?? String(node.properties.material ?? '');
-    case 'sweep':      return String(node.properties.material ?? '');
+    case 'sweep':
+    case 'dome':
+    case 'sketch':
+    case 'scatter':
+    case 'facade':     return String(node.properties.material ?? '');
     default:           return '';
   }
 }
@@ -532,6 +560,140 @@ function measureSweep(
   };
 }
 
+/**
+ * Sketch: the same mesh volume the viewers show, times the array count.
+ *
+ * `count` is the number of copies, not 1 — an array of eight bollards is
+ * eight bollards to anyone pricing them, and a norm written per piece would
+ * otherwise bill one. The plan area is the enclosed outline for an extrusion
+ * and zero for an open sweep path, which is the honest reading of each.
+ */
+function measureSketch(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+): NodeMeasures {
+  const res = computeSketch(node, nodeMap, edges);
+  if (res.count === 0) return { ...EMPTY };
+  const n = res.count;
+  const lengthM = (res.lengthMm / 1000) * n;
+  const areaM2 = (res.areaMm2 / 1e6) * n;
+  return {
+    ...EMPTY,
+    length_m: lengthM,
+    height_m: (res.intent.op === 'extrude' ? Math.abs(res.intent.heightMm) : res.zMaxMm - res.zMinMm) / 1000,
+    section_m2: (res.intent.op === 'sweep' ? res.profileAreaMm2 : res.areaMm2) / 1e6,
+    // A closed face counts every boundary, holes included — what a formwork
+    // edge or a plinth trim is billed on. A sweep keeps its run length.
+    perimeter_m: res.intent.op === 'sweep' ? lengthM : (res.perimeterMm / 1000) * n,
+    // `areaMm2` is already net of holes; the gross is the outline alone.
+    area_m2: areaM2,
+    gross_area_m2: res.holes.length ? (outlineArea(res.intent.outline, res.intent.closed) / 1e6) * n : areaM2,
+    net_area_m2: areaM2,
+    volume_m3: res.volumeMm3 / 1e9,
+    count: n,
+  };
+}
+
+/**
+ * Facade: the infill by area (glass, panels, cassettes together in `area_m2`,
+ * the glass alone in `net_area_m2`), the mullions by length, the framing
+ * and cassette material by volume, the bays by count.
+ */
+function measureFacade(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+): NodeMeasures {
+  const res = computeFacade(node, nodeMap, edges);
+  if (res.cells.length === 0) return { ...EMPTY };
+  const infill = (res.glassAreaMm2 + res.panelAreaMm2 + res.cassetteAreaMm2) / 1e6;
+  return {
+    ...EMPTY,
+    area_m2: infill,
+    gross_area_m2: res.cells.reduce((s, c) => s + c.areaMm2, 0) / 1e6,
+    net_area_m2: res.glassAreaMm2 / 1e6,
+    length_m: res.memberLengthMm / 1000,
+    volume_m3: (res.memberVolumeMm3 + cassetteVolumeMm3(res.cassettes)) / 1e9,
+    height_m: (res.zMaxMm - res.zMinMm) / 1000,
+    count: res.cells.length,
+  };
+}
+
+/**
+ * Scatter: pieces, above all. A planting schedule is "n trees of this size";
+ * the region's length (a hedge is bought by the metre) and area (a lawn is
+ * seeded by the square metre) ride along for the norms that want them.
+ */
+function measureScatter(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+): NodeMeasures {
+  const res = computeScatter(node, nodeMap, edges);
+  if (res.count === 0) return { ...EMPTY };
+  return {
+    ...EMPTY,
+    count: res.count,
+    length_m: res.lengthMm / 1000,
+    area_m2: res.areaMm2 / 1e6,
+    gross_area_m2: res.areaMm2 / 1e6,
+    net_area_m2: res.areaMm2 / 1e6,
+    height_m: res.intent.heightMm / 1000,
+  };
+}
+
+/**
+ * A dome bills as two trades from one node, so both have to be on the same
+ * measures: the steel by weight-bearing length and volume, the glass by area.
+ * `count` is the panel count — glazing is priced per piece as much as per m².
+ */
+function measureDome(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+): NodeMeasures {
+  const res = computeDome(node, nodeMap, edges);
+  if (!res.base) return { ...EMPTY };
+  return {
+    ...EMPTY,
+    length_m: res.memberLengthMm / 1000,
+    height_m: (res.zMaxMm - res.zMinMm) / 1000,
+    area_m2: res.glassAreaMm2 / 1e6,
+    net_area_m2: res.glassAreaMm2 / 1e6,
+    gross_area_m2: res.glassAreaMm2 / 1e6,
+    volume_m3: res.memberVolumeMm3 / 1e9,
+    count: res.panels.length,
+  };
+}
+
+/**
+ * The site bills its earthworks: what the modeller's zones and the requested
+ * foundation pits take out of the natural ground, and what is added. `volume`
+ * carries the cut so an unmapped rule still sees the number that matters;
+ * `cut_volume_m3` / `fill_volume_m3` are there for rules that tell them apart.
+ */
+function measureSite(
+  node: BubbleGraphNode,
+  nodeMap: Map<string, BubbleGraphNode>,
+  edges: BubbleGraphEdge[],
+): NodeMeasures {
+  const site = computeSite(node, nodeMap, edges, currentTerrainModel());
+  if (!site.frame) return { ...EMPTY };
+  // The graph's platforms are earthworks like any other, and they can fill
+  // as well as cut — a terrace on a slope does both.
+  const cut = site.zoneCutM3 + site.padCutM3 + site.foundationCutM3;
+  return {
+    ...EMPTY,
+    area_m2: site.model.sizeM * site.model.sizeM,
+    gross_area_m2: site.model.sizeM * site.model.sizeM,
+    volume_m3: cut,
+    cut_volume_m3: cut,
+    fill_volume_m3: site.zoneFillM3 + site.padFillM3,
+    count: 1,
+  };
+}
+
 /** Skip ax nodes without column. */
 function shouldMeasureNode(node: BubbleGraphNode): boolean {
   if (node.type === 'ax') {
@@ -539,7 +701,7 @@ function shouldMeasureNode(node: BubbleGraphNode): boolean {
   }
   const MEASURABLE = new Set([
     'wall', 'beam', 'column', 'slab', 'foundation', 'window', 'door', 'room',
-    'stairwell', 'sweep', 'roof', 'shell', ...TIMBER_MEMBER_TYPES,
+    'stairwell', 'sweep', 'roof', 'shell', 'dome', 'site', 'sketch', 'scatter', 'facade', ...TIMBER_MEMBER_TYPES,
   ]);
   return MEASURABLE.has(node.type);
 }
@@ -611,6 +773,11 @@ export function measureNode(
     case 'room':       return measureRoom(node, nodeMap, edges, band);
     case 'stairwell':  return measureStair(node, nodeMap, edges);
     case 'sweep':      return measureSweep(node, nodeMap, edges);
+    case 'sketch':     return measureSketch(node, nodeMap, edges);
+    case 'scatter':    return measureScatter(node, nodeMap, edges);
+    case 'facade':     return measureFacade(node, nodeMap, edges);
+    case 'dome':       return measureDome(node, nodeMap, edges);
+    case 'site':       return measureSite(node, nodeMap, edges);
     case 'roof':       return measureRoof(node, nodeMap, edges);
     case 'shell':      return measureShell(node, nodeMap, edges, band);
     default:
@@ -623,10 +790,10 @@ export function measureNode(
 /**
  * A per-node measurement cache keyed by node OBJECT IDENTITY.
  *
- * A caller that derives a variant of the graph keeps every untouched node as
- * the SAME object, so a memo keyed on identity is hit for every node the
- * variant did not change — which is why re-measuring a variant costs almost
- * nothing.
+ * Scenarios (`lib/scenarios`) apply a delta over the live graph and keep every
+ * untouched node as the same object, so a memo keyed on identity is hit for
+ * every node a variant did not change. That is the whole reason five variants
+ * of a building cost about one takeoff.
  *
  * What a node's measure depends on beyond itself is its CONNECTED nodes (a
  * wall's anchors and its windows) and the edge list, so an entry is reused

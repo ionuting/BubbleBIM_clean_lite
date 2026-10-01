@@ -8,6 +8,9 @@
  * existing 2D SVG plan / rig system works unchanged.
  */
 
+import { STEP_LINE_RE, flt, inner, ref, tokeniseArgs, unquote } from './ifc/stepText';
+import { readGeoreference, type GeoReference } from './geo/ifcGeoref';
+
 // ── Types (mirror backend/api.ts shapes) ─────────────────────────────────────
 
 export interface IFCOpening {
@@ -56,61 +59,18 @@ export interface IFCPlanResult {
   totalWalls:  number;
   totalSlabs:  number;
   worldBounds: [number, number, number, number]; // minX, minY, maxX, maxY mm
+  /**
+   * Where the file says it stands in the world, or null when it says nothing.
+   * A `crs` of '' means the file gave grid coordinates without naming the
+   * grid — position known, system unknown.
+   */
+  georeference: GeoReference | null;
 }
 
 // ── STEP tokeniser ─────────────────────────────────────────────────────────
+// Shared with the georeferencing writer — see lib/ifc/stepText.ts.
 
-const LINE_RE = /^#(\d+)\s*=\s*([A-Z0-9_]+)\s*\((.*)\)\s*;?\s*$/i;
-
-function tokeniseArgs(s: string): string[] {
-  const args: string[] = [];
-  let depth  = 0;
-  let start  = 0;
-  let inStr  = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === "'" && !inStr) { inStr = true; }
-    else if (c === "'" && inStr) { inStr = false; }
-    else if (!inStr) {
-      if      (c === '(') depth++;
-      else if (c === ')') depth--;
-      else if (c === ',' && depth === 0) {
-        args.push(s.slice(start, i).trim());
-        start = i + 1;
-      }
-    }
-  }
-  const last = s.slice(start).trim();
-  if (last) args.push(last);
-  return args;
-}
-
-function unquote(s: string): string {
-  s = s.trim();
-  if (s.startsWith("'") && s.endsWith("'")) s = s.slice(1, -1);
-  s = s.replace(/\\X2\\[0-9A-Fa-f]+\\X0\\/g, '?');
-  return s;
-}
-
-function ref(s: string): number | null {
-  s = s.trim();
-  if (s.startsWith('#')) {
-    const n = parseInt(s.slice(1), 10);
-    return isNaN(n) ? null : n;
-  }
-  return null;
-}
-
-function flt(s: string): number {
-  const n = parseFloat(s.trim());
-  return isNaN(n) ? 0 : n;
-}
-
-function inner(s: string): string {
-  s = s.trim();
-  if (s.startsWith('(') && s.endsWith(')')) return s.slice(1, -1);
-  return s;
-}
+const LINE_RE = STEP_LINE_RE;
 
 // ── IFC entity table ────────────────────────────────────────────────────────
 
@@ -661,7 +621,12 @@ export async function parseIfcPlan(buffer: ArrayBuffer): Promise<IFCPlanResult> 
   storeyList.sort((a, b) => a.elevM - b.elevM);
 
   if (!storeyList.length) {
-    return { storeys: [], totalWalls: 0, totalSlabs: 0, worldBounds: [0, 0, 10000, 10000] };
+    // No storeys is not the same as no georeference: a site-only IFC still
+    // says where it stands, and that is worth keeping.
+    return {
+      storeys: [], totalWalls: 0, totalSlabs: 0, worldBounds: [0, 0, 10000, 10000],
+      georeference: readGeoreference(map),
+    };
   }
 
   const MM = 1000;
@@ -772,5 +737,6 @@ export async function parseIfcPlan(buffer: ArrayBuffer): Promise<IFCPlanResult> 
     totalWalls,
     totalSlabs,
     worldBounds: [globalMinX, globalMinY, globalMaxX, globalMaxY],
+    georeference: readGeoreference(map),
   };
 }

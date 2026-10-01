@@ -56,12 +56,14 @@ const ELEMENT_TYPE_LABELS: Record<string, string> = {
   column: 'Column', beam: 'Beam', wall: 'Wall', slab: 'Slab', foundation: 'Foundation',
   window: 'Window', door: 'Door', room: 'Room', shell: 'Shell', covering: 'Covering', ax: 'Grid Axis',
   roof: 'Roof', roof_ridge: 'Roof Ridge', skylight: 'Skylight', dormer: 'Dormer', void: 'Void',
+  stair_flight: 'Stair Flight', stair_landing: 'Stair Landing', stair_tread: 'Stair Tread', stair_railing: 'Stair Railing',
 };
 
 const ELEMENT_ICONS: Record<string, string> = {
   column: '⬛', beam: '━', wall: '▬', slab: '▭', foundation: '⊞',
   window: '⊡', door: '⊟', room: '□', shell: '◬', covering: '⌒', ax: '✛',
   roof: '⌂', roof_ridge: '△', skylight: '☀', dormer: '⌗', void: '⊘',
+  stair_flight: '◱', stair_landing: '▤', stair_tread: '▬', stair_railing: '┋',
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────

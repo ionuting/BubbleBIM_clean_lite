@@ -8,9 +8,15 @@
  *
  * The guide-line rule is the whole graph contract:
  *   1 anchor  → a VERTICAL line at that point, over the storey band
- *   2 anchors → a HORIZONTAL segment A→B at the chosen level
- *   3+        → a horizontal polyline in edge order, optionally closed
+ *   2 anchors → a segment A→B at the chosen level
+ *   3+        → a polyline in edge order, optionally closed
  * The number of connections IS the choice — there is no "path type" property.
+ *
+ * A `rise_mm` tilts the run out of the horizontal: the line climbs by that
+ * much from its first anchor to its last, spread along the way, so the profile
+ * plane tilts with it. That is what a raking cornice on a gable, a plinth on
+ * sloping ground and a handrail beside a flight all need, and it is the only
+ * property here that changes the PLANE the sweep lives in.
  */
 import type { BubbleGraphNode } from '@/store';
 import type { Pt2 } from '@/lib/geom/plan2d';
@@ -51,6 +57,12 @@ export interface SweepIntent {
   level: SweepLevel;
   /** Vertical sweeps: explicit height, mm. 0 = full storey band. */
   heightMm: number;
+  /**
+   * Total climb from the first anchor to the last, mm — negative falls.
+   * Spread along the run by arc length, so the slope is constant. Ignored on a
+   * closed loop, which cannot both rise and meet itself.
+   */
+  riseMm: number;
   material: string;
 }
 
@@ -67,6 +79,7 @@ export const DEFAULT_SWEEP_INTENT: SweepIntent = {
   closed: false,
   level: 'top',
   heightMm: 0,
+  riseMm: 0,
   material: 'Beton C30/37',
 };
 
@@ -78,6 +91,11 @@ export interface SweepProfile {
   group: SweepProfileGroup;
   /** Closed simple polygon, CCW, mm, in the profile's own (x right, y up) plane. */
   polygon: Pt2[];
+  /**
+   * Holes through the profile, same plane, any winding — a hollow section.
+   * Only a profile taken from a drawn face carries them today.
+   */
+  holes?: Pt2[][];
   /**
    * Present on a DXF profile drawn with `slider_*` layers: the size it was
    * drawn at, and which axes can be stretched. The Inspector offers width and
@@ -96,8 +114,20 @@ export interface SweepPath {
   /** Vertices in BIM mm. Vertical paths carry exactly two, same x/y. */
   points: Pt3[];
   closed: boolean;
-  kind: 'vertical' | 'horizontal';
+  /**
+   * 'vertical'   — one anchor, straight up the storey band.
+   * 'horizontal' — every station at the same level.
+   * 'raked'      — the run climbs, so the profile plane tilts with it.
+   *
+   * The geometry does not branch on this: one frame handles all three. It is
+   * here for the consumers that legitimately care — the plan draws a vertical
+   * sweep as its bare profile, and a section can cut a level run exactly.
+   */
+  kind: SweepPathKind;
 }
+
+/** How a path runs. Named so consumers can take it as a parameter. */
+export type SweepPathKind = 'vertical' | 'horizontal' | 'raked';
 
 /**
  * One watertight piece of the swept solid: rings of world-space points, one per
@@ -109,6 +139,20 @@ export interface SweepPath {
 export interface SweepSolid {
   rings: Pt3[][];
   loop: boolean;
+  /**
+   * Holes through the profile — a face with voids, extruded or swept. One
+   * entry per hole, each with a ring per station exactly like `rings`, wound
+   * CLOCKWISE in the profile so the stitched walls face into the hole.
+   * Absent on every solid without holes, which is every solid but a sketch's.
+   */
+  holes?: Pt3[][][];
+  /**
+   * The cap triangles when there are holes, indexing the station's outer ring
+   * followed by each hole ring in order (`faceWithHoles.triangulateFace`). A
+   * solid that carries them caps itself; one that does not takes the profile
+   * triangulation its caller passes, as before.
+   */
+  capTris?: [number, number, number][];
 }
 
 export interface SweepResult {
@@ -163,6 +207,7 @@ export function parseSweepIntent(node: BubbleGraphNode): SweepIntent {
     closed: truthy(p.closed),
     level: p.level === 'bottom' ? 'bottom' : 'top',
     heightMm: num(p.height_mm, 0),
+    riseMm: num(p.rise_mm, 0),
     material: String(p.material ?? DEFAULT_SWEEP_INTENT.material),
   };
 }

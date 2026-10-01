@@ -20,15 +20,18 @@ capitol: 4. Investiție de bază
 | 0001_00201A01_02 | wall | W30 |  |  |  | volume |  |  |
 | 0001_00201A01_02 | wall | W35 |  |  |  | volume |  |  |
 | 0001_00201A01_02 | wall | W40 |  |  |  | volume |  |  |
+| 0001_00201A01_02 | wall | W60 |  |  |  | volume |  |  |
 | 0001_BCA25_02 | wall | W15 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_BCA25_02 | wall | W20 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_BCA25_02 | wall | W25 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_BCA25_02 | wall | W30 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_BCA25_02 | wall | W35 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_BCA25_02 | wall | W40 |  |  | zidarie:bca25 | volume |  |  |
+| 0001_BCA25_02 | wall | W60 |  |  | zidarie:bca25 | volume |  |  |
 | 0001_CARPLIN_02 | wall | W15 |  |  | zidarie:caramida_plina | volume |  |  |
 | 0001_CARPLIN_02 | wall | W20 |  |  | zidarie:caramida_plina | volume |  |  |
 | 0001_CARPLIN_02 | wall | W25 |  |  | zidarie:caramida_plina | volume |  |  |
 | 0001_CARPLIN_02 | wall | W30 |  |  | zidarie:caramida_plina | volume |  |  |
 | 0001_CARPLIN_02 | wall | W35 |  |  | zidarie:caramida_plina | volume |  |  |
 | 0001_CARPLIN_02 | wall | W40 |  |  | zidarie:caramida_plina | volume |  |  |
+| 0001_CARPLIN_02 | wall | W60 |  |  | zidarie:caramida_plina | volume |  |  |

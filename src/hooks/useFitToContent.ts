@@ -49,7 +49,12 @@ export interface FitToContentOptions {
    * user's own zoom.
    */
   viewKey?: string;
-  /** Skip entirely (embedded mode: SheetComposer / report insets own their layout). */
+  /**
+   * Skip entirely. Sheet viewports deliberately DO fit: a viewport frame is a
+   * window onto the drawing, and one that showed the building at a third of
+   * its size — which is what the floor plan's deliberate blank canvas margin
+   * gives you at zoom 1 — is not a drawing anyone would print.
+   */
   enabled?: boolean;
 }
 

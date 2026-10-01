@@ -50,10 +50,12 @@ export type EdgeType =
   /** Operation ordering, L4 process layer. Never inferred. */
   | 'precedes'
   /** Operation ↔ the element it materialises, L4 process layer. Never inferred. */
-  | 'realizes';
+  | 'realizes'
+  /** Sketch ↔ the ax it is drawn relative to (1 = origin, 2 = origin + direction). */
+  | 'references';
 
 export const EDGE_TYPES: readonly EdgeType[] = [
-  'spans', 'bounds', 'hosts', 'supports', 'precedes', 'realizes',
+  'spans', 'bounds', 'hosts', 'supports', 'precedes', 'realizes', 'references',
 ] as const;
 
 /** Romanian labels — the app's element/property UI is Romanian-facing. */
@@ -64,6 +66,7 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
   supports: 'Reazemă pe',
   precedes: 'Precede',
   realizes: 'Materializează',
+  references: 'Se raportează la',
 };
 
 /**
@@ -75,7 +78,7 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
  * relation semantics can never drift apart.
  */
 export const HUB_TYPES: ReadonlySet<string> = new Set([
-  'room', 'shell', 'roof', 'slab', 'covering', 'foundation',
+  'room', 'shell', 'roof', 'slab', 'covering', 'foundation', 'dome', 'site', 'scatter', 'facade', 'terrain_pad',
 ]);
 
 /** Node types that act as a geometric anchor point (an edge END, not a subject). */
@@ -126,6 +129,12 @@ export function inferEdgeType(
   if ((LINEAR_TYPES.has(a.type) && ANCHOR_TYPES.has(b.type)) ||
       (LINEAR_TYPES.has(b.type) && ANCHOR_TYPES.has(a.type))) {
     return 'spans';
+  }
+
+  // sketch ↔ the ax it is drawn against — a datum, not an endpoint
+  if ((a.type === 'sketch' && ANCHOR_TYPES.has(b.type)) ||
+      (b.type === 'sketch' && ANCHOR_TYPES.has(a.type))) {
+    return 'references';
   }
 
   return undefined;

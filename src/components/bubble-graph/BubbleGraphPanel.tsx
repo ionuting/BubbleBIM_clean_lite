@@ -22,18 +22,41 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  X, Maximize2, Minimize2, BookOpen, CircleHelp, Moon, Sun,
+  Maximize2, Minimize2,
   MousePointer2, Circle, Minus, ChevronLeft, ChevronRight, PanelRightClose,
-  Grid3x3, Combine, Undo2, Redo2,
+  Grid3x3, Combine, Calculator, FlaskConical, Scissors,
+  RectangleHorizontal, DoorOpen, Layers, Palette, BookMarked, House, Building2, Shapes,
+  Share2, Layers3, PanelTop, Box, Columns2, Globe2, Mountain, Table2, FileStack, Folder, Package,
 } from 'lucide-react';
 import { CleanRibbon } from '@/components/bubble-graph/CleanRibbon';
-import { CleanNavigator } from '@/components/bubble-graph/CleanNavigator';
-import { Button } from '@/components/ui/button';
+import { ProjectBrowser, type TreeItem } from '@/components/bubble-graph/shell/ProjectBrowser';
+import { NewViewDialog, type NewViewRequest } from '@/components/bubble-graph/shell/NewViewDialog';
+import {
+  DEFAULT_ENGINE, duplicateView, newViewId, syncViews, tabTypeOf, uniqueViewName, type DrawingEngine, type DrawingView,
+} from '@/lib/views/drawingViews';
+import { GRAPHIC_STYLE_IDS, GRAPHIC_STYLES, type GraphicStyleId } from '@/lib/drawing/graphicStyle';
+import { HudBar, HudMenu, HudPopover, type MenuItem } from '@/components/bubble-graph/shell/HudBar';
+import { CommandPalette, type ShellCommand } from '@/components/bubble-graph/shell/CommandPalette';
+import { ProjectConfigPanel, type ConfigGroup } from '@/components/bubble-graph/shell/ProjectConfigPanel';
+import { VersionControl } from '@/components/bubble-graph/shell/VersionControl';
+import { readAppliedStyle } from '@/lib/style/engine';
+import { STYLE_PACK_MAP } from '@/lib/style/packs';
+import { capabilitiesFor } from '@/components/bubble-graph/shell/capabilities';
+import { isTypingTarget, modesFor, type ShellMode } from '@/components/bubble-graph/shell/modes';
 import { cn, parseAxes } from '@/lib/utils';
 import { useBubbleGraphStore } from '@/store';
-import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes, StoreyDiscipline } from '@/store';
+import type {
+  BubbleGraphNode, BubbleGraphEdge, BuildingAxes, StoreyDiscipline, ViewTab, Viewer3DType,
+} from '@/store';
+import { isDetachable, type GraphBroadcast } from '@/lib/detachedView';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ProjectsDialog } from '@/components/bubble-graph/ProjectsDialog';
 import { getGeometriesByFamily } from './geometryResolver';
-import { generateIfcFromGraph } from './ifcGenerator';
+import { isCancelled, pushGraphToArchicad } from '@/lib/archicad/browserPush';
+import { buildIfcModel } from '@/lib/ifc/buildIfcModel';
+import { exportGeoreference } from '@/lib/geo';
+import { safeFilename } from '@/lib/download';
+import { IfcLiveSyncClient, type LiveSyncStatus } from '@/lib/ifc/liveSync';
 import { QuestPanel } from './QuestPanel';
 import { generateRoomGrid, planJoinRooms } from '@/lib/roomGrid/roomGrid';
 import { useUndoableGraphState } from '@/hooks/useUndoableGraphState';
@@ -45,22 +68,24 @@ import { HistoryPanel } from './HistoryPanel';
 import {
   serializeProject, deserializeProject, downloadProject, openProjectFile, sanitizeViewTabs,
 } from '@/lib/projectFile';
-import { exportBimxHtml } from '@/lib/bimxExport';
 import { ChatPanel } from './ChatPanel';
 import { ObjectLibraryPanel } from '@/components/ui/ObjectLibraryPanel';
 import { SymbolConfigPanel } from '@/components/ui/SymbolConfigPanel';
 import type { ObjectLibraryEntry } from '@/lib/useObjectLibrary';
 import nodeLibraryData from './nodeLibrary.json';
 import { toast } from '@/components/ui/toast';
+import { listLoadedIfc } from '@/lib/loadedIfcRegistry';
 import type { ProjectData } from '@/electron.d';
 import { ViewTabBar } from '@/components/views/ViewTabBar';
-import { Ara3DViewer } from '@/components/views/Ara3DViewer';
 import { WebIfcViewer } from '@/components/views/WebIfcViewer';
 import { OpenGeoViewer } from '@/components/views/OpenGeoViewer';
 import { BrepViewer } from '@/components/views/BrepViewer';
 import { FemViewer } from '@/components/views/FemViewer';
+import { TopologyView } from '@/components/views/TopologyView';
 import { ROOM_LOAD_LABELS, DEFAULT_ROOM_LOAD_CATEGORY } from '@/lib/fem/femLoads';
 import { OGFloorPlanViewer, OGSectionViewer, OGElevationViewer } from '@/components/views/OGFloorPlanViewer';
+import { ProfileEditor } from '@/components/profile-editor/ProfileEditor';
+import type { ProfileDraft } from '@/lib/profileDraft';
 import { TechnicalDrawingsViewer } from '@/components/views/TechnicalDrawingsViewer';
 import { FloorPlan2DViewer } from '@/components/views/FloorPlan2DViewer';
 import { Section2DViewer } from '@/components/views/Section2DViewer';
@@ -76,8 +101,11 @@ import { WorldViewer } from '@/components/views/WorldViewer';
 import { IFCPlanView } from '@/components/views/IFCPlanView';
 import { TerrainViewer } from '@/components/views/TerrainViewer';
 import { IFCTilesViewer } from '@/components/views/IFCTilesViewer';
+import { useModelIfc } from '@/lib/ifc/useModelIfc';
+import { createSiteNode } from '@/lib/terrain/siteNode';
 import { ComposerCanvas } from '@/components/views/ComposerCanvas';
 import { MaterialConfigEditor } from '@/components/views/MaterialConfigEditor';
+import { StyleDialog } from '@/components/views/StyleDialog';
 import { WindowConfigurator } from '@/components/configurators/WindowConfigurator';
 import { NodeMultiSelectFilter } from './NodeMultiSelectFilter';
 import { WorkflowHelpPanel } from './WorkflowHelpPanel';
@@ -85,12 +113,28 @@ import { DoorConfigurator } from '@/components/configurators/DoorConfigurator';
 import { WINDOW_TYPE_MAP, DOOR_TYPE_MAP } from '@/lib/elementLibrary';
 import { useLibraryTypes } from '@/lib/useLibraryTypes';
 import type { WindowType, DoorType } from '@/lib/elementLibrary';
-import { useMaterialConfig } from '@/lib/useMaterialConfig';
+import { getMaterialConfigSync, useMaterialConfig } from '@/lib/useMaterialConfig';
 import { safeEval, parseArrayProp, isArrayExpr, resolveFormulaContext, evalProp } from '@/lib/formulaUtils';
-import type { FormulaContext } from '@/lib/formulaUtils';
-import { calcRoomPolygon, calcRoomParametricGrid, type RoomParametricGrid, parseContourOffsets, insetPolygon, parseWallThickness } from '@/lib/bimGeometry';
-import { distToSegment, pickBestHit, type HitCandidate } from '@/lib/graph/pickHit';
-import { ZoneSpecField } from '@/components/zones/ZoneSpecField';
+import { deriveQuantities, isDerivedKey, quantityVars, stampDerivedQuantities } from '@/lib/quantityTakeoff/derivedQuantities';
+import type { FormulaVars } from '@/lib/formulaUtils';
+import { calcRoomPolygon, calcRoomParametricGrid, type RoomParametricGrid, parseContourOffsets, insetPolygon, getAxRealPos, getConnectedNodesWithGrips, parseWallThickness } from '@/lib/bimGeometry';
+import {
+  canvasToBim, storeyFrame, applyGridEdit, linkedStoreys, axisDeltaBounds, cellOffsetBounds, roundToSnap,
+  GRID_MIN_GAP_MM, GRID_SNAP_MM, DEFAULT_SPAN_EDIT_MODE, type GridEdit, type GridScope,
+} from '@/lib/grid/axisEdit';
+import { buildGridLayout, gridHitTest, screenToWorld, worldToScreen, type AxisLine, type CellHandle } from '@/lib/grid/gridLayout';
+import { drawGridMode, type GridHover } from '@/lib/grid/gridRender';
+import {
+  wallOpenings, placeOpening, openingHitTest, wallChips, wallChipHitTest, patchOpening, removeOpening,
+  addOpening, setHasOpenings, offsetKeyFor, offsetForCentre, sameOpeningRef,
+  type GridWall, type OpeningPlacement, type OpeningRef,
+} from '@/lib/grid/openings';
+import { HUB_TYPES, annotateEdgeTypes } from '@/lib/graph/edgeTypes';
+import {
+  parseStructuralSystem, resolveStructuralSystem, STRUCTURAL_SYSTEMS,
+  STRUCTURAL_SYSTEM_LABELS, STRUCTURAL_SYSTEM_HINTS, SYSTEM_PROPERTY_KEY,
+  type StructuralSystem,
+} from '@/lib/systems/structuralSystem';
 import {
   COVERING_PRESETS, DEFAULT_COVERING_HEIGHT_MM, DEFAULT_COVERING_THICKNESS_MM, DEFAULT_ROOM_HEIGHT_MM,
   getEditableCoveringLayers, getRoomHeightMm, scaleCoveringPreset, serializeCoveringLayers,
@@ -101,10 +145,45 @@ import {
   scaleWallLayerPreset, serializeWallLayers, type WallLayer,
 } from '@/lib/wallLayers';
 import { solveRoof, applyRoofResult, createRoofForStorey } from '@/lib/roof';
+import { solveStair, applyStairResult, createStairwellForStorey } from '@/lib/stair';
+import {
+  computeSweep, ensureProfileLibraryLoaded, listProfileOptions,
+  PARAMETRIC_PROFILES, profileSvgPath,
+  sweepRole, SWEEP_ROLES, SWEEP_ROLE_LABELS, SWEEP_ROLE_HINTS,
+  DETAIL_TYPE_MAP, detailTypeProperties, detailTypesForRole,
+} from '@/lib/sweep';
+import { computeSketch, resolveSketchFrame, setSketchRefs, sketchOutline, sketchPathReader, SKETCH_DEFAULT_IFC_TYPE, SKETCH_PROFILE_PREFIX } from '@/lib/sketch';
+import { pointInPolygon, polygonArea } from '@/lib/geom/plan2d';
+import { computeScatter, parseScatterKind, SCATTER_KINDS, SCATTER_KIND_LABELS, SCATTER_KIND_DEFAULTS } from '@/lib/scatter';
+import { computeFacade, FACADE_PATTERNS, FACADE_PATTERN_LABELS, FACADE_PANEL_KINDS, FACADE_PANEL_KIND_LABELS } from '@/lib/facade';
+import { useArmare } from '@/store/armareStore';
+import { computeDome } from '@/lib/dome';
+import { computeSite, findSiteNode, slopeRatio } from '@/lib/terrain';
+import { subscribeBglibStore } from '@/lib/bglibSymbolStore';
+import { useAutoRegenerateStairs } from '@/hooks/useAutoRegenerateStairs';
 import { QuantitiesPanel } from '@/components/quantities/QuantitiesPanel';
 import { ReportTabView } from '@/components/quantities/ReportTabView';
 import { CostFloatingPanel } from '@/components/quantities/CostFloatingPanel';
+import { DashboardPanel } from '@/components/quantities/DashboardPanel';
 import { computeFullTakeoff } from '@/lib/quantityTakeoff';
+import { setTakeoffContext } from '@/lib/quantityTakeoff/takeoffContext';
+import { CLIMATE, DEFAULT_SITE } from '@/lib/energy/heating';
+import { distToSegment, pickBestHit, type HitCandidate } from '@/lib/graph/pickHit';
+import { LibraryPanel } from '@/components/library/LibraryPanel';
+import { ZoneSpecField } from '@/components/zones/ZoneSpecField';
+import { ShellZonesEditor } from '@/components/zones/ShellZonesEditor';
+import { ScenarioBar } from '@/components/scenarios/ScenarioBar';
+import { CURRENCY } from '@/store/priceStore';
+import { CompareFloatingPanel } from '@/components/scenarios/CompareFloatingPanel';
+import { useScenarioResults } from '@/hooks/useScenarioResults';
+import { useScenarios, exportScenarios, importScenarios } from '@/store/scenarioStore';
+import { applyScenario } from '@/lib/scenarios/scenario';
+import { adaptGraphToSystem, isNativeWallType, profileFor, summaryChanged } from '@/lib/systems/profiles';
+import { parseSpecSelection, specGroupsFor, type SpecSelection } from '@/lib/norms/specs';
+import { SpecPicker } from '@/components/systems/SpecPicker';
+import { SystemAdaptBanner } from '@/components/systems/SystemAdaptBanner';
+import { SHELL_ROLES, SHELL_ROLE_HINTS, SHELL_ROLE_LABELS, envelopeMissing, shellRole } from '@/lib/shell/region';
+import type { EconomySnapshot } from '@/lib/quests/economist';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -129,12 +208,15 @@ type InteractionMode = 'select' | 'addNode' | 'addEdge';
 type EdgePlacementType = 'simple' | 'wall' | 'beam';
 
 /**
- * "Hub" nodes define a polygon by fanning edges out to many ax corners
- * (room→ax, roof→ax, …). When one is the edge anchor, continuous connect keeps
- * the SAME anchor so you can click corner after corner (press Enter to finish),
+ * "Hub" nodes (room, roof, slab, …) define a polygon by fanning edges out to
+ * many ax corners. When one is the edge anchor, continuous connect keeps the
+ * SAME anchor so you can click corner after corner (press Enter to finish),
  * instead of re-picking the hub each time.
+ *
+ * `HUB_TYPES` is imported from lib/graph/edgeTypes rather than redeclared here:
+ * the same set decides which edges are `bounds` relations, so the editor's idea
+ * of a hub and the graph's relation semantics cannot drift apart.
  */
-const HUB_TYPES = new Set(['room', 'shell', 'roof', 'slab', 'covering', 'foundation']);
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -210,7 +292,7 @@ function FormulaInput({
   value: number; step?: number; onChange: (v: number) => void;
   className?: string; placeholder?: string;
   /** Optional BIM topology context for resolving context variables. */
-  ctx?: Partial<FormulaContext>;
+  ctx?: FormulaVars;
 }) {
   const [display, setDisplay] = useState(String(isNaN(value) ? 0 : value));
   const [isFormula, setIsFormula] = useState(false);
@@ -303,8 +385,85 @@ function getNodeTypeData(id: string): NodeType | undefined {
   return NODE_LIBRARY.nodeTypes.find((n) => n.id === id);
 }
 
+/** Category names for the browser's Families folder (Revit's "Families"). */
+const FAMILY_LABEL_RO: Record<string, string> = {
+  wall: 'Pereți', window: 'Ferestre', door: 'Uși', slab: 'Plăci', column: 'Stâlpi', beam: 'Grinzi',
+  foundation: 'Fundații', roof: 'Acoperișuri', room: 'Încăperi', shell: 'Straturi exterioare',
+  covering: 'Finisaje', stairwell: 'Scări', sweep: 'Profile (sweep)', sketch: 'Schițe', dormer: 'Lucarne',
+  skylight: 'Ferestre de acoperiș', site: 'Teren', dome: 'Cupole', facade: 'Fațade cortină',
+  object: 'Obiecte din bibliotecă', scatter: 'Vegetație și pietre', void: 'Goluri',
+};
+/** Node types that are structure of the browser itself, not elements. */
+const NOT_A_FAMILY = new Set(['ax', 'storey', 'section', 'view', 'cell']);
+
+/** What tells one type of a category from another: wall_type, window_type… or the role, the material. */
+function familyTypeOf(n: BubbleGraphNode): string {
+  const p = n.properties ?? {};
+  for (const k of [`${n.type}_type`, 'element_type', 'sweep_role', 'dormer_type', 'material']) {
+    const v = p[k];
+    if (v != null && String(v).trim() !== '') return String(v);
+  }
+  return '—';
+}
+
 function uid(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+// ── GraphML: the graph as a plain interchange file ──────────────────────────
+
+function graphMLText(nodes: BubbleGraphNode[], edges: BubbleGraphEdge[]): string {
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<graphml xmlns="http://graphml.graphdrawing.org/xmlns">\n  <graph id="G" edgedefault="undirected">\n';
+  nodes.forEach((n) => {
+    xml += `    <node id="${n.id}">\n`;
+    xml += `      <data key="type">${n.type}</data>\n`;
+    xml += `      <data key="name">${n.name}</data>\n`;
+    xml += `      <data key="x">${n.x}</data>\n`;
+    xml += `      <data key="y">${n.y}</data>\n`;
+    xml += `      <data key="z">${n.z}</data>\n`;
+    if (n.parentId) xml += `      <data key="parentId">${n.parentId}</data>\n`;
+    Object.entries(n.properties).forEach(([k, v]) => {
+      xml += `      <data key="${k}">${Array.isArray(v) ? v.join(',') : v}</data>\n`;
+    });
+    xml += '    </node>\n';
+  });
+  edges.forEach((e) => {
+    xml += `    <edge id="${e.id}" source="${e.from}" target="${e.to}"/>\n`;
+  });
+  return xml + '  </graph>\n</graphml>';
+}
+
+function parseGraphML(text: string): { nodes: BubbleGraphNode[]; edges: BubbleGraphEdge[] } {
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  const nodes: BubbleGraphNode[] = [];
+  for (const el of Array.from(doc.getElementsByTagName('node'))) {
+    const id = el.getAttribute('id') ?? `node_${uid()}`;
+    const n: BubbleGraphNode = { id, type: '', name: '', x: 0, y: 0, z: 0, properties: {} };
+    for (const d of Array.from(el.getElementsByTagName('data'))) {
+      const k = d.getAttribute('key'), v = d.textContent ?? '';
+      if (k === 'type') n.type = v;
+      else if (k === 'name') n.name = v;
+      else if (k === 'x') n.x = parseFloat(v);
+      else if (k === 'y') n.y = parseFloat(v);
+      else if (k === 'z') n.z = parseFloat(v);
+      else if (k === 'parentId') n.parentId = v;
+      else if (k) n.properties[k] = v;
+    }
+    nodes.push(n);
+  }
+  const edges: BubbleGraphEdge[] = Array.from(doc.getElementsByTagName('edge')).map((el) => ({
+    id: el.getAttribute('id') ?? `edge_${uid()}`,
+    from: el.getAttribute('source') ?? '',
+    to: el.getAttribute('target') ?? '',
+  }));
+  return { nodes, edges };
+}
+
+function downloadBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -316,13 +475,14 @@ function useAutoSave(
   edges: BubbleGraphEdge[],
   buildingAxes: BuildingAxes,
   projectName: string,
+  structuralSystem: StructuralSystem,
   isLoaded: boolean,
   interval = 10000,
 ) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaveRef = useRef<number>(0);
   const hasMountedRef = useRef(false);
-  const latestDataRef = useRef({ nodes, edges, buildingAxes, projectName });
+  const latestDataRef = useRef({ nodes, edges, buildingAxes, projectName, structuralSystem });
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -335,12 +495,13 @@ function useAutoSave(
 
   // Keep ref in sync with latest props without triggering effects
   useEffect(() => {
-    latestDataRef.current = { nodes, edges, buildingAxes, projectName };
+    latestDataRef.current = { nodes, edges, buildingAxes, projectName, structuralSystem };
   });
 
   const performSave = useCallback(async () => {
-    const { nodes: n, edges: e, buildingAxes: ba, projectName: pn } = latestDataRef.current;
+    const { nodes: n, edges: e, buildingAxes: ba, projectName: pn, structuralSystem: sys } = latestDataRef.current;
     const annotations = useBubbleGraphStore.getState().annotations;
+    const drawingViews = useBubbleGraphStore.getState().drawingViews;
     const worldLocation = useBubbleGraphStore.getState().worldLocation;
     const globeInstances = useBubbleGraphStore.getState().globeInstances;
     const composerShapes = useBubbleGraphStore.getState().composer.shapes;
@@ -354,7 +515,12 @@ function useAutoSave(
     try {
       setIsSaving(true);
       setSaveError(null);
-      await saveGraph({ nodes: n, edges: e, buildingAxes: ba, projectName: pn, activeStoreyId: null, annotations, worldLocation, globeInstances, composerShapes, viewTabs, activeTabId });
+      // Backfill relation types on the way out, so what lands on disk is typed
+      // even for edges drawn since the last load (annotateEdgeTypes is a no-op
+      // when everything already carries a type).
+      const typedEdges = annotateEdgeTypes(e, n);
+      const terrain = useBubbleGraphStore.getState().terrain ?? undefined;
+      await saveGraph({ projectSlug: useBubbleGraphStore.getState().projectSlug, nodes: stampDerivedQuantities(n, e), edges: typedEdges, buildingAxes: ba, projectName: pn, activeStoreyId: null, annotations, drawingViews, worldLocation, globeInstances, composerShapes, viewTabs, activeTabId, structuralSystem: sys, scenarios: exportScenarios(), terrain });
       setLastSaved(new Date());
       lastSaveRef.current = Date.now();
       console.log('✅ Graph auto-saved');
@@ -389,7 +555,7 @@ function useAutoSave(
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, projectName, viewTabs, activeTabId, isLoaded, interval, performSave]);
+  }, [nodes, edges, projectName, structuralSystem, viewTabs, activeTabId, isLoaded, interval, performSave]);
 
   return { lastSaved, isSaving, saveError, performSave };
 }
@@ -434,6 +600,71 @@ function useAutoBackup(nodes: BubbleGraphNode[], interval = 300000) {
   return { lastBackup };
 }
 
+/**
+ * useIfcLiveSync: while `enabled`, keeps a WebSocket connection open to the
+ * standalone relay (IfcLiteBridge/server/relay.ts) and pushes a freshly-built
+ * IFC STEP model every time `nodes`/`edges` settle — same debounce shape as
+ * `useAutoBackup` above, but a much shorter window since this is meant to
+ * feel live rather than a periodic backup. Reuses `buildIfcModel`, the exact
+ * function the manual "⚙ Generate IFC" button already calls — no new
+ * IFC-generation logic, only a transport for the same output. When disabled,
+ * this is a no-op: no socket, no `buildIfcModel` calls.
+ */
+function useIfcLiveSync(
+  nodes: BubbleGraphNode[],
+  edges: BubbleGraphEdge[],
+  projectName: string,
+  enabled: boolean,
+  debounceMs = 800,
+) {
+  const [status, setStatus] = useState<LiveSyncStatus>('idle');
+  const clientRef = useRef<IfcLiveSyncClient | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Connection lifecycle — open/close strictly follows `enabled`.
+  useEffect(() => {
+    if (!enabled) {
+      clientRef.current?.disconnect();
+      clientRef.current = null;
+      setStatus('idle');
+      return;
+    }
+    const client = new IfcLiveSyncClient(setStatus);
+    clientRef.current = client;
+    client.connect();
+    return () => {
+      client.disconnect();
+      if (clientRef.current === client) clientRef.current = null;
+    };
+  }, [enabled]);
+
+  // Debounced push on every graph change.
+  useEffect(() => {
+    if (!enabled) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const client = clientRef.current;
+      if (!client?.isConnected) return;
+      try {
+        const { content } = buildIfcModel(nodes, edges, projectName, {
+          georeference: exportGeoreference(useBubbleGraphStore.getState().worldLocation),
+          materialConfig: getMaterialConfigSync(),
+        });
+        client.sendModel(projectName, content);
+      } catch (err) {
+        console.error('[ifc live-sync] build failed:', err);
+      }
+    }, debounceMs);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [nodes, edges, projectName, enabled, debounceMs]);
+
+  return { status };
+}
+
 function pointToLineDist(
   px: number, py: number,
   x1: number, y1: number,
@@ -454,40 +685,6 @@ function pointToLineDist(
  *
  * View IDs are tracked in a stable Map stored in a ref to survive re-renders.
  */
-// ─── ExplorerSection ─────────────────────────────────────────────────────
-
-function ExplorerSection({
-  icon, label, children, defaultOpen = false, count,
-}: {
-  icon: string;
-  label: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-  count?: number;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div style={{ borderBottom: '1px solid hsl(var(--border) / 0.5)' }}>
-      <button
-        className={`bb-section-btn${open ? ' open' : ''}`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span style={{ fontSize: 11, opacity: 0.7 }}>{icon}</span>
-        <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
-        {count !== undefined && count > 0 && (
-          <span style={{
-            fontSize: 9, background: 'hsl(var(--primary) / 0.15)',
-            color: 'hsl(var(--primary))', padding: '1px 5px',
-            borderRadius: 10, fontWeight: 600,
-          }}>{count}</span>
-        )}
-        <span className="chevron" style={{ fontSize: 9 }}>▶</span>
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  );
-}
-
 // ─── LibraryTypePicker ────────────────────────────────────────────────────
 
 interface LibraryTypePickerProps {
@@ -608,12 +805,22 @@ interface PropertiesPanelProps {
   bulkNodes?: BubbleGraphNode[];
   onUpdateField: (field: keyof BubbleGraphNode, v: unknown) => void;
   onUpdateProp: (key: string, v: unknown) => void;
+  /** Apply several properties at once — one undo step. */
+  onUpdateProps?: (patch: Record<string, unknown>) => void;
   onAddProp: () => void;
   onDeleteProp: (key: string) => void;
   onDuplicateStorey: (id: string) => void;
   onOpenSectionTab?: (nodeId: string) => void;
   /** Generate / update parametric roof assembly for the selected roof node. */
   onGenerateRoof?: (level: 'envelope' | 'skeleton' | 'framing') => void;
+  onGenerateStair?: (level: 'outline' | 'flights' | 'steps') => void;
+  /** Project-wide structural system — shown as the inherited value an element can override. */
+  projectSystem?: StructuralSystem;
+  /**
+   * Apply a pure graph rewrite — nodes AND edges together, one undo step.
+   * For edits that are not a property patch: wiring a sketch to its reference.
+   */
+  onRewireGraph?: (fn: (nodes: BubbleGraphNode[], edges: BubbleGraphEdge[]) => { nodes: BubbleGraphNode[]; edges: BubbleGraphEdge[] }) => void;
 }
 
 /** Returns the common value across all nodes, or undefined if they differ. */
@@ -639,11 +846,15 @@ function PropertiesPanel({
   bulkNodes,
   onUpdateField,
   onUpdateProp,
+  onUpdateProps,
   onAddProp,
   onDeleteProp,
   onDuplicateStorey,
   onOpenSectionTab,
   onGenerateRoof,
+  onGenerateStair,
+  projectSystem,
+  onRewireGraph,
 }: PropertiesPanelProps) {
   const { config: matConfig } = useMaterialConfig();
   // User element library state (column + slab)
@@ -678,6 +889,110 @@ function PropertiesPanel({
 
   // Placeholder shown in inputs when values differ
   const VAR = 'var';
+
+  // ── Sweep: pure recompute for read-outs + diagnostics ─────────────────────
+  // DXF profiles land async in the bglib store; the version bump re-runs the
+  // memo (and re-lists the picker options) when one arrives.
+  const [profileLibVer, setProfileLibVer] = useState(0);
+  // The in-app profile editor, opened from the picker. It writes a library
+  // symbol, so a drawn profile and an imported DXF are the same thing after.
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
+  useEffect(() => {
+    void ensureProfileLibraryLoaded();
+    return subscribeBglibStore(() => setProfileLibVer((n) => n + 1));
+  }, []);
+  const sweepRes = useMemo(
+    () => (!isBulk && node?.type === 'sweep' ? computeSweep(node, nodeMap, allEdges) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [node, nodeMap, allEdges, profileLibVer],
+  );
+  const sketchRes = useMemo(
+    () => (!isBulk && node?.type === 'sketch' ? computeSketch(node, nodeMap, allEdges) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [node, nodeMap, allEdges, profileLibVer],
+  );
+  /**
+   * The other closed sketches of this storey — what this one can be a hole in,
+   * and which faces a sweep can take as its profile. A hole is never offered
+   * as a host: holes do not nest.
+   */
+  const sketchFaces = useMemo(() => {
+    if (isBulk || node?.type !== 'sketch') return [];
+    const closedOf = (n: BubbleGraphNode) => String(n.properties?.closed ?? 'True').toLowerCase() !== 'false';
+    return [...nodeMap.values()]
+      .filter((n) => n.type === 'sketch' && n.id !== node.id && n.parentId === node.parentId
+        && closedOf(n) && !String(n.properties?.hole_of ?? '').trim())
+      .map((n) => {
+        const outline = sketchOutline(n, nodeMap, allEdges);
+        const holes = [...nodeMap.values()].filter((h) => h.type === 'sketch' && String(h.properties?.hole_of ?? '') === n.id).length;
+        return { id: n.id, name: n.name || n.id, outline, holes };
+      })
+      .filter((f) => f.outline.length >= 3);
+  }, [isBulk, node, nodeMap, allEdges]);
+  /**
+   * Every other sketch of the storey an array can run along — open or
+   * closed, curve or polyline — with its length, for the picker.
+   */
+  const sketchPaths = useMemo(() => {
+    if (isBulk || node?.type !== 'sketch') return [];
+    return [...nodeMap.values()]
+      .filter((n) => n.type === 'sketch' && n.id !== node.id && n.parentId === node.parentId
+        && !String(n.properties?.hole_of ?? '').trim())
+      .map((n) => ({ id: n.id, name: n.name || n.id, lengthMm: sketchPathReader(n, nodeMap, allEdges)?.length ?? 0 }))
+      .filter((p) => p.lengthMm >= 1);
+  }, [isBulk, node, nodeMap, allEdges]);
+  /** The node's derived quantities — shown read-only, and the `q_*` a formula may name. */
+  const nodeQty = useMemo(
+    () => (!isBulk && node ? deriveQuantities(node, allEdges, nodeMap) : []),
+    [isBulk, node, allEdges, nodeMap],
+  );
+  /**
+   * What a sketch's formula fields may name: the topology context, the
+   * node's own quantities, and the length of the path its array runs along.
+   */
+  const fmVars = useMemo(() => {
+    const pathId = String(node?.properties?.array_path ?? '');
+    const path = sketchPaths.find((p) => p.id === pathId);
+    return {
+      ...(fmCtx ?? {}),
+      ...quantityVars(nodeQty),
+      ...(path ? { path_length_m: path.lengthMm / 1000 } : {}),
+    } as Record<string, number>;
+  }, [fmCtx, nodeQty, sketchPaths, node]);
+  /** The smallest closed sketch that contains every point of this one. */
+  const enclosingSketch = useMemo(() => {
+    if (!sketchRes || sketchRes.intent.outline.length < 3) return null;
+    const mine = sketchRes.intent.outline;
+    const around = sketchFaces
+      .filter((f) => mine.every((p) => pointInPolygon(p, f.outline, 0)))
+      .sort((a, b) => Math.abs(polygonArea(a.outline)) - Math.abs(polygonArea(b.outline)));
+    return around[0] ?? null;
+  }, [sketchRes, sketchFaces]);
+  const facadeRes = useMemo(
+    () => (!isBulk && node?.type === 'facade' ? computeFacade(node, nodeMap, allEdges) : null),
+    [isBulk, node, nodeMap, allEdges],
+  );
+  const scatterRes = useMemo(
+    () => (!isBulk && node?.type === 'scatter' ? computeScatter(node, nodeMap, allEdges) : null),
+    [isBulk, node, nodeMap, allEdges],
+  );
+  const domeRes = useMemo(
+    () => (!isBulk && node?.type === 'dome' ? computeDome(node, nodeMap, allEdges) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [node, nodeMap, allEdges, profileLibVer],
+  );
+  const terrainModel = useBubbleGraphStore((s) => s.terrain);
+  const padRes = useMemo(() => {
+    if (isBulk || node?.type !== 'terrain_pad') return null;
+    const siteNode = findSiteNode(nodeMap.values());
+    if (!siteNode) return { pad: null, site: null };
+    const site = computeSite(siteNode, nodeMap, allEdges, terrainModel);
+    return { pad: site.pads.find((p) => p.nodeId === node.id) ?? null, site };
+  }, [isBulk, node, nodeMap, allEdges, terrainModel]);
+  const siteRes = useMemo(
+    () => (!isBulk && node?.type === 'site' ? computeSite(node, nodeMap, allEdges, terrainModel) : null),
+    [isBulk, node, nodeMap, allEdges, terrainModel],
+  );
 
   // ── User library helpers (need propVal defined first) ─────────────────────
   const _saveColPreset  = (colType: string) => {
@@ -723,6 +1038,8 @@ function PropertiesPanel({
   // Smart property keys that get dedicated UI
   const smartKeys = new Set([
     'has_column', 'column_type', 'has_beam', 'beam_type', 'beam_material',
+    'roof_attach', 'trim_priority', 'gable_material', 'gable_thickness_mm', 'gable_offset_mm',
+    'show_framing', 'stud_spacing_mm', 'stud_section', 'clt_max_panel_mm',
     'wall_type', 'wall_custom_mm', 'is_circular', 'arc_radius', 'slab_type', 'material',
     'bottomElevation', 'topElevation', 'axesX', 'axesY', 'width', 'height', 'depth',
     'sill_height', 'wall_offset', 'discipline', 'offset', 'elevation',
@@ -732,12 +1049,14 @@ function PropertiesPanel({
     'window_type', 'door_type', 'opening', 'opening_profile', 'cut_depth',
     // room-specific keys
     'contour_offset', 'has_slab', 'slab_material', 'room_load_category',
+    // structural system override — edited by its own section, see lib/systems/
+    'structural_system',
     // shell / covering keys
     'thickness',
     // roof keys
     'roof_type', 'pitch_deg', 'overhang_mm', 'ridge_direction', 'ridge_offset_mm',
     'generate_level', 'rafter_spacing_mm', 'rafter_section', 'ridge_section',
-    'post_section', 'covering_material', 'covering_thickness_mm', 'covering_offset_mm', 'system',
+    'post_section', 'covering_material', 'covering_thickness_mm', 'covering_offset_mm', 'eave_z_offset_mm', 'system',
     'upper_pitch_deg', 'mansard_break_inset_mm', 'truss_spacing_mm', 'purlin_spacing_mm',
     // roof detail-layer keys
     'gen_membrane', 'gen_sheathing', 'sheathing_thickness_mm', 'gen_insulation', 'insulation_thickness_mm',
@@ -754,6 +1073,9 @@ function PropertiesPanel({
     // room-derived covering keys
     'has_covering', 'covering_thickness', 'covering_height', 'covering_material', 'covering_offset', 'covering_layers',
     'wall_layers',
+    // height bands on the envelope — edited by ShellZonesEditor
+    'shell_zones',
+    'climate_site',
     // local-transform params (rendered in Transform section)
     'obj_translate_x', 'obj_translate_y', 'obj_translate_z',
     'obj_rotate_x', 'obj_rotate_y', 'obj_rotate_z',
@@ -763,6 +1085,27 @@ function PropertiesPanel({
     'plan_cut', 'look_side', 'depth_mode', 'clip_to_marker', 'view_direction',
     // per-node appearance overrides (shown in dedicated Appearance sections)
     'label', 'color_3d', 'color_2d', 'slab_custom_mm',
+    // sweep keys (dedicated Sweep section)
+    'profile', 'p_w_mm', 'p_h_mm', 'p_t_mm', 'p_tw_mm', 'p_tf_mm', 'p_d_mm', 'p_segments',
+    'anchor_x', 'anchor_y', 'offset_x_mm', 'offset_z_mm', 'rotation_deg', 'mirror',
+    'corners', 'closed', 'level', 'height_mm', 'ifc_type', 'sweep_role', 'detail_type',
+    // dome keys (dedicated Dome section)
+    'base_radius_mm', 'base_fillet_mm', 'dome_height_mm', 'dome_bulge',
+    'cell_count', 'cell_seed', 'relax_iterations', 'width_mm', 'height_mm',
+    // sketch keys (dedicated Sketch section)
+    'outline', 'op', 'array_count', 'array_dx_mm', 'array_dy_mm', 'array_dz_mm',
+    'array_path', 'array_orient', 'hole_of', 'curve_mode', 'curve_degree',
+    'element_type', 'shape', 'shape_x_mm', 'shape_y_mm', 'shape_w_mm', 'shape_h_mm', 'shape_r_mm',
+    // terrain pad keys (dedicated Platform section)
+    'level_mm', 'level_mode', 'transition', 'slope_deg',
+    // facade keys (dedicated Facade section)
+    'pattern', 'cell_w_mm', 'cell_h_mm', 'panel_kind', 'mullion_w_mm', 'mullion_d_mm',
+    'panel_thickness_mm', 'cassette_depth_mm', 'cassette_bevel_mm', 'offset_mm', 'flip', 'panel_material',
+    // scatter keys (dedicated Scatter section)
+    'kind', 'mode', 'count', 'spacing_mm', 'seed', 'size_mm', 'size_jitter', 'min_gap_mm', 'edge_margin_mm',
+    // site keys (dedicated Site section)
+    'excavate_foundations', 'working_space_mm', 'bedding_mm', 'pit_slope_deg', 'show_in_3d',
+    'resolution', 'glass_thickness_mm', 'planarity_tol_mm', 'glass_material',
   ]);
 
   return (
@@ -1276,10 +1619,26 @@ function PropertiesPanel({
               className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
               value={(propVal('wall_type') as string) ?? 'W20'}
               onChange={(e) => onUpdateProp('wall_type', e.target.value)}
+              title={projectSystem && projectSystem !== 'unset' ? `Tipurile native sistemului ${STRUCTURAL_SYSTEM_LABELS[projectSystem]} sunt primele` : undefined}
             >
-              {getGeometriesByFamily('wall').map((g) => (
-                <option key={g.id} value={g.id}>{g.label}</option>
-              ))}
+              {(() => {
+                const all = getGeometriesByFamily('wall');
+                if (!projectSystem || projectSystem === 'unset') {
+                  return all.map((g) => <option key={g.id} value={g.id}>{g.label}</option>);
+                }
+                const native = all.filter((g) => isNativeWallType(projectSystem, g.id));
+                const other = all.filter((g) => !isNativeWallType(projectSystem, g.id));
+                return (<>
+                  <optgroup label={STRUCTURAL_SYSTEM_LABELS[projectSystem]}>
+                    {native.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                  </optgroup>
+                  {other.length > 0 && (
+                    <optgroup label="Alte tehnologii">
+                      {other.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </optgroup>
+                  )}
+                </>);
+              })()}
             </select>
             {/* Grosime proprie — catalogul acoperă cazurile uzuale, dar un zid de
                 60 cm n-are de ce să ceară un tip nou în librărie. Gol = grosimea
@@ -1387,6 +1746,87 @@ function PropertiesPanel({
               <option value="square_off">Square Off</option>
               <option value="none">None</option>
             </select>
+            {/* ── Roof trim ─────────────────────────────────────────────── */}
+            <span className="text-muted-foreground" title="Grow this wall up to the roof above it before the roof cuts it back — a gable wall closes its own triangle.">Attach to roof</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('roof_attach') ?? 'False')}
+              onChange={(e) => onUpdateProp('roof_attach', e.target.value)}
+            >
+              <option value="False">False</option>
+              <option value="True">True</option>
+            </select>
+            <span className="text-muted-foreground" title="Who cuts whom: the higher number wins. A roof is 100, so leaving this at 10 lets the roof trim the wall; above 100 the wall punches through it instead.">Trim priority</span>
+            <FormulaInput
+              value={Number(propVal('trim_priority') ?? 10)}
+              ctx={fmCtx}
+              onChange={(v) => onUpdateProp('trim_priority', v)} />
+            {/* The gable — the piece left above the roof's cut — is often
+                another construction than the wall below it. */}
+            <span className="text-muted-foreground" title="Material of the part left above the roof cut. Leave on (same as wall) for a wall that carries on in one material.">Gable material</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={(propVal('gable_material') as string) ?? ''}
+              onChange={(e) => onUpdateProp('gable_material', e.target.value)}
+            >
+              <option value="">(same as wall)</option>
+              {matConfig
+                ? Object.entries(matConfig.materials).map(([id, mat]) => (
+                    <option key={id} value={id}>{(mat as { label?: string }).label ?? id}</option>
+                  ))
+                : null}
+            </select>
+            <span className="text-muted-foreground" title="Thickness of the gable in mm. 0 keeps the wall's own thickness.">Gable thk (mm)</span>
+            <FormulaInput
+              value={Number(propVal('gable_thickness_mm') ?? 0)}
+              ctx={fmCtx}
+              onChange={(v) => onUpdateProp('gable_thickness_mm', v)} />
+            <span className="text-muted-foreground" title="Lateral shift of the gable from the wall axis, in mm. Positive moves it to the right walking from the wall's start to its end — set it to half the difference in thickness to sit the gable flush with one face.">Gable offset (mm)</span>
+            <FormulaInput
+              value={Number(propVal('gable_offset_mm') ?? 0)}
+              ctx={fmCtx}
+              onChange={(v) => onUpdateProp('gable_offset_mm', v)} />
+            {/* ── What the system builds the wall of: framing tuning for timber, panel limit for CLT ── */}
+            {(() => {
+              const wt = String(propVal('wall_type') ?? '');
+              const prof = profileFor(resolveStructuralSystem(node, projectSystem));
+              const showFraming = prof.inspector.framing || /^TF/i.test(wt);
+              const showClt = prof.inspector.clt || /^CLT/i.test(wt);
+              return (<>
+                {showFraming && (<>
+            <span className="text-muted-foreground" title="Draw this wall as studs and plates in 3D instead of a solid — only takes effect for a timber-frame wall (TF type or timber_frame system).">Show framing</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+              <input type="checkbox"
+                checked={propVal('show_framing') === 'True' || propVal('show_framing') === true}
+                onChange={(e) => onUpdateProp('show_framing', e.target.checked ? 'True' : 'False')}
+                style={{ width: 11, height: 11 }}
+              />
+              <span className="text-[11px]">studs &amp; plates</span>
+            </label>
+            <span className="text-muted-foreground" title="Centre-to-centre stud spacing in mm; 0 = 625.">Stud spacing (mm)</span>
+            <FormulaInput
+              value={Number(propVal('stud_spacing_mm') ?? 0)}
+              ctx={fmCtx}
+              onChange={(v) => onUpdateProp('stud_spacing_mm', v)} />
+            <span className="text-muted-foreground" title="Stud section as a T-code in cm (T4.5x14.5). Empty = the deepest stud the wall thickness holds.">Stud section</span>
+            <input
+              type="text"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              placeholder="T4.5x14.5"
+              value={(propVal('stud_section') as string) ?? ''}
+              onChange={(e) => onUpdateProp('stud_section', e.target.value)}
+            />
+                </>)}
+                {showClt && (<>
+                  <span className="text-muted-foreground" title="Longest CLT panel the transport allows, in mm; the wall is split into equal pieces above it, never through an opening. 0 = 12000.">CLT max panel (mm)</span>
+                  <FormulaInput
+                    value={Number(propVal('clt_max_panel_mm') ?? 0)}
+                    ctx={fmCtx}
+                    onChange={(v) => onUpdateProp('clt_max_panel_mm', v)} />
+                </>)}
+              </>);
+            })()}
+
             <span className="text-muted-foreground">Has Beam</span>
             <select
               className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
@@ -2345,6 +2785,16 @@ function PropertiesPanel({
       {node.type === 'shell' && (
         <PropSection label="Shell" icon="◡">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground" title="Ce reprezintă conturul — decide ce cantități produce și pe ce norme se decontează">Rol</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={shellRole(node)}
+              onChange={(e) => onUpdateProp('shell_role', e.target.value)}
+            >
+              {SHELL_ROLES.map((r) => (
+                <option key={r} value={r}>{SHELL_ROLE_LABELS[r]}</option>
+              ))}
+            </select>
             <span className="text-muted-foreground">Height (mm)</span>
             <input type="number" step="50"
               className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
@@ -2367,9 +2817,34 @@ function PropertiesPanel({
               value={(node.properties.contour_offset as string ?? '')}
               onChange={(e) => onUpdateProp('contour_offset', e.target.value || undefined)}
             />
+            {/* Clima stă pe anvelopă, nu pe aplicație: e o proprietate a clădirii,
+                se salvează cu proiectul, și se vede lângă ce descrie. */}
+            <span
+              className="text-muted-foreground"
+              title="Localitatea de calcul — dă gradele-zile din care iese necesarul de încălzire. Valori orientative."
+            >Climă</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(node.properties.climate_site ?? DEFAULT_SITE.id)}
+              onChange={(e) => onUpdateProp('climate_site', e.target.value)}
+            >
+              {CLIMATE.map((c) => (
+                <option key={c.id} value={c.id}>{c.label} — {c.degreeDays} K·zi</option>
+              ))}
+            </select>
           </div>
+          <ShellZonesEditor
+            value={node.properties.shell_zones}
+            heightMm={Number(node.properties.height ?? 2800)}
+            onChange={(v) => onUpdateProp('shell_zones', v)}
+          />
           <div className="text-[10px] text-muted-foreground">
-            Connect ax nodes to this shell to define the contour. Door/window openings will be cut in phase 2 (per-face decomposition).
+            {SHELL_ROLE_HINTS[shellRole(node)]}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            Conturul vine din nodurile <em>ax</em> legate la shell. Nodurile <em>cell</em>
+            dinăuntrul lui sunt goluri: plinul = aria conturului minus ariile celulelor,
+            iar din el ies aria tălpii, volumul și fețele de cofrat.
           </div>
         </PropSection>
       )}
@@ -2407,6 +2882,12 @@ function PropertiesPanel({
               className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
               value={Number(propVal('covering_offset_mm') ?? 0)}
               onChange={(e) => onUpdateProp('covering_offset_mm', parseFloat(e.target.value))}
+            />
+            <span className="text-muted-foreground" title="Cota streașinii față de cota superioară a etajului. Negativ = streașina coboară sub coronament (acoperiș care reazemă pe ziduri și trece peste o prispă).">Eave Z (mm) ↕</span>
+            <input type="number" step="50"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('eave_z_offset_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('eave_z_offset_mm', parseFloat(e.target.value))}
             />
             <span className="text-muted-foreground">Ridge dir</span>
             <select
@@ -2633,6 +3114,1869 @@ function PropertiesPanel({
             Contur din pereți storey sau ≥3 ax conectate.
             {propVal('face_count') != null && <> · {String(propVal('face_count'))} fețe</>}
             {propVal('member_count') != null && <> · {String(propVal('member_count'))} elemente</>}
+          </div>
+        </PropSection>
+      )}
+
+      {/* Stairwell — steps are solved from the storey height, so the read-outs
+          below are results, not inputs. */}
+      {node.type === 'stairwell' && (
+        <PropSection label="Stairwell" icon="◱">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground">Type</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('stair_type') ?? 'straight')}
+              onChange={(e) => onUpdateProp('stair_type', e.target.value)}
+            >
+              <option value="straight">Straight (rampă dreaptă)</option>
+              <option value="l_shape">L — quarter turn (întoarcere la 90°)</option>
+              <option value="u_shape">U — half turn (întoarcere la 180°)</option>
+              <option value="spiral">Spiral (scară circulară)</option>
+            </select>
+
+            <span className="text-muted-foreground">Width (mm)</span>
+            <input type="number" step="50" min={600}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('width_mm') ?? 1000)}
+              onChange={(e) => onUpdateProp('width_mm', parseFloat(e.target.value))}
+            />
+
+            <span
+              className="text-muted-foreground"
+              title={Number(propVal('boundary_ax_count') ?? 0) >= 3
+                ? 'Direcția vine din casa scării desenată cu axe. Mută nodul în colțul de unde vrei să urci ca să o întorci.'
+                : 'Direcția primei rampe, grade CCW de la axa X.'}
+            >
+              Direction (°)
+            </span>
+            {Number(propVal('boundary_ax_count') ?? 0) >= 3 ? (
+              <span className="text-[11px] text-muted-foreground italic px-1.5">
+                {String(propVal('solved_direction_deg') ?? 0)}° — din contur
+              </span>
+            ) : (
+              <input type="number" step="15"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={Number(propVal('direction_deg') ?? 0)}
+                onChange={(e) => onUpdateProp('direction_deg', parseFloat(e.target.value))}
+              />
+            )}
+
+            {String(propVal('stair_type') ?? 'straight') !== 'straight' && (
+              <>
+                <span className="text-muted-foreground">Turn</span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('turn') ?? 'left')}
+                  onChange={(e) => onUpdateProp('turn', e.target.value)}
+                >
+                  <option value="left">Left (spre stânga, urcând)</option>
+                  <option value="right">Right (spre dreapta)</option>
+                </select>
+              </>
+            )}
+
+            {['l_shape', 'u_shape'].includes(String(propVal('stair_type') ?? 'straight')) && (
+              <>
+                <span className="text-muted-foreground" title="Podest drept, sau trepte balansate care urcă prin colț.">Turn style</span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('turn_style') ?? 'landing')}
+                  onChange={(e) => onUpdateProp('turn_style', e.target.value)}
+                >
+                  <option value="landing">Podest drept</option>
+                  <option value="winder">Evantai (trepte balansate)</option>
+                </select>
+
+                {String(propVal('turn_style') ?? 'landing') === 'winder' ? (
+                  <>
+                    <span className="text-muted-foreground" title="Câte trepte balansate fac întoarcerea. Fiecare urcă o contratreaptă.">Winders</span>
+                    <input type="number" step="1" min={1} max={12}
+                      className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                      value={Number(propVal('winder_count') ?? 3)}
+                      onChange={(e) => onUpdateProp('winder_count', parseFloat(e.target.value))}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-muted-foreground" title="0 = cât lățimea rampei, care este regula uzuală.">Landing depth</span>
+                    <input type="number" step="50" min={0}
+                      className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                      value={Number(propVal('landing_depth_mm') ?? 0)}
+                      onChange={(e) => onUpdateProp('landing_depth_mm', parseFloat(e.target.value))}
+                    />
+                  </>
+                )}
+              </>
+            )}
+
+            {String(propVal('stair_type') ?? 'straight') === 'spiral' && (
+              <>
+                <span className="text-muted-foreground" title="Raza stâlpului central. 0 = fără stâlp, gol în centru.">Pole radius</span>
+                <input type="number" step="25" min={0}
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('spiral_inner_mm') ?? 100)}
+                  onChange={(e) => onUpdateProp('spiral_inner_mm', parseFloat(e.target.value))}
+                />
+                <span className="text-muted-foreground" title="Trepte-pană suprapuse (segmente prefabricate) sau o turnare continuă: placă elicoidală cu treptele deasupra.">Structure</span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('spiral_structure') ?? 'steps')}
+                  onChange={(e) => onUpdateProp('spiral_structure', e.target.value)}
+                >
+                  <option value="steps">Trepte suprapuse (prefab)</option>
+                  <option value="monolithic">Beton monolit (elicoidal)</option>
+                </select>
+              </>
+            )}
+
+            <span className="text-muted-foreground" title="Auto împarte înălțimea etajului în contratrepte egale.">Sizing</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('sizing') ?? 'auto')}
+              onChange={(e) => onUpdateProp('sizing', e.target.value)}
+            >
+              <option value="auto">Auto from storey height</option>
+              <option value="explicit">Explicit riser</option>
+            </select>
+
+            <span className="text-muted-foreground" title="Contratreapta dorită. Numărul de trepte se rotunjește, iar contratreapta reală închide exact înălțimea.">Riser target</span>
+            <input type="number" step="5" min={100} max={220}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('riser_mm') ?? 170)}
+              onChange={(e) => onUpdateProp('riser_mm', parseFloat(e.target.value))}
+            />
+
+            <span className="text-muted-foreground" title="0 = derivată din regula 2h+g.">Going (mm)</span>
+            <input type="number" step="10" min={0}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('tread_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('tread_mm', parseFloat(e.target.value))}
+            />
+
+            <span className="text-muted-foreground">Waist (mm)</span>
+            <input type="number" step="10" min={40}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('thickness_mm') ?? 150)}
+              onChange={(e) => onUpdateProp('thickness_mm', parseFloat(e.target.value))}
+            />
+
+            <span className="text-muted-foreground" title="Taie golul în placa de deasupra, printr-un nod void.">Slab opening</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('gen_void') ?? 'True')}
+              onChange={(e) => onUpdateProp('gen_void', e.target.value)}
+            >
+              <option value="True">Generate</option>
+              <option value="False">None</option>
+            </select>
+
+            {/* A spiral has no straight flight to anchor, so no base beam. */}
+            {String(propVal('stair_type') ?? 'straight') !== 'spiral' && (
+              <>
+            <span className="text-muted-foreground" title="Grindă de fundare sub prima treaptă, secțiune T întors — preia împingerea rampei. Dimensiunile sunt uzuale, de confirmat cu structuristul.">Base beam</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('gen_base_beam') ?? 'True')}
+              onChange={(e) => onUpdateProp('gen_base_beam', e.target.value)}
+            >
+              <option value="True">Generate (T întors)</option>
+              <option value="False">None</option>
+            </select>
+              </>
+            )}
+
+            {String(propVal('stair_type') ?? 'straight') !== 'spiral'
+              && String(propVal('gen_base_beam') ?? 'True') === 'True' && (
+              <>
+                <span className="text-muted-foreground" title="Adâncimea totală sub cota pardoselii.">Beam depth</span>
+                <input type="number" step="50" min={200}
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('base_beam_depth_mm') ?? 400)}
+                  onChange={(e) => onUpdateProp('base_beam_depth_mm', parseFloat(e.target.value))}
+                />
+                <span className="text-muted-foreground" title="Lățimea tălpii de la bază.">Flange (mm)</span>
+                <input type="number" step="50" min={300}
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('base_beam_flange_mm') ?? 600)}
+                  onChange={(e) => onUpdateProp('base_beam_flange_mm', parseFloat(e.target.value))}
+                />
+              </>
+            )}
+
+            <span className="text-muted-foreground">Railing</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('gen_railing') ?? 'False')}
+              onChange={(e) => onUpdateProp('gen_railing', e.target.value)}
+            >
+              <option value="False">None</option>
+              <option value="True">Generate</option>
+            </select>
+
+            {String(propVal('gen_railing') ?? 'False') === 'True' && (
+              <>
+                <span className="text-muted-foreground" title="Pe ce margine a rampei, privind în sus.">Railing side</span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('railing_side') ?? 'both')}
+                  onChange={(e) => onUpdateProp('railing_side', e.target.value)}
+                >
+                  <option value="both">Both (ambele margini)</option>
+                  <option value="left">Left (stânga, urcând)</option>
+                  <option value="right">Right (dreapta)</option>
+                </select>
+              </>
+            )}
+          </div>
+
+          {/* What the solver worked out — the numbers you check a stair by. */}
+          {propVal('solved_steps') != null && (
+            <div className="mt-2 rounded border border-border bg-muted/40 px-2 py-1.5 text-[10px] leading-relaxed">
+              <div className="font-medium text-foreground">
+                {String(propVal('solved_steps'))} risers × {String(propVal('solved_riser_mm'))} mm
+                {' · '}going {String(propVal('solved_tread_mm'))} mm
+              </div>
+              <div className="text-muted-foreground">
+                climbs {String(propVal('solved_rise_mm'))} mm
+                {' · '}2h+g = {Math.round(2 * Number(propVal('solved_riser_mm') ?? 0) + Number(propVal('solved_tread_mm') ?? 0))} mm
+              </div>
+            </div>
+          )}
+
+          {/* The solver's verdicts, in place. A toast per keystroke would be
+              noise now that regeneration is live; here they persist until the
+              design actually changes. */}
+          {(() => {
+            let diags: { severity: string; message: string }[] = [];
+            try { diags = JSON.parse(String(propVal('solved_diagnostics') ?? '[]')); } catch { /* stale prop */ }
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div
+                    key={i}
+                    className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                      d.severity === 'error'
+                        ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                        : d.severity === 'warning'
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          : 'border-border bg-muted/40 text-muted-foreground'
+                    }`}
+                  >
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          <div className="flex flex-col gap-1 mt-2">
+            <button
+              type="button"
+              className="w-full text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded px-2 py-1.5 transition-colors font-semibold"
+              onClick={() => onGenerateStair?.('flights')}
+            >
+              Generate stair
+            </button>
+            <button
+              type="button"
+              className="w-full text-xs border border-border hover:bg-accent rounded px-2 py-1.5 transition-colors text-muted-foreground"
+              onClick={() => onGenerateStair?.('steps')}
+            >
+              With individual steps
+            </button>
+            <button
+              type="button"
+              className="w-full text-xs border border-border hover:bg-accent rounded px-2 py-1.5 transition-colors text-muted-foreground"
+              onClick={() => onGenerateStair?.('outline')}
+            >
+              Opening only
+            </button>
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            Modificările se aplică live — scara se regenerează singură. Butoanele de mai sus
+            schimbă doar nivelul de detaliu. Contratreapta închide mereu exact cota etajului.
+          </div>
+          {/* The shaft, when one is wired — the roof's contour gesture, applied here. */}
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {Number(propVal('boundary_ax_count') ?? 0) >= 3
+              ? `Casa scării: ${String(propVal('boundary_ax_count'))} axe legate — dau poziția, `
+                + 'direcția și golul în placă. Lățimea și tipul rămân cele de mai sus.'
+              : 'Leagă nodul de axele care mărginesc casa scării, în ordinea conturului, '
+                + 'și scara se așază singură în ea.'}
+          </div>
+        </PropSection>
+      )}
+
+      {/* Sweep — a library profile along the guide line the graph defines */}
+      {node.type === 'sweep' && (
+        <PropSection label="Sweep" icon="↝">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            {/* One pick that sets role, profile, dimensions, both anchors and
+                the offsets — the anchors being the ones easiest to get wrong. */}
+            {onUpdateProps && (<>
+              <span className="text-muted-foreground"
+                title="Un tip gata definit: rol, profil, dimensiuni, ancore și offseturi dintr-o dată. După aplicare poți ajusta orice câmp.">
+                Tip detaliu
+              </span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('detail_type') ?? '')}
+                onChange={(e) => {
+                  const t = DETAIL_TYPE_MAP.get(e.target.value);
+                  if (t) onUpdateProps(detailTypeProperties(t));
+                }}
+              >
+                <option value="">— personalizat —</option>
+                {SWEEP_ROLES.filter((r) => detailTypesForRole(r).length > 0).map((r) => (
+                  <optgroup key={r} label={SWEEP_ROLE_LABELS[r]}>
+                    {detailTypesForRole(r).map((t) => (
+                      <option key={t.id} value={t.id} title={t.description}>{t.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </>)}
+
+            {/* What it IS, before what shape it has: the role is the quantity
+                key and the IFC class, and the same profile can be either. */}
+            <span className="text-muted-foreground"
+              title="Ce element este — nu ce formă are. Decide norma din antemăsurătoare și clasa IFC la export.">
+              Rol
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={sweepRole(node)}
+              title={SWEEP_ROLE_HINTS[sweepRole(node)]}
+              onChange={(e) => onUpdateProp('sweep_role', e.target.value)}
+            >
+              {SWEEP_ROLES.map((r) => (
+                <option key={r} value={r} title={SWEEP_ROLE_HINTS[r]}>
+                  {SWEEP_ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+
+            <span className="text-muted-foreground"
+              title="Parametrice: forme standard. Catalog: secțiuni denumite. DXF: desene QCAD din backend/library/profiles/symbols2d/">
+              Profil
+            </span>
+            <div className="flex items-center gap-1.5">
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1 min-w-0"
+                value={String(propVal('profile') ?? 'rect')}
+                onChange={(e) => onUpdateProp('profile', e.target.value)}
+              >
+                <optgroup label="Parametrice">
+                  {listProfileOptions().filter((o) => o.group === 'parametric').map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Catalog">
+                  {listProfileOptions().filter((o) => o.group === 'catalogue').map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </optgroup>
+                {listProfileOptions().some((o) => o.group === 'dxf') && (
+                  <optgroup label="DXF (QCAD)">
+                    {listProfileOptions().filter((o) => o.group === 'dxf').map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {sweepRes?.placed && (
+                <svg width="30" height="30" viewBox="0 0 40 40"
+                  className="shrink-0 border border-border rounded bg-background text-primary">
+                  <path d={profileSvgPath(sweepRes.placed, 40)}
+                    fill="currentColor" fillOpacity={0.25}
+                    stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              )}
+              <button
+                type="button"
+                title="Desenează un profil nou — se salvează în bibliotecă și poate fi folosit de orice sweep"
+                onClick={() => setProfileDraft({ name: '', outline: [], sliders: [] })}
+                className="shrink-0 w-6 h-6 rounded border border-border bg-background hover:bg-accent text-xs"
+              >✏</button>
+            </div>
+            {PARAMETRIC_PROFILES.find((d) => d.id === String(propVal('profile') ?? 'rect'))?.params.map((pp) => (
+              <div key={pp.key} className="contents">
+                <span className="text-muted-foreground">{pp.label} (mm)</span>
+                <input type="number" step="10"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal(pp.key) ?? pp.defaultMm)}
+                  onChange={(e) => onUpdateProp(pp.key, parseFloat(e.target.value))}
+                />
+              </div>
+            ))}
+            {/* A DXF profile is stretchable only on the axes it was drawn with
+                slider_* regions for — offering the other axis would distort it. */}
+            {sweepRes?.profile?.sizing?.stretchX && (
+              <>
+                <span className="text-muted-foreground"
+                  title={`Desenat la ${sweepRes.profile.sizing.defaultWidthMm} mm — zonele slider_length se întind`}>
+                  Lățime (mm)
+                </span>
+                <input type="number" step="10"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('p_w_mm') ?? sweepRes.profile.sizing.defaultWidthMm)}
+                  onChange={(e) => onUpdateProp('p_w_mm', parseFloat(e.target.value))}
+                />
+              </>
+            )}
+            {sweepRes?.profile?.sizing?.stretchY && (
+              <>
+                <span className="text-muted-foreground"
+                  title={`Desenat la ${sweepRes.profile.sizing.defaultHeightMm} mm — zonele slider_height se întind`}>
+                  Înălțime (mm)
+                </span>
+                <input type="number" step="10"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('p_h_mm') ?? sweepRes.profile.sizing.defaultHeightMm)}
+                  onChange={(e) => onUpdateProp('p_h_mm', parseFloat(e.target.value))}
+                />
+              </>
+            )}
+            {sweepRes?.profile?.group === 'dxf' && !sweepRes.profile.sizing?.stretchX && !sweepRes.profile.sizing?.stretchY && (
+              <>
+                <span className="text-muted-foreground">Dimensiuni</span>
+                <span className="text-[10px] text-muted-foreground italic px-1.5">
+                  fixe — desenul nu are straturi slider_*
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground"
+              title="Prin ce punct al dreptunghiului profilului trece linia de ghidaj (după oglindire și rotire)">
+              Ancoră
+            </span>
+            <div className="grid grid-cols-3 gap-0.5 w-16">
+              {(['max', 'mid', 'min'] as const).map((ay) =>
+                (['min', 'mid', 'max'] as const).map((ax) => (
+                  <button key={`${ax}_${ay}`} type="button"
+                    title={`${ax} / ${ay}`}
+                    className={`h-4 rounded-sm border transition-colors ${
+                      String(propVal('anchor_x') ?? 'mid') === ax && String(propVal('anchor_y') ?? 'max') === ay
+                        ? 'bg-primary border-primary'
+                        : 'bg-muted/40 border-border hover:bg-accent'
+                    }`}
+                    onClick={() => { onUpdateProp('anchor_x', ax); onUpdateProp('anchor_y', ay); }}
+                  />
+                )))}
+            </div>
+            <span className="text-muted-foreground" title="Deplasare laterală față de linie — pozitiv = stânga sensului de parcurgere">Offset lateral (mm)</span>
+            <input type="number" step="10"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('offset_x_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_x_mm', parseFloat(e.target.value))}
+            />
+            <span className="text-muted-foreground">Rotire profil (°)</span>
+            <input type="number" step="15"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('rotation_deg') ?? 0)}
+              onChange={(e) => onUpdateProp('rotation_deg', parseFloat(e.target.value))}
+            />
+            <span className="text-muted-foreground">Oglindit</span>
+            <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('mirror') ?? 'False')}
+              onChange={(e) => onUpdateProp('mirror', e.target.value)}>
+              <option value="False">Nu</option>
+              <option value="True">Da</option>
+            </select>
+            <span className="text-muted-foreground" title="Îmbinare în unghi (miter) sau tăietură dreaptă la fiecare colț">Colțuri</span>
+            <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('corners') ?? 'miter')}
+              onChange={(e) => onUpdateProp('corners', e.target.value)}>
+              <option value="miter">În unghi (miter)</option>
+              <option value="butt">Tăiate drept</option>
+            </select>
+            {sweepRes?.path?.kind !== 'vertical' && (
+              <>
+                <span className="text-muted-foreground">Cotă</span>
+                <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('level') ?? 'top')}
+                  onChange={(e) => onUpdateProp('level', e.target.value)}>
+                  <option value="top">Sus etaj</option>
+                  <option value="bottom">Jos etaj</option>
+                </select>
+              </>
+            )}
+            <span className="text-muted-foreground">Offset cotă (mm)</span>
+            <input type="number" step="50"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={Number(propVal('offset_z_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_z_mm', parseFloat(e.target.value))}
+            />
+            {sweepRes?.path?.kind === 'vertical' && (
+              <>
+                <span className="text-muted-foreground" title="0 = până la cota de sus a etajului">Înălțime (mm)</span>
+                <input type="number" step="100"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('height_mm') ?? 0)}
+                  onChange={(e) => onUpdateProp('height_mm', parseFloat(e.target.value))}
+                />
+              </>
+            )}
+            {sweepRes?.path?.kind !== 'vertical' && !(propVal('closed') === 'True') && (
+              <>
+                <span className="text-muted-foreground"
+                  title="Cât urcă traseul de la primul ax la ultimul. Panta se împarte pe lungime, deci rămâne constantă pe tot parcursul — o cornișă pe fronton, un soclu pe teren în pantă, o mână curentă lângă o rampă.">
+                  Urcare (mm)
+                </span>
+                <input type="number" step="50"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={Number(propVal('rise_mm') ?? 0)}
+                  onChange={(e) => onUpdateProp('rise_mm', parseFloat(e.target.value))}
+                />
+              </>
+            )}
+            {(sweepRes?.path?.points.length ?? 0) >= 3 && (
+              <>
+                <span className="text-muted-foreground">Închis</span>
+                <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                  value={String(propVal('closed') ?? 'False')}
+                  onChange={(e) => onUpdateProp('closed', e.target.value)}>
+                  <option value="False">Deschis</option>
+                  <option value="True">Inel închis</option>
+                </select>
+              </>
+            )}
+            <span className="text-muted-foreground">Material</span>
+            <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('material') ?? '')}
+              onChange={(e) => onUpdateProp('material', e.target.value || undefined)}>
+              <option value="">(implicit sweep)</option>
+              {matConfig ? Object.entries(matConfig.materials).map(([mid, m]) => (
+                <option key={mid} value={mid}>{(m as { label?: string }).label ?? mid}</option>
+              )) : null}
+            </select>
+            <span className="text-muted-foreground"
+              title="Ce fel de element devine la export IFC. Auto = grindă pentru trasee orizontale, stâlp pentru cele verticale.">
+              Tip IFC
+            </span>
+            <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('ifc_type') ?? 'auto')}
+              onChange={(e) => onUpdateProp('ifc_type', e.target.value)}>
+              <option value="auto">Auto (grindă / stâlp)</option>
+              <option value="IFCBEAM">Grindă (IfcBeam)</option>
+              <option value="IFCCOLUMN">Stâlp (IfcColumn)</option>
+              <option value="IFCMEMBER">Element liniar (IfcMember)</option>
+              <option value="IFCRAILING">Balustradă (IfcRailing)</option>
+              <option value="IFCCOVERING">Finisaj (IfcCovering)</option>
+              <option value="IFCPIPESEGMENT">Țeavă (IfcPipeSegment)</option>
+              <option value="IFCBUILDINGELEMENTPROXY">Generic (Proxy)</option>
+            </select>
+          </div>
+          {profileDraft && (
+            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6"
+              onClick={(e) => { if (e.target === e.currentTarget) setProfileDraft(null); }}>
+              <div className="w-[min(1100px,95vw)] h-[min(720px,88vh)] rounded-lg overflow-hidden border border-border shadow-2xl">
+                <ProfileEditor
+                  initial={profileDraft}
+                  onClose={() => setProfileDraft(null)}
+                  onSaved={(typeId) => onUpdateProp('profile', `dxf:${typeId}`)}
+                />
+              </div>
+            </div>
+          )}
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            {sweepRes?.path
+              ? sweepRes.path.kind === 'vertical'
+                ? `1 ax → linie verticală · L ${(sweepRes.lengthMm / 1000).toFixed(2)} m`
+                : `${sweepRes.path.points.length} puncte → ${sweepRes.path.closed ? 'inel închis' : 'polilinie'}`
+                  + `${sweepRes.path.kind === 'raked' ? ` · pantă ${((sweepRes.zMaxMm - sweepRes.zMinMm) / 1000).toFixed(2)} m` : ''}`
+                  + ` · L ${(sweepRes.lengthMm / 1000).toFixed(2)} m`
+              : 'Leagă nodul de axe: 1 = vertical, 2 = segment, 3+ = polilinie (în ordinea conectării).'}
+            {sweepRes && sweepRes.volumeMm3 > 0 && (
+              <> · A {(sweepRes.areaMm2 / 1e6).toFixed(4)} m² · V {(sweepRes.volumeMm3 / 1e9).toFixed(3)} m³</>
+            )}
+          </div>
+          {(() => {
+            const diags = sweepRes?.diagnostics ?? [];
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                    d.severity === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : d.severity === 'warning'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        : 'border-border bg-muted/40 text-muted-foreground'
+                  }`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </PropSection>
+      )}
+
+      {/* Sketch — an outline drawn in the plan, given a body and an identity */}
+      {node.type === 'sketch' && (
+        <PropSection label="Schiță" icon="✎">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+
+            {/* What the sketch IS comes first: a rectangle or a circle is
+                edited by typing its size, and only a free contour has points
+                to pull. */}
+            <span className="text-muted-foreground" title="Dreptunghi și cerc sunt parametrice — se editează prin numere, iar un colț tras le păstrează forma. Contur liber = punctele în sine.">Formă</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('shape') ?? 'poly')}
+              onChange={(e) => onUpdateProp('shape', e.target.value)}
+            >
+              <option value="poly">Contur liber</option>
+              <option value="curve">Curbă (NURBS)</option>
+              <option value="rect">Dreptunghi</option>
+              <option value="circle">Cerc</option>
+            </select>
+
+            {String(propVal('shape') ?? 'poly') === 'curve' && (<>
+              <span className="text-muted-foreground"
+                title="Prin puncte: curba trece exact prin fiecare punct desenat. Puncte de control: punctele formează poligonul de control, iar curba e trasă spre ele — control mai fin, ca în CAD.">
+                Curbă
+              </span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('curve_mode') ?? 'fit')}
+                onChange={(e) => onUpdateProp('curve_mode', e.target.value)}
+              >
+                <option value="fit">Prin puncte</option>
+                <option value="control">Puncte de control</option>
+              </select>
+              <span className="text-muted-foreground"
+                title="Gradul curbei: 1 = linie frântă, 2 = pătratică, 3 = cubică (implicit, netedă). Limitat de numărul de puncte.">
+                Grad
+              </span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('curve_degree') ?? 3)}
+                onChange={(e) => onUpdateProp('curve_degree', Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>{d}{d === 3 ? ' (cubică)' : ''}</option>)}
+              </select>
+            </>)}
+
+            {String(propVal('shape') ?? 'poly') === 'rect' && (<>
+              <span className="text-muted-foreground" title="Colțul minim al dreptunghiului, în coordonate BIM.">Colț X / Y (mm)</span>
+              <div className="flex gap-1">
+                {(['shape_x_mm', 'shape_y_mm'] as const).map((k) => (
+                  <input key={k} type="number" step="10"
+                    className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                    value={String(propVal(k) ?? 0)}
+                    onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                ))}
+              </div>
+              <span className="text-muted-foreground">Lățime × Adâncime (mm)</span>
+              <div className="flex gap-1">
+                {(['shape_w_mm', 'shape_h_mm'] as const).map((k) => (
+                  <input key={k} type="number" step="10" min={1}
+                    className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                    value={String(propVal(k) ?? 0)}
+                    onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                ))}
+              </div>
+            </>)}
+
+            {String(propVal('shape') ?? 'poly') === 'circle' && (<>
+              <span className="text-muted-foreground">Centru X / Y (mm)</span>
+              <div className="flex gap-1">
+                {(['shape_x_mm', 'shape_y_mm'] as const).map((k) => (
+                  <input key={k} type="number" step="10"
+                    className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                    value={String(propVal(k) ?? 0)}
+                    onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                ))}
+              </div>
+              <span className="text-muted-foreground">Rază (mm)</span>
+              <input type="number" step="10" min={1}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('shape_r_mm') ?? 0)}
+                onChange={(e) => onUpdateProp('shape_r_mm', Number(e.target.value))} />
+            </>)}
+
+            {/* The operation decides how the SAME drawn points are read, so it
+                comes next — everything below depends on which one is picked. */}
+            <span className="text-muted-foreground"
+              title="Extrudare: conturul e un profil închis, ridicat pe verticală. Sweep: conturul e un traseu, cu un profil plimbat de-a lungul lui. Fără corp: rămâne desen 2D cu identitate BIM.">
+              Operație
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('op') ?? 'extrude')}
+              onChange={(e) => onUpdateProp('op', e.target.value)}
+            >
+              <option value="extrude">Extrudare (contur închis)</option>
+              <option value="sweep">Sweep pe traseu</option>
+              <option value="none">Fără corp (doar 2D)</option>
+            </select>
+
+            <span className="text-muted-foreground" title="Conturul revine la primul punct. Extrudarea cere contur închis.">
+              Contur închis
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('closed') ?? 'True')}
+              onChange={(e) => onUpdateProp('closed', e.target.value)}
+            >
+              <option value="True">Da</option>
+              <option value="False">Nu</option>
+            </select>
+
+            {/* A closed sketch drawn inside another can be cut out of it. */}
+            {String(propVal('closed') ?? 'True') !== 'False' && (<>
+              <span className="text-muted-foreground"
+                title="Face din acest contur un GOL în altă schiță închisă: e decupat din extrudarea ei, din fața ei în plan și din orice sweep care o folosește ca profil. Golul nu mai are corp propriu.">
+                Gol în
+              </span>
+              <div className="flex items-center gap-1">
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1 min-w-0"
+                  value={String(propVal('hole_of') ?? '')}
+                  onChange={(e) => onUpdateProp('hole_of', e.target.value)}
+                >
+                  <option value="">— nu e gol —</option>
+                  {sketchFaces.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                {enclosingSketch && !String(propVal('hole_of') ?? '') && (
+                  <button type="button"
+                    className="shrink-0 px-1.5 py-0.5 rounded border border-border text-xs hover:bg-accent"
+                    title={`Schița „${enclosingSketch.name}” conține acest contur — fă-l gol în ea.`}
+                    onClick={() => onUpdateProp('hole_of', enclosingSketch.id)}>
+                    ⊙ {enclosingSketch.name}
+                  </button>
+                )}
+              </div>
+            </>)}
+
+            <span className="text-muted-foreground" title="Cota de bază: talpa sau plafonul etajului.">Nivel</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('level') ?? 'bottom')}
+              onChange={(e) => onUpdateProp('level', e.target.value)}
+            >
+              <option value="bottom">Talpa etajului</option>
+              <option value="top">Plafonul etajului</option>
+            </select>
+
+            <span className="text-muted-foreground">Offset Z (mm)</span>
+            <input type="number" step="10"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('offset_z_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_z_mm', Number(e.target.value))} />
+
+            {/* ── Extrusion ───────────────────────────────────────────── */}
+            {String(propVal('op') ?? 'extrude') === 'extrude' && (<>
+              <span className="text-muted-foreground"
+                title="Pozitiv urcă, negativ coboară sub cota de bază.">
+                Înălțime extrudare (mm)
+              </span>
+              <FormulaInput step={50} ctx={fmVars}
+                value={Number(propVal('height_mm') ?? 1000)}
+                onChange={(v) => onUpdateProp('height_mm', v)} />
+            </>)}
+
+            {/* ── Sweep along the drawn path ──────────────────────────── */}
+            {String(propVal('op') ?? 'extrude') === 'sweep' && (<>
+              <span className="text-muted-foreground"
+                title="Secțiunea care se plimbă pe traseul desenat — aceeași bibliotecă folosită de elementul Sweep.">
+                Profil
+              </span>
+              <div className="flex items-center gap-1.5">
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1 min-w-0"
+                  value={String(propVal('profile') ?? 'rect')}
+                  onChange={(e) => onUpdateProp('profile', e.target.value)}
+                >
+                  <optgroup label="Parametrice">
+                    {listProfileOptions().filter((o) => o.group === 'parametric').map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Catalog">
+                    {listProfileOptions().filter((o) => o.group === 'catalogue').map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                  {listProfileOptions().some((o) => o.group === 'dxf') && (
+                    <optgroup label="DXF (QCAD)">
+                      {listProfileOptions().filter((o) => o.group === 'dxf').map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {sketchFaces.length > 0 && (
+                    <optgroup label="Fețe desenate (cu goluri)">
+                      {sketchFaces.map((f) => (
+                        <option key={f.id} value={`${SKETCH_PROFILE_PREFIX}${f.id}`}>
+                          {f.name}{f.holes > 0 ? ` — ${f.holes} ${f.holes === 1 ? 'gol' : 'goluri'}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {sketchRes?.placed && (
+                  <svg width="30" height="30" viewBox="0 0 40 40"
+                    className="shrink-0 border border-border rounded bg-background text-primary">
+                    <path d={profileSvgPath(sketchRes.placed, 40)}
+                      fill="currentColor" fillOpacity={0.25}
+                      stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                )}
+              </div>
+              {PARAMETRIC_PROFILES.find((d) => d.id === String(propVal('profile') ?? 'rect'))?.params.map((pp) => (
+                <div key={pp.key} className="contents">
+                  <span className="text-muted-foreground">{pp.label} (mm)</span>
+                  <input type="number" step="10"
+                    className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                    value={Number(propVal(pp.key) ?? pp.defaultMm)}
+                    onChange={(e) => onUpdateProp(pp.key, parseFloat(e.target.value))} />
+                </div>
+              ))}
+              <span className="text-muted-foreground" title="Ce punct al profilului trece pe traseu.">Ancoră X / Y</span>
+              <div className="flex gap-1">
+                {(['anchor_x', 'anchor_y'] as const).map((k) => (
+                  <select key={k}
+                    className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1 min-w-0"
+                    value={String(propVal(k) ?? (k === 'anchor_x' ? 'mid' : 'max'))}
+                    onChange={(e) => onUpdateProp(k, e.target.value)}
+                  >
+                    <option value="min">min</option>
+                    <option value="mid">mid</option>
+                    <option value="max">max</option>
+                  </select>
+                ))}
+              </div>
+              <span className="text-muted-foreground" title="Deplasare laterală, + spre stânga sensului de mers.">Offset lateral (mm)</span>
+              <input type="number" step="10"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('offset_x_mm') ?? 0)}
+                onChange={(e) => onUpdateProp('offset_x_mm', Number(e.target.value))} />
+              <span className="text-muted-foreground">Rotație profil (°)</span>
+              <input type="number" step="5"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('rotation_deg') ?? 0)}
+                onChange={(e) => onUpdateProp('rotation_deg', Number(e.target.value))} />
+              <span className="text-muted-foreground" title="Miter taie colțurile în bisectoare; butt le lasă drepte.">Colțuri</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('corners') ?? 'miter')}
+                onChange={(e) => onUpdateProp('corners', e.target.value)}
+              >
+                <option value="miter">Miter</option>
+                <option value="butt">Butt</option>
+              </select>
+            </>)}
+          </div>
+
+          {/* ── Reference ─────────────────────────────────────────────
+              The sketch's numbers are offsets from here. One ax = origin;
+              two = origin + the line "along" runs on. Picking one rewires
+              the graph and rewrites the points so the drawing stays put. */}
+          {(() => {
+            const refIds = sketchRes?.frame.refIds ?? [];
+            const origin = refIds[0] ?? '';
+            const dirId = refIds[1] ?? '';
+            const axOptions = allNodes
+              .filter((n) => (n.type === 'ax' || n.type === 'column') && n.parentId === node.parentId)
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            const setRefs = (o: string, d: string) =>
+              onRewireGraph?.((ns, es) => setSketchRefs(ns, es, node.id, [o, d].filter(Boolean)));
+            const sel = 'bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full';
+            return (
+              <div className="mt-2 pt-2 border-t border-border/50">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-1">Reper</div>
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+                  <span className="text-muted-foreground"
+                    title="Axul față de care sunt măsurate punctele schiței. Mută axul, schița vine după el. Fără reper = milimetri absoluți.">
+                    Origine
+                  </span>
+                  <select className={sel} value={origin} disabled={!onRewireGraph}
+                    onChange={(e) => setRefs(e.target.value, e.target.value ? dirId : '')}>
+                    <option value="">— fără (mm absoluți)</option>
+                    {axOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <span className="text-muted-foreground"
+                    title="Al doilea ax: linia Origine→Direcție e axa „de-a lungul” (u); „transversal” (v) e la stânga ei. Un dreptunghi se aliniază la linie.">
+                    Direcție
+                  </span>
+                  <select className={sel} value={dirId} disabled={!onRewireGraph || !origin}
+                    onChange={(e) => setRefs(origin, e.target.value)}>
+                    <option value="">— pe X (fără linie)</option>
+                    {axOptions.filter((a) => a.id !== origin).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  {sketchRes && sketchRes.frame.refLengthMm > 0 && (
+                    <div className="col-span-2 text-[10px] text-muted-foreground">
+                      linia de referință: {(sketchRes.frame.refLengthMm / 1000).toFixed(3)} m
+                      {' · '}{Math.round((Math.atan2(sketchRes.frame.dir.y, sketchRes.frame.dir.x) * 180) / Math.PI)}° față de X
+                    </div>
+                  )}
+
+                  <span className="text-muted-foreground"
+                    title="Deplasare de-a lungul liniei (u) și transversal (v, + la stânga sensului Origine→Direcție).">
+                    Deplasare u / v (mm)
+                  </span>
+                  <div className="flex gap-1">
+                    {(['ref_dx_mm', 'ref_dy_mm'] as const).map((k) => (
+                      <input key={k} type="number" step="10"
+                        className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                        value={String(propVal(k) ?? 0)}
+                        onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                    ))}
+                  </div>
+                  <span className="text-muted-foreground" title="Rotire în jurul originii, în sens trigonometric, după oglindire.">Rotire (°)</span>
+                  <input type="number" step="5"
+                    className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                    value={String(propVal('ref_rot_deg') ?? 0)}
+                    onChange={(e) => onUpdateProp('ref_rot_deg', Number(e.target.value))} />
+                  <span className="text-muted-foreground" title="Oglindire față de linia de referință (v → −v).">Oglindire</span>
+                  <select className={sel}
+                    value={String(propVal('ref_mirror') ?? 'False')}
+                    onChange={(e) => onUpdateProp('ref_mirror', e.target.value)}>
+                    <option value="False">Nu</option>
+                    <option value="True">Da</option>
+                  </select>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Array ─────────────────────────────────────────────────── */}
+          <div className="mt-2 pt-2 border-t border-border/50">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-1">Array</div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+              <span className="text-muted-foreground"
+                title="Numărul total de exemplare, originalul inclus. 1 = fără array.">
+                Exemplare
+              </span>
+              <FormulaInput step={1} ctx={fmVars}
+                value={Number(propVal('array_count') ?? 1)}
+                onChange={(v) => onUpdateProp('array_count', Math.max(1, Math.round(v) || 1))} />
+              <span className="text-muted-foreground"
+                title="Vector: pasul dX/dY/dZ, în coordonate BIM. Referință: pasul merge pe linia Origine→Direcție (cere două axe legate).">
+                Direcția
+              </span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('array_along') ?? 'vector')}
+                onChange={(e) => onUpdateProp('array_along', e.target.value)}
+              >
+                <option value="vector">Vector dX / dY / dZ</option>
+                <option value="ref">De-a lungul liniei de referință</option>
+                <option value="path">De-a lungul unui traseu (schiță)</option>
+              </select>
+              {String(propVal('array_along') ?? 'vector') === 'path' ? (<>
+                <span className="text-muted-foreground"
+                  title="Schița pe care se repetă exemplarele — curbă sau polilinie, deschisă sau închisă. Originalul e exemplarul 0 și își păstrează poziția față de traseu.">
+                  Traseu
+                </span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                  value={String(propVal('array_path') ?? '')}
+                  onChange={(e) => onUpdateProp('array_path', e.target.value)}
+                >
+                  <option value="">— alege schița-traseu —</option>
+                  {sketchPaths.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} — {(p.lengthMm / 1000).toFixed(2)} m</option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground"
+                  title="După tangentă: fiecare exemplar se rotește odată cu traseul, păstrându-și unghiul față de el. Fixă: exemplarele doar se mută.">
+                  Orientare
+                </span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                  value={String(propVal('array_orient') ?? 'tangent')}
+                  onChange={(e) => onUpdateProp('array_orient', e.target.value)}
+                >
+                  <option value="tangent">După tangentă</option>
+                  <option value="fixed">Fixă (doar translație)</option>
+                </select>
+                <span className="text-muted-foreground"
+                  title="Întins: exemplarele se împart egal de la original până la capătul traseului (pe o buclă, pe toată bucla). Altfel, pasul fix măsurat pe lungimea reală a traseului. Originalul pornește array-ul din punctul traseului cel mai apropiat de el.">
+                  Întins pe tot traseul
+                </span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                  value={String(propVal('array_fit') ?? 'False')}
+                  onChange={(e) => onUpdateProp('array_fit', e.target.value)}
+                >
+                  <option value="False">Nu — pas fix</option>
+                  <option value="True">Da — pas dedus din număr</option>
+                </select>
+                {String(propVal('array_fit') ?? 'False') !== 'True' && (<>
+                  <span className="text-muted-foreground" title="Acceptă formule, de ex. path_length_m * 1000 / 10 — lungimea traseului împărțită în 10.">Pas pe traseu (mm)</span>
+                  <FormulaInput step={100} ctx={fmVars}
+                    value={Number(propVal('array_step_mm') ?? 0)}
+                    onChange={(v) => onUpdateProp('array_step_mm', v)} />
+                </>)}
+                <span className="text-muted-foreground" title="Urcarea de la un exemplar la următorul.">Pas dZ (mm)</span>
+                <FormulaInput step={100} ctx={fmVars}
+                  value={Number(propVal('array_dz_mm') ?? 0)}
+                  onChange={(v) => onUpdateProp('array_dz_mm', v)} />
+              </>) : String(propVal('array_along') ?? 'vector') === 'ref' ? (<>
+                <span className="text-muted-foreground"
+                  title="Întins: exemplarele se împart egal între cele două axe, ultimul ajunge exact pe al doilea ax; pasul e dedus.">
+                  Întins între axe
+                </span>
+                <select
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                  value={String(propVal('array_fit') ?? 'False')}
+                  onChange={(e) => onUpdateProp('array_fit', e.target.value)}
+                >
+                  <option value="False">Nu — pas fix</option>
+                  <option value="True">Da — pas dedus din număr</option>
+                </select>
+                {String(propVal('array_fit') ?? 'False') !== 'True' && (<>
+                  <span className="text-muted-foreground">Pas pe linie (mm)</span>
+                  <FormulaInput step={100} ctx={fmVars}
+                    value={Number(propVal('array_step_mm') ?? 0)}
+                    onChange={(v) => onUpdateProp('array_step_mm', v)} />
+                </>)}
+                <span className="text-muted-foreground" title="Urcarea de la un exemplar la următorul — un array pe linie poate și să urce.">Pas dZ (mm)</span>
+                <FormulaInput step={100} ctx={fmVars}
+                  value={Number(propVal('array_dz_mm') ?? 0)}
+                  onChange={(v) => onUpdateProp('array_dz_mm', v)} />
+              </>) : (<>
+                {/* One vector, so "vertical" and "horizontal" are the same control:
+                    (0,0,dz) stacks, (dx,dy,0) runs along the ground. */}
+                <span className="text-muted-foreground"
+                  title="Pasul dintre exemplare. Doar dZ = array vertical; doar dX/dY = orizontal.">
+                  Pas dX / dY / dZ (mm)
+                </span>
+                <div className="flex gap-1">
+                  {(['array_dx_mm', 'array_dy_mm', 'array_dz_mm'] as const).map((k) => (
+                    <FormulaInput key={k} step={100} ctx={fmVars} className="w-full min-w-0"
+                      value={Number(propVal(k) ?? 0)}
+                      onChange={(v) => onUpdateProp(k, v)} />
+                  ))}
+                </div>
+              </>)}
+            </div>
+          </div>
+
+          {/* ── BIM identity ──────────────────────────────────────────── */}
+          <div className="mt-2 pt-2 border-t border-border/50">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-1">Încadrare BIM</div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+              <span className="text-muted-foreground"
+                title="Clasa IFC la export. „auto” exportă ca proxy — un contur desenat nu spune singur ce element este.">
+                Clasă IFC
+              </span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('ifc_type') ?? 'auto')}
+                onChange={(e) => onUpdateProp('ifc_type', e.target.value)}
+              >
+                <option value="auto">auto ({SKETCH_DEFAULT_IFC_TYPE.replace('IFC', '')})</option>
+                {[
+                  'IFCBUILDINGELEMENTPROXY', 'IFCSLAB', 'IFCWALL', 'IFCBEAM', 'IFCCOLUMN',
+                  'IFCMEMBER', 'IFCPLATE', 'IFCCOVERING', 'IFCRAILING', 'IFCFOOTING',
+                  'IFCCURTAINWALL', 'IFCFURNISHINGELEMENT', 'IFCDISCRETEACCESSORY',
+                ].map((t) => <option key={t} value={t}>{t.replace('IFC', '')}</option>)}
+              </select>
+
+              <span className="text-muted-foreground"
+                title="Cheia pe care o caută regulile din antemăsurătoare. Două schițe cu tipuri diferite se facturează ca lucrări diferite.">
+                Tip element
+              </span>
+              <input
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                placeholder="ex. SOCLU20"
+                value={String(propVal('element_type') ?? '')}
+                onChange={(e) => onUpdateProp('element_type', e.target.value)} />
+
+              <span className="text-muted-foreground">Material</span>
+              <input
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('material') ?? '')}
+                onChange={(e) => onUpdateProp('material', e.target.value)} />
+
+              {/* The same per-node override keys every other element uses, so
+                  one picker sets 3D and 2D together. Empty falls back to the
+                  material, which is what the Appearance section also edits. */}
+              <span className="text-muted-foreground" title="Gol = urmează culoarea materialului. Setează deopotrivă 3D și 2D.">Culoare</span>
+              <div className="flex items-center gap-1.5">
+                <input type="color"
+                  className="w-8 h-6 rounded cursor-pointer border border-border p-0"
+                  value={String(propVal('color_3d') || '#D97706')}
+                  onChange={(e) => onUpdateProps?.({ color_3d: e.target.value, color_2d: e.target.value })} />
+                <button type="button"
+                  onClick={() => onUpdateProps?.({ color_3d: '', color_2d: '' })}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-accent text-muted-foreground"
+                >urmează materialul</button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── What it came out as ───────────────────────────────────── */}
+          <div className="mt-1.5 text-[10px] text-muted-foreground leading-snug">
+            {sketchRes && sketchRes.count > 0
+              ? `${sketchRes.intent.shape === 'rect' ? 'dreptunghi' : sketchRes.intent.shape === 'circle' ? 'cerc'
+                : sketchRes.intent.curve ? `curbă NURBS, ${sketchRes.intent.curve.points.length} puncte` : `${sketchRes.intent.outline.length} puncte`}`
+                + ` · L ${(sketchRes.lengthMm / 1000).toFixed(2)} m`
+                + (sketchRes.areaMm2 > 0 ? ` · A ${(sketchRes.areaMm2 / 1e6).toFixed(3)} m²${sketchRes.holes.length ? ' net' : ''}` : '')
+                + (sketchRes.holes.length ? ` · ${sketchRes.holes.length} ${sketchRes.holes.length === 1 ? 'gol' : 'goluri'} · P ${(sketchRes.perimeterMm / 1000).toFixed(2)} m` : '')
+                + (sketchRes.profileHoles.length ? ` · profil cu ${sketchRes.profileHoles.length} ${sketchRes.profileHoles.length === 1 ? 'gol' : 'goluri'}` : '')
+                + (sketchRes.count > 1 ? ` · ${sketchRes.count} exemplare` : '')
+                + (sketchRes.volumeMm3 > 0 ? ` · V ${(sketchRes.volumeMm3 / 1e9).toFixed(3)} m³` : '')
+                + ` · cote ${Math.round(sketchRes.zMinMm)}–${Math.round(sketchRes.zMaxMm)} mm`
+              : 'Desenează conturul în planul de nivel — bara Schiță 3D: Contur, Dreptunghi, Cerc sau Traseu.'}
+          </div>
+          {(() => {
+            const diags = sketchRes?.diagnostics ?? [];
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                    d.severity === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : d.severity === 'warning'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        : 'border-border bg-muted/40 text-muted-foreground'
+                  }`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </PropSection>
+      )}
+
+      {/* Terrain platform — one level, and how the ground gets to it */}
+      {node.type === 'terrain_pad' && (
+        <PropSection label="Platformă teren" icon="▱">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            {/* The level is THE parameter: one number, and the earth follows. */}
+            <span className="text-muted-foreground"
+              title="Cota la care ajunge terenul. Față de talpa etajului (implicit) sau absolută.">
+              Cotă (mm)
+            </span>
+            <input type="number" step="50"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('level_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('level_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground">Cota se măsoară</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('level_mode') ?? 'storey')}
+              onChange={(e) => onUpdateProp('level_mode', e.target.value)}
+            >
+              <option value="storey">față de talpa etajului</option>
+              <option value="absolute">absolut (cotă BIM)</option>
+            </select>
+
+            <span className="text-muted-foreground"
+              title="Vertical: perete drept. Pantă: taluz de la terenul din jur până la cotă.">
+              Trecere
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('transition') ?? 'vertical')}
+              onChange={(e) => onUpdateProp('transition', e.target.value)}
+            >
+              <option value="vertical">Verticală</option>
+              <option value="slope">În pantă</option>
+            </select>
+
+            {String(propVal('transition') ?? 'vertical') === 'slope' && (<>
+              <span className="text-muted-foreground" title="Unghiul taluzului față de orizontală.">Unghi (°)</span>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min={1} max={89} step="1"
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-16"
+                  value={String(propVal('slope_deg') ?? 45)}
+                  onChange={(e) => onUpdateProp('slope_deg', Number(e.target.value))} />
+                <span className="text-[10px] text-muted-foreground">
+                  ≈ 1 : {slopeRatio(Number(propVal('slope_deg') ?? 45)).toFixed(2)}
+                  {' · '}
+                  {Math.round(100 / Math.max(0.01, slopeRatio(Number(propVal('slope_deg') ?? 45))))}%
+                </span>
+              </div>
+            </>)}
+
+            <span className="text-muted-foreground"
+              title="Sapă doar, umple doar, sau ambele — o terasă pe pantă are nevoie de ambele.">
+              Lucrare
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('mode') ?? 'both')}
+              onChange={(e) => onUpdateProp('mode', e.target.value)}
+            >
+              <option value="both">Săpătură și umplutură</option>
+              <option value="cut">Doar săpătură</option>
+              <option value="fill">Doar umplutură</option>
+            </select>
+          </div>
+
+          <div className="mt-1.5 text-[10px] text-muted-foreground leading-snug">
+            {padRes?.pad
+              ? `contur din ${padRes.pad.source === 'sketch' ? 'schiță' : 'axe'}`
+                + ` · cotă ${(padRes.pad.levelMm / 1000).toFixed(2)} m`
+                + ` · ${padRes.pad.transition === 'slope' ? `taluz ${padRes.pad.slopeDeg}°` : 'perete vertical'}`
+                + (padRes.site ? ` · săpătură ${padRes.site.padCutM3.toFixed(1)} m³ · umplutură ${padRes.site.padFillM3.toFixed(1)} m³` : '')
+              : padRes && !padRes.site
+                ? 'Nu există nod Teren în proiect — adaugă unul și leagă-l de un ax.'
+                : 'Leagă platforma de o schiță închisă (unealta Dreptunghi din plan) sau de 3+ axe.'}
+          </div>
+          {(() => {
+            const diags = (padRes?.site?.diagnostics ?? []).filter((d) => d.code.startsWith('PAD_'));
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                    d.severity === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </PropSection>
+      )}
+
+      {/* Facade — a pattern of mullions and panels on the faces between the anchors */}
+      {node.type === 'facade' && (
+        <PropSection label="Fațadă" icon="▦">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground" title="Cum se împarte fiecare față în celule.">Tipar</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('pattern') ?? 'grid')}
+              onChange={(e) => onUpdateProp('pattern', e.target.value)}
+            >
+              {FACADE_PATTERNS.map((p) => <option key={p} value={p}>{FACADE_PATTERN_LABELS[p]}</option>)}
+            </select>
+
+            {String(propVal('pattern') ?? 'grid') !== 'voronoi' ? (<>
+              <span className="text-muted-foreground" title="Celulele se potrivesc uniform pe față: 10 m la 1,5 m dau 7 travee egale, nu 6 și o fâșie.">Celulă L × H (mm)</span>
+              <div className="flex gap-1">
+                {(['cell_w_mm', 'cell_h_mm'] as const).map((k) => (
+                  <input key={k} type="number" step="50"
+                    className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                    value={String(propVal(k) ?? 1500)}
+                    onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                ))}
+              </div>
+            </>) : (<>
+              <span className="text-muted-foreground" title="0 = din mărimea celulei.">Celule / față</span>
+              <input type="number" min={0} step="1"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('cell_count') ?? 0)}
+                onChange={(e) => onUpdateProp('cell_count', Math.max(0, Math.round(Number(e.target.value) || 0)))} />
+              <span className="text-muted-foreground">Celulă nominală (mm)</span>
+              <input type="number" step="50"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                value={String(propVal('cell_w_mm') ?? 1500)}
+                onChange={(e) => onUpdateProps?.({ cell_w_mm: Number(e.target.value), cell_h_mm: Number(e.target.value) })} />
+              <span className="text-muted-foreground">Sămânță · relaxare</span>
+              <div className="flex gap-1 items-center">
+                <input type="number" step="1"
+                  className="bg-background border border-border rounded px-1 py-0.5 text-xs w-16"
+                  value={String(propVal('seed') ?? 1)}
+                  onChange={(e) => onUpdateProp('seed', Math.round(Number(e.target.value) || 1))} />
+                <input type="number" min={0} max={10} step="1"
+                  className="bg-background border border-border rounded px-1 py-0.5 text-xs w-12"
+                  value={String(propVal('relax_iterations') ?? 2)}
+                  onChange={(e) => onUpdateProp('relax_iterations', Math.round(Number(e.target.value) || 0))} />
+                <button type="button" onClick={() => onUpdateProp('seed', Math.round(Number(propVal('seed') ?? 1)) + 1)}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-accent text-muted-foreground">🎲</button>
+              </div>
+            </>)}
+
+            <span className="text-muted-foreground" title="Sticlă, panou opac, casetă profilată (împinsă în afară, cu teșitură) sau alternat.">Umplere</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('panel_kind') ?? 'glass')}
+              onChange={(e) => onUpdateProp('panel_kind', e.target.value)}
+            >
+              {FACADE_PANEL_KINDS.map((k) => <option key={k} value={k}>{FACADE_PANEL_KIND_LABELS[k]}</option>)}
+            </select>
+
+            <span className="text-muted-foreground" title="Lățimea și adâncimea montantului (iese în afara planului sticlei).">Montant l × a (mm)</span>
+            <div className="flex gap-1">
+              {(['mullion_w_mm', 'mullion_d_mm'] as const).map((k) => (
+                <input key={k} type="number" step="10"
+                  className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                  value={String(propVal(k) ?? (k === 'mullion_w_mm' ? 60 : 120))}
+                  onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+              ))}
+            </div>
+
+            {['cassette', 'mixed'].includes(String(propVal('panel_kind') ?? 'glass')) && (<>
+              <span className="text-muted-foreground" title="Cât iese caseta din plan, și cât se strânge fața ei (teșitura).">Casetă: relief · teșitură (mm)</span>
+              <div className="flex gap-1">
+                {(['cassette_depth_mm', 'cassette_bevel_mm'] as const).map((k) => (
+                  <input key={k} type="number" step="10"
+                    className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                    value={String(propVal(k) ?? (k === 'cassette_depth_mm' ? 250 : 120))}
+                    onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+                ))}
+              </div>
+            </>)}
+
+            <span className="text-muted-foreground">Sticlă · panou (mm)</span>
+            <div className="flex gap-1">
+              {(['glass_thickness_mm', 'panel_thickness_mm'] as const).map((k) => (
+                <input key={k} type="number" step="2"
+                  className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                  value={String(propVal(k) ?? (k === 'glass_thickness_mm' ? 24 : 40))}
+                  onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+              ))}
+            </div>
+
+            <span className="text-muted-foreground" title="Deplasarea planului fațadei în afara liniei axelor.">Offset în afară (mm)</span>
+            <input type="number" step="10"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('offset_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="0 = banda etajului.">Înălțime (0 = etaj) · offset Z</span>
+            <div className="flex gap-1">
+              {(['height_mm', 'offset_z_mm'] as const).map((k) => (
+                <input key={k} type="number" step="50"
+                  className="bg-background border border-border rounded px-1 py-0.5 text-xs w-full min-w-0"
+                  value={String(propVal(k) ?? 0)}
+                  onChange={(e) => onUpdateProp(k, Number(e.target.value))} />
+              ))}
+            </div>
+
+            <span className="text-muted-foreground" title="Cu 2 axe, exteriorul e la dreapta lui A→B; bifează ca să-l întorci. La poligon, exteriorul e dedus.">Întoarce exteriorul</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('flip') ?? 'False')}
+              onChange={(e) => onUpdateProp('flip', e.target.value)}
+            >
+              <option value="False">Nu</option>
+              <option value="True">Da</option>
+            </select>
+
+            {(facadeRes?.faces.length ?? 0) >= 2 && (<>
+              <span className="text-muted-foreground" title="Cu 3+ axe: închide poligonul (shell).">Poligon închis</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('closed') ?? 'True')}
+                onChange={(e) => onUpdateProp('closed', e.target.value)}
+              >
+                <option value="True">Da (shell)</option>
+                <option value="False">Nu (fețe deschise)</option>
+              </select>
+            </>)}
+
+            <span className="text-muted-foreground">Material montanți</span>
+            <input className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('material') ?? '')} onChange={(e) => onUpdateProp('material', e.target.value)} />
+            <span className="text-muted-foreground">Material sticlă</span>
+            <input className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('glass_material') ?? '')} onChange={(e) => onUpdateProp('glass_material', e.target.value)} />
+            <span className="text-muted-foreground">Material panouri</span>
+            <input className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('panel_material') ?? '')} onChange={(e) => onUpdateProp('panel_material', e.target.value)} />
+          </div>
+
+          <div className="mt-1.5 text-[10px] text-muted-foreground leading-snug">
+            {facadeRes && facadeRes.cells.length > 0
+              ? `${facadeRes.faces.length} ${facadeRes.faces.length === 1 ? 'față' : 'fețe'} · ${facadeRes.cells.length} celule`
+                + ` · montanți ${(facadeRes.memberLengthMm / 1000).toFixed(1)} m`
+                + (facadeRes.glassAreaMm2 > 0 ? ` · sticlă ${(facadeRes.glassAreaMm2 / 1e6).toFixed(1)} m²` : '')
+                + (facadeRes.cassettes.length > 0 ? ` · ${facadeRes.cassettes.length} casete` : '')
+                + (facadeRes.panelAreaMm2 > 0 ? ` · panouri ${(facadeRes.panelAreaMm2 / 1e6).toFixed(1)} m²` : '')
+                + ` · H ${((facadeRes.zMaxMm - facadeRes.zMinMm) / 1000).toFixed(2)} m`
+              : 'Leagă nodul de 2 axe (un panou vertical) sau de 3+ axe (shell poligonal).'}
+          </div>
+          {(() => {
+            const diags = facadeRes?.diagnostics ?? [];
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                    d.severity === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : d.severity === 'warning'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        : 'border-border bg-muted/40 text-muted-foreground'
+                  }`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </PropSection>
+      )}
+
+      {/* Scatter — vegetation and rocks over a sketch or along axes */}
+      {node.type === 'scatter' && (
+        <PropSection label="Vegetație / pietre" icon="🌳">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            {/* The kind carries a size preset; picking one rewrites the four
+                size fields at once, and each stays editable after. */}
+            <span className="text-muted-foreground" title="Felul obiectului. Aplică și o presetare de mărime / pas / distanță minimă.">Fel</span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('kind') ?? 'tree')}
+              onChange={(e) => {
+                const k = parseScatterKind(e.target.value);
+                const d = SCATTER_KIND_DEFAULTS[k];
+                onUpdateProps?.({ kind: k, size_mm: d.sizeMm, height_mm: d.heightMm, spacing_mm: d.spacingMm, min_gap_mm: d.minGapMm });
+              }}
+            >
+              {SCATTER_KINDS.map((k) => <option key={k} value={k}>{SCATTER_KIND_LABELS[k]}</option>)}
+            </select>
+
+            <span className="text-muted-foreground"
+              title="Auto: contur închis = împrăștiere pe arie, traseu deschis = array pe traseu.">
+              Mod
+            </span>
+            <select
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('mode') ?? 'auto')}
+              onChange={(e) => onUpdateProp('mode', e.target.value)}
+            >
+              <option value="auto">auto (după contur)</option>
+              <option value="area">Împrăștiere pe arie</option>
+              <option value="path">Array pe traseu</option>
+            </select>
+
+            <span className="text-muted-foreground" title="0 = se deduce din pas.">Număr (0 = din pas)</span>
+            <input type="number" min={0} step="1"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('count') ?? 0)}
+              onChange={(e) => onUpdateProp('count', Math.max(0, Math.round(Number(e.target.value) || 0)))} />
+
+            <span className="text-muted-foreground" title="Traseu: distanța dintre stații. Arie: pasul nominal → număr = arie / pas².">Pas (mm)</span>
+            <input type="number" step="100"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('spacing_mm') ?? 4000)}
+              onChange={(e) => onUpdateProp('spacing_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Diametrul în plan (coroană / piatră).">Mărime (mm)</span>
+            <input type="number" step="100"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('size_mm') ?? 4000)}
+              onChange={(e) => onUpdateProp('size_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground">Înălțime (mm)</span>
+            <input type="number" step="100"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('height_mm') ?? 6000)}
+              onChange={(e) => onUpdateProp('height_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="0 = toate identice; 0.3 = ±30 % pe mărime.">Variație (0–1)</span>
+            <input type="number" min={0} max={1} step="0.05"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('size_jitter') ?? 0.3)}
+              onChange={(e) => onUpdateProp('size_jitter', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Doar pe arie: niciun exemplar mai aproape de altul decât atât.">Distanță minimă (mm)</span>
+            <input type="number" step="100"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('min_gap_mm') ?? 2500)}
+              onChange={(e) => onUpdateProp('min_gap_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Doar pe arie: distanța păstrată față de contur.">Margine (mm)</span>
+            <input type="number" step="100"
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('edge_margin_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('edge_margin_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Aceeași sămânță = aceeași așezare. Schimb-o când aranjamentul nu-ți place.">Sămânță</span>
+            <div className="flex items-center gap-1.5">
+              <input type="number" step="1"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-20"
+                value={String(propVal('seed') ?? 1)}
+                onChange={(e) => onUpdateProp('seed', Math.round(Number(e.target.value) || 1))} />
+              <button type="button"
+                onClick={() => onUpdateProp('seed', Math.round(Number(propVal('seed') ?? 1)) + 1)}
+                className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-accent text-muted-foreground"
+                title="Altă așezare">🎲 altă așezare</button>
+            </div>
+
+            {scatterRes?.source === 'axes' && (<>
+              <span className="text-muted-foreground" title="Cu 3+ axe: închide polilinia și împrăștie pe arie.">Contur închis</span>
+              <select
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={String(propVal('closed') ?? 'False')}
+                onChange={(e) => onUpdateProp('closed', e.target.value)}
+              >
+                <option value="False">Nu (traseu)</option>
+                <option value="True">Da (arie)</option>
+              </select>
+            </>)}
+
+            <span className="text-muted-foreground">Material</span>
+            <input
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+              value={String(propVal('material') ?? '')}
+              onChange={(e) => onUpdateProp('material', e.target.value)} />
+          </div>
+
+          <div className="mt-1.5 text-[10px] text-muted-foreground leading-snug">
+            {scatterRes && scatterRes.count > 0
+              ? `${scatterRes.count} exemplare · ${scatterRes.mode === 'area' ? 'pe arie' : 'pe traseu'} din ${scatterRes.source === 'sketch' ? 'schiță' : 'axe'}`
+                + (scatterRes.areaMm2 > 0 ? ` · A ${(scatterRes.areaMm2 / 1e6).toFixed(1)} m²` : '')
+                + ` · L ${(scatterRes.lengthMm / 1000).toFixed(1)} m`
+              : 'Leagă nodul de o schiță (închisă = arie, deschisă = traseu) sau de 2+ axe.'}
+          </div>
+          {(() => {
+            const diags = scatterRes?.diagnostics ?? [];
+            if (!diags.length) return null;
+            return (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {diags.map((d, i) => (
+                  <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                    d.severity === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : d.severity === 'warning'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        : 'border-border bg-muted/40 text-muted-foreground'
+                  }`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </PropSection>
+      )}
+
+      {/* Dome — a membrane over the base contour, tessellated and glazed */}
+      {node.type === 'dome' && (
+        <PropSection label="Dom" icon="◠">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground"
+              title="Folosită doar când domul e legat de UN singur ax: acela e centrul, iar baza e un cerc cu raza asta. 0 = baza vine din conturul axelor legate (minimum 3).">
+              Rază bază
+            </span>
+            <input type="number" step={100} min={0}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('base_radius_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('base_radius_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground"
+              title="Rotunjește colțurile conturului. O membrană se încrețește în colț și panourile de acolo ies ca niște așchii — deci e geometrie, nu ornament. Nu are efect pe bază circulară.">
+              Filet colțuri
+            </span>
+            <input type="number" step={50} min={0}
+              disabled={domeRes?.baseKind === 'circle'}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full disabled:opacity-40"
+              value={Number(propVal('base_fillet_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('base_fillet_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Cât urcă vârful peste cota bazei.">Înălțime</span>
+            <div className="flex items-center gap-1.5">
+              <input type="number" step={100}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1 min-w-0"
+                value={Number(propVal('dome_height_mm') ?? 3000)}
+                onChange={(e) => onUpdateProp('dome_height_mm', Number(e.target.value))} />
+              {/* A hemisphere is height = radius at bulge 1 — the one shape
+                  worth a click, because getting it by hand means typing the
+                  radius twice and remembering the bulge. */}
+              {domeRes?.baseKind === 'circle' && (
+                <button type="button"
+                  title="Emisferă: înălțimea = raza, bombare 1"
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-accent whitespace-nowrap"
+                  onClick={() => onUpdateProps?.({
+                    dome_height_mm: Number(propVal('base_radius_mm') ?? 0),
+                    dome_bulge: 1,
+                  })}>
+                  = emisferă
+                </button>
+              )}
+            </div>
+
+            <span className="text-muted-foreground"
+              title="0 = paraboloid (membrană sub presiune mică). 1 = elipsoidal — emisferă când înălțimea egalează raza. Peste 1, flancurile se înclină abrupt și vârful se aplatizează, ca un balon.">
+              Bombare
+            </span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0} max={1.5} step={0.05} className="flex-1"
+                value={Number(propVal('dome_bulge') ?? 1)}
+                onChange={(e) => onUpdateProp('dome_bulge', Number(e.target.value))} />
+              <span className="text-[10px] text-muted-foreground w-7 text-right">
+                {Number(propVal('dome_bulge') ?? 1).toFixed(2)}
+              </span>
+            </div>
+
+            <span className="text-muted-foreground" title="Cota bazei: talpa sau plafonul etajului, plus offsetul.">Cotă bază</span>
+            <div className="flex items-center gap-1.5">
+              <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1"
+                value={String(propVal('level') ?? 'top')}
+                onChange={(e) => onUpdateProp('level', e.target.value)}>
+                <option value="top">Plafon etaj</option>
+                <option value="bottom">Talpă etaj</option>
+              </select>
+              <input type="number" step={50} title="Offset față de cota aleasă, mm"
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-16"
+                value={Number(propVal('offset_z_mm') ?? 0)}
+                onChange={(e) => onUpdateProp('offset_z_mm', Number(e.target.value))} />
+            </div>
+
+            <span className="text-muted-foreground" title="Câte celule Voronoi — deci câte panouri de sticlă.">Celule</span>
+            <input type="number" min={1} max={600} step={1}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('cell_count') ?? 40)}
+              onChange={(e) => onUpdateProp('cell_count', Number(e.target.value))} />
+
+            <span className="text-muted-foreground"
+              title="Schimbă tiparul păstrând numărul de celule. Același seed dă mereu aceeași tesela­ție.">
+              Seed
+            </span>
+            <div className="flex items-center gap-1.5">
+              <input type="number" step={1}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs flex-1"
+                value={Number(propVal('cell_seed') ?? 1)}
+                onChange={(e) => onUpdateProp('cell_seed', Number(e.target.value))} />
+              <button type="button" title="Alt tipar"
+                className="text-[11px] px-2 py-0.5 rounded border border-border hover:bg-accent"
+                onClick={() => onUpdateProp('cell_seed', Math.floor(Math.random() * 100000))}>
+                ↻
+              </button>
+            </div>
+
+            <span className="text-muted-foreground"
+              title="Uniformizează celulele pe SUPRAFAȚĂ, nu în plan — fără ea, celulele de pe flancuri ies întinse. 0 le lasă unde au căzut.">
+              Relaxare
+            </span>
+            <input type="number" min={0} max={20} step={1}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('relax_iterations') ?? 3)}
+              onChange={(e) => onUpdateProp('relax_iterations', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Finețea plasei de calcul a suprafeței. Mai mare = mai precis, mai lent.">Rezoluție</span>
+            <input type="number" min={6} max={80} step={2}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('resolution') ?? 28)}
+              onChange={(e) => onUpdateProp('resolution', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Profilul nervurii — din aceeași bibliotecă folosită de sweep.">Nervură</span>
+            <select className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={String(propVal('profile') ?? 'rect')}
+              onChange={(e) => onUpdateProp('profile', e.target.value)}>
+              <optgroup label="Parametrice">
+                {listProfileOptions().filter((o) => o.group === 'parametric').map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Catalog">
+                {listProfileOptions().filter((o) => o.group === 'catalogue').map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="DXF">
+                {listProfileOptions().filter((o) => o.group === 'dxf').map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </optgroup>
+            </select>
+
+            {(PARAMETRIC_PROFILES.find((p) => p.id === String(propVal('profile') ?? 'rect'))?.params ?? []).map((prm) => (
+              <React.Fragment key={prm.key}>
+                <span className="text-muted-foreground">{prm.label}</span>
+                <input type="number" step={5}
+                  className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                  value={Number(propVal(prm.key) ?? prm.defaultMm)}
+                  onChange={(e) => onUpdateProp(prm.key, Number(e.target.value))} />
+              </React.Fragment>
+            ))}
+
+            <span className="text-muted-foreground" title="Grosimea panoului de sticlă.">Sticlă</span>
+            <input type="number" step={1} min={1}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('glass_thickness_mm') ?? 12)}
+              onChange={(e) => onUpdateProp('glass_thickness_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground"
+              title="Cât are voie un panou să se abată de la planul lui. Peste asta, panoul nu mai poate fi sticlă plană — e raportat, nu ascuns.">
+              Toleranță plan
+            </span>
+            <input type="number" step={1} min={0}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('planarity_tol_mm') ?? 10)}
+              onChange={(e) => onUpdateProp('planarity_tol_mm', Number(e.target.value))} />
+          </div>
+
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            {domeRes?.base
+              ? (domeRes.baseKind === 'circle'
+                  ? `1 ax + rază ${(domeRes.intent.baseRadiusMm / 1000).toFixed(2)} m → bază circulară · `
+                  : `${domeRes.base.length} axe → contur · `)
+                + `${domeRes.cells.length} celule · `
+                + `${domeRes.panels.length} panouri · H ${((domeRes.zMaxMm - domeRes.zMinMm) / 1000).toFixed(2)} m`
+                + ` · nervuri ${(domeRes.memberLengthMm / 1000).toFixed(1)} m`
+                + ` · sticlă ${(domeRes.glassAreaMm2 / 1e6).toFixed(1)} m²`
+              : 'Leagă nodul de un ax și dă-i o rază (bază circulară), sau de cel puțin 3 axe (contur).'}
+          </div>
+
+          {domeRes?.clustered && (
+            <div className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5">
+              {domeRes.clusteredWith.length > 0
+                ? `Unit cu ${domeRes.clusteredWith.length === 1 ? 'alt dom' : `${domeRes.clusteredWith.length} domuri`} — `
+                : 'Cu intrare — '}
+              rămâne doar învelitoarea exterioară, iar muchia comună devine ramă
+              {domeRes.seamLengthMm > 0 && ` (${(domeRes.seamLengthMm / 1000).toFixed(1)} m)`}.
+            </div>
+          )}
+
+          {domeRes && domeRes.panels.length > 0 && (
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              Abatere max. de la plan: {Math.max(...domeRes.panels.map((p) => p.deviationMm)).toFixed(1)} mm
+              {domeRes.offToleranceCount > 0
+                ? ` · ${domeRes.offToleranceCount} panouri peste toleranță`
+                : ' · toate în toleranță'}
+            </div>
+          )}
+
+          {(domeRes?.diagnostics ?? []).length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {domeRes!.diagnostics.map((d, i) => (
+                <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                  d.severity === 'error'
+                    ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                    : d.severity === 'warning'
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                      : 'border-border bg-muted/40 text-muted-foreground'
+                }`}>
+                  {d.message}
+                </div>
+              ))}
+            </div>
+          )}
+        </PropSection>
+      )}
+
+      {/* Site — the project's ground, placed by one axis and pinned to the storey floor */}
+      {node.type === 'site' && (
+        <PropSection label="Teren" icon="⛰">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground" title="Rotirea grilei de teren față de axele clădirii.">Rotire</span>
+            <input type="number" step={5}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('rotation_deg') ?? 0)}
+              onChange={(e) => onUpdateProp('rotation_deg', Number(e.target.value))} />
+
+            <span className="text-muted-foreground"
+              title="Cota terenului la axul de ancorare = talpa etajului acestui nod, plus offsetul de aici.">
+              Offset cotă
+            </span>
+            <input type="number" step={50}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('offset_z_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_z_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Desenează terenul în viewerele 3D și pe glob.">În 3D</span>
+            <input type="checkbox"
+              checked={String(propVal('show_in_3d') ?? 'True').toLowerCase() === 'true'}
+              onChange={(e) => onUpdateProp('show_in_3d', e.target.checked ? 'True' : 'False')} />
+
+            <span className="text-muted-foreground"
+              title="Fiecare fundație din graf își sapă groapa: amprenta plus spațiul de lucru, până sub talpă plus stratul de egalizare. Oprit implicit — o groapă e o decizie despre teren, nu o consecință a desenării unei fundații.">
+              Sapă fundațiile
+            </span>
+            <input type="checkbox"
+              checked={String(propVal('excavate_foundations') ?? 'False').toLowerCase() === 'true'}
+              onChange={(e) => onUpdateProp('excavate_foundations', e.target.checked ? 'True' : 'False')} />
+
+            {String(propVal('excavate_foundations') ?? 'False').toLowerCase() === 'true' && (<>
+              <span className="text-muted-foreground" title="Spațiu de lucru de fiecare parte a fundației, mm.">Spațiu lucru</span>
+              <input type="number" step={50} min={0}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={Number(propVal('working_space_mm') ?? 500)}
+                onChange={(e) => onUpdateProp('working_space_mm', Number(e.target.value))} />
+              <span className="text-muted-foreground" title="Strat de egalizare sub talpă, mm.">Egalizare</span>
+              <input type="number" step={10} min={0}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={Number(propVal('bedding_mm') ?? 100)}
+                onChange={(e) => onUpdateProp('bedding_mm', Number(e.target.value))} />
+              <span className="text-muted-foreground" title="Taluzul gropii, grade. 0 = pereți verticali.">Taluz</span>
+              <input type="number" step={5} min={0} max={89}
+                className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+                value={Number(propVal('pit_slope_deg') ?? 45)}
+                onChange={(e) => onUpdateProp('pit_slope_deg', Number(e.target.value))} />
+            </>)}
+          </div>
+
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            {siteRes?.frame
+              ? `Grilă ${siteRes.model.sizeM} m · ${siteRes.model.subdivisions} div · `
+                + (siteRes.model.flat ? 'plat' : 'relief')
+                + (siteRes.model.bakedHeights ? ' · editat manual' : '')
+                + ` · cota la ax ${(siteRes.frame.datumMm / 1000).toFixed(2)} m`
+                + ` · teren ${(siteRes.zMinMm / 1000).toFixed(2)}…${(siteRes.zMaxMm / 1000).toFixed(2)} m`
+              : 'Leagă nodul de un ax: acolo e centrul grilei, iar terenul de acolo stă la talpa etajului.'}
+          </div>
+          {siteRes?.frame && (siteRes.zoneCutM3 + siteRes.foundationCutM3 + siteRes.zoneFillM3 > 0) && (
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              Săpătură {(siteRes.zoneCutM3 + siteRes.foundationCutM3).toFixed(1)} m³
+              {siteRes.foundationCutM3 > 0 && ` (din care fundații ${siteRes.foundationCutM3.toFixed(1)} m³)`}
+              {' · '}umplutură {siteRes.zoneFillM3.toFixed(1)} m³
+            </div>
+          )}
+          {(siteRes?.diagnostics ?? []).length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {siteRes!.diagnostics.map((d, i) => (
+                <div key={i} className={`text-[10px] leading-snug rounded border px-2 py-1 ${
+                  d.severity === 'error'
+                    ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
+                    : d.severity === 'warning'
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                      : 'border-border bg-muted/40 text-muted-foreground'
+                }`}>
+                  {d.message}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            Forma terenului, șanțurile și săpăturile se modelează în fila <b>Terrain</b>; ce faci acolo
+            se salvează cu proiectul și apare aici, în 3D, pe glob și în secțiuni.
+          </div>
+        </PropSection>
+      )}
+
+      {/* Dome entrance — an igloo tunnel, unioned into the dome it opens into */}
+      {node.type === 'dome_entrance' && (
+        <PropSection label="Intrare dom" icon="⌒">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+            <span className="text-muted-foreground" title="Lățimea tunelului, deci a golului de trecere.">Lățime</span>
+            <input type="number" step={50} min={100}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('width_mm') ?? 1400)}
+              onChange={(e) => onUpdateProp('width_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Înălțimea boltei. Trebuie să fie mai mică decât a domului, altfel l-ar înghiți.">Înălțime</span>
+            <input type="number" step={50} min={1}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('height_mm') ?? 2100)}
+              onChange={(e) => onUpdateProp('height_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Ridică sau coboară tunelul față de cota bazei domului.">Offset cotă</span>
+            <input type="number" step={50}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('offset_z_mm') ?? 0)}
+              onChange={(e) => onUpdateProp('offset_z_mm', Number(e.target.value))} />
+
+            <span className="text-muted-foreground" title="Câte panouri primește tunelul. Are numărul lui, fiindcă altfel, fiind mic pe lângă dom, ar ieși dintr-o singură bucată.">Celule</span>
+            <input type="number" step={1} min={1} max={200}
+              className="bg-background border border-border rounded px-1.5 py-0.5 text-xs w-full"
+              value={Number(propVal('cell_count') ?? 8)}
+              onChange={(e) => onUpdateProp('cell_count', Number(e.target.value))} />
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            Leag-o de nodul <b>dom</b> și de <b>axul unde vrei gura</b> tunelului. Bolta se
+            unește cu domul, iar curba pe care se întâlnesc e arcul ușii — nu se taie niciun
+            gol, cele două interioare sunt deja unul singur.
           </div>
         </PropSection>
       )}
@@ -2939,6 +5283,93 @@ function PropertiesPanel({
         </PropSection>
       )}
 
+      {/* ── Specification overrides for this element ── */}
+      {specGroupsFor(node.type).length > 0 && (
+        <PropSection label="Materiale și finisaje" icon="⚒" defaultOpen={false}>
+          <SpecPicker
+            nodeType={node.type}
+            compact
+            inheritLabel="moștenit"
+            value={Object.fromEntries(
+              specGroupsFor(node.type)
+                .map((g) => [g.id, String(propVal(`spec_${g.id}`) ?? '')] as const)
+                .filter(([, v]) => v !== ''),
+            )}
+            onChange={(next) => {
+              for (const g of specGroupsFor(node.type)) {
+                const before = String(propVal(`spec_${g.id}`) ?? '');
+                const after = next[g.id] ?? '';
+                if (before !== after) onUpdateProp(`spec_${g.id}`, after || undefined);
+              }
+            }}
+          />
+          <div className="text-[10px] text-muted-foreground mt-1">
+            Suprascrie alegerea proiectului doar pentru acest element — de pildă faianță
+            într-o baie, fără să o pui în toată casa.
+          </div>
+        </PropSection>
+      )}
+
+      {/* ── Structural system override ── */}
+      <PropSection label="Sistem structural" icon="⚙" defaultOpen={false}>
+        <select
+          className="bg-background border border-border rounded px-1.5 py-0.5 w-full text-xs"
+          value={String(propVal(SYSTEM_PROPERTY_KEY) ?? '')}
+          onChange={(e) => onUpdateProp(SYSTEM_PROPERTY_KEY, e.target.value)}
+          title="Suprascrie sistemul structural doar pentru acest element"
+        >
+          <option value="">
+            {isBulk && propVal(SYSTEM_PROPERTY_KEY) === undefined
+              ? '(var)'
+              : `(moștenit: ${STRUCTURAL_SYSTEM_LABELS[projectSystem ?? 'unset']})`}
+          </option>
+          {STRUCTURAL_SYSTEMS.filter((sys) => sys !== 'unset').map((sys) => (
+            <option key={sys} value={sys}>{STRUCTURAL_SYSTEM_LABELS[sys]}</option>
+          ))}
+        </select>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {STRUCTURAL_SYSTEM_HINTS[
+            resolveStructuralSystem(isBulk ? undefined : node ?? undefined, projectSystem)
+          ]}
+        </p>
+      </PropSection>
+
+      {/* Derived quantities — computed from the geometry, never typed. They
+          are saved with the project as `q_*` and a formula may name them. */}
+      {!isBulk && nodeQty.length > 0 && (
+        <PropSection label="Cantități" icon="Σ">
+          <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 items-baseline">
+            {/* One row per distinct value: a single slab's length, outline
+                length, area, net area and section coincide, and five equal
+                rows would read as five different things. Every name still
+                works in a formula — the tooltip lists them. */}
+            {nodeQty
+              .reduce<{ label: string; unit: string; value: number; keys: string[] }[]>((rows, q) => {
+                const same = rows.find((r) => r.unit === q.unit && Math.abs(r.value - q.value) <= 1e-9 * Math.max(1, Math.abs(q.value)));
+                if (same) same.keys.push(q.key);
+                else rows.push({ label: q.label, unit: q.unit, value: q.value, keys: [q.key] });
+                return rows;
+              }, [])
+              .map((r) => (
+                <React.Fragment key={r.keys[0]}>
+                  <span className="text-muted-foreground truncate"
+                    title={`Calculată din geometrie — doar citire. În formule: ${r.keys.join(', ')}`}>
+                    {r.label}
+                  </span>
+                  <span className="font-mono tabular-nums text-right" title={r.keys.join(', ')}>
+                    {r.value.toLocaleString('ro-RO', { maximumFractionDigits: r.unit === 'buc' ? 0 : 3 })}
+                    <span className="text-muted-foreground ml-1">{r.unit}</span>
+                  </span>
+                </React.Fragment>
+              ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Se salvează cu proiectul și pot fi folosite în formule prin numele lor
+            (<span className="font-mono">q_…</span>, vezi tooltip-ul fiecărui rând).
+          </p>
+        </PropSection>
+      )}
+
       {/* Other custom properties */}
       <PropSection label="Properties" icon="⋯" defaultOpen={false}>
         <div className="flex items-center justify-between">
@@ -2949,7 +5380,7 @@ function PropertiesPanel({
         </div>
         {/* In bulk mode: collect all non-smart keys across all nodes */}
         {!isBulk && Object.entries(node.properties)
-          .filter(([k]) => !smartKeys.has(k))
+          .filter(([k]) => !smartKeys.has(k) && !isDerivedKey(k))
           .map(([k, v]) => (
             <div key={k} className="flex gap-1 items-center">
               <span className="text-muted-foreground shrink-0 w-16 truncate" title={k}>{k}</span>
@@ -2967,7 +5398,7 @@ function PropertiesPanel({
         {isBulk && (() => {
           // Collect all non-smart keys that appear in at least one node
           const keySet = new Set<string>();
-          for (const n of allNodes) Object.keys(n.properties).forEach((k) => { if (!smartKeys.has(k)) keySet.add(k); });
+          for (const n of allNodes) Object.keys(n.properties).forEach((k) => { if (!smartKeys.has(k) && !isDerivedKey(k)) keySet.add(k); });
           return Array.from(keySet).map((k) => {
             const val = bulkPropValue(allNodes, k);
             const mixed = val === undefined;
@@ -3521,6 +5952,7 @@ const VISIBILITY_TYPES = [
   { type: 'door',       icon: '🚪', label: 'Door'       },
   { type: 'room',       icon: '□', label: 'Room'       },
   { type: 'shell',      icon: '⌒', label: 'Shell'      },
+  { type: 'cell',       icon: '◌', label: 'Cell'       },
   { type: 'roof',       icon: '△', label: 'Roof'       },
   { type: 'roof_ridge', icon: '━', label: 'Ridge'      },
   { type: 'rafter',     icon: '/', label: 'Rafter'     },
@@ -3530,6 +5962,28 @@ const VISIBILITY_TYPES = [
   { type: 'dormer',     icon: '⌂', label: 'Dormer'     },
   { type: 'section',    icon: '✂', label: 'Section'    },
 ] as const;
+
+/**
+ * Dashboard visibility, remembered across sessions. Wrapped in try/catch
+ * because storage throws outright in some contexts (private windows, blocked
+ * site data) and a dashboard preference must never break the editor.
+ */
+const DASHBOARD_PREF_KEY = 'bb.dashboard.v1';
+
+function readDashboardPref(key: 'open' | 'collapsed', fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_PREF_KEY);
+    if (!raw) return fallback;
+    const v = (JSON.parse(raw) as Record<string, unknown>)[key];
+    return typeof v === 'boolean' ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeDashboardPref(pref: { open: boolean; collapsed: boolean }): void {
+  try { localStorage.setItem(DASHBOARD_PREF_KEY, JSON.stringify(pref)); } catch { /* storage unavailable */ }
+}
 
 // ─── BubbleGraphCanvas ────────────────────────────────────────────────────
 
@@ -3552,9 +6006,29 @@ interface BubbleGraphCanvasProps {
   /** Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z — owned by the parent's useUndoableGraphState. */
   undo?: () => void;
   redo?: () => void;
+  /** Project-wide structural system, so the inspector can show what an element inherits. */
+  projectSystem?: StructuralSystem;
+  /** Grid mode: axes as lines, intersections as dots, minimal elements, on-canvas axis editing. Uncontrolled when omitted. */
+  gridMode?: boolean;
+  onToggleGridMode?: () => void;
+  /** The model's setup, in order — axes, then storeys — shown as steps 1 and 2 before the grid view. */
+  onOpenAxes?: () => void;
+  onAddStorey?: () => void;
+  lang?: 'ro' | 'en';
+  /**
+   * Nodes the INSPECTOR reads when a cost scenario is active — the graph with
+   * the scenario applied — so it shows the values the viewers show. The canvas
+   * itself keeps drawing and editing `nodes` (the base graph).
+   */
+  inspectNodes?: BubbleGraphNode[];
+  /** Cost state for the quest HUD's "Economist" line (undefined where quantities are excluded). */
+  economy?: EconomySnapshot;
 }
 
-export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, setNodes, setEdges, selectedNodeId, setSelectedNodeId, selectedNodeIds = [], setSelectedNodeIds, onOpenSectionTab, hidePropsPanel = false, undo, redo }: BubbleGraphCanvasProps) {
+export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, setNodes, setEdges, selectedNodeId, setSelectedNodeId, selectedNodeIds = [], setSelectedNodeIds, onOpenSectionTab, hidePropsPanel = false, undo, redo, projectSystem, gridMode: gridModeProp, onToggleGridMode, onOpenAxes, onAddStorey, lang = 'ro', inspectNodes, economy }: BubbleGraphCanvasProps) {
+  const [gridModeLocal, setGridModeLocal] = useState(false);
+  const gridMode = gridModeProp ?? gridModeLocal;
+  const toggleGridMode = onToggleGridMode ?? (() => setGridModeLocal((v) => !v));
   // Nodes visible in the current view: all children of active storey (or all nodes for overview).
   // Includes indirect descendants: nodes whose parentId is a direct child, AND orphan nodes
   // (parentId === null) that are connected via edge to a direct child (e.g. windows on walls).
@@ -3617,7 +6091,6 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
   }, [edges, visibleNodes]);
   const { config: matConfig } = useMaterialConfig();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<InteractionMode>('select');
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -3646,9 +6119,46 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
   const [connectTargetId, setConnectTargetId] = useState<string | null>(null);
   const [hiddenNodeTypes, setHiddenNodeTypes] = useState<Set<string>>(new Set());
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  // ── Grid mode state ──
+  /** 'linked' edits every storey sharing the axis value; 'single' only the storey under the cursor. */
+  const [gridScope, setGridScope] = useState<GridScope>('linked');
+  /** An axis / cell-edge drag in progress: previewed on a copy, committed once on mouse-up. */
+  const [gridDrag, setGridDrag] = useState<{
+    edit: Extract<GridEdit, { deltaMm: number }>;
+    startMm: number;
+    bounds: { lo: number; hi: number };
+  } | null>(null);
+  const gridDragRef = useRef(gridDrag);
+  gridDragRef.current = gridDrag;
+  const [gridHover, setGridHover] = useState<GridHover>(null);
+  /** The opening whose on-canvas controls are showing. */
+  const [openingHover, setOpeningHover] = useState<OpeningRef | null>(null);
+  /** Sliding an opening along its wall: previewed locally, written once on mouse-up. */
+  const [openingDrag, setOpeningDrag] = useState<{
+    ref: OpeningRef;
+    wallId: string;
+    lenMm: number;
+    widthMm: number;
+    /** Where it started, so a click that never moved selects instead of writing. */
+    fromMm: number;
+    offsetMm: number;
+  } | null>(null);
+  const openingDragRef = useRef(openingDrag);
+  openingDragRef.current = openingDrag;
+  /** Dimension label being edited in the HTML input over the canvas. */
+  const [editingDim, setEditingDim] = useState<{ storeyId: string; axis: 'x' | 'y'; index: number; value: string } | null>(null);
   // Nearest edge midpoint for snap indicator while drawing edges (canvas coords)
   const [edgeMidSnap, setEdgeMidSnap] = useState<{ x: number; y: number; edgeId: string } | null>(null);
   const [selectedNodeType, setSelectedNodeType] = useState('ax');
+  const [nodeTypeQuery, setNodeTypeQuery] = useState('');
+  /** Node types matching a search, by label, id or description. Empty = all. */
+  const filterNodeTypes = useCallback((q: string) => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return NODE_LIBRARY.nodeTypes;
+    return NODE_LIBRARY.nodeTypes.filter((nt) =>
+      nt.label.toLowerCase().includes(needle) || nt.id.toLowerCase().includes(needle)
+      || String((nt as { description?: string }).description ?? '').toLowerCase().includes(needle));
+  }, []);
   const [continuousMode, setContinuousMode] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [edgeType, setEdgeType] = useState<EdgePlacementType>('simple');
@@ -3660,6 +6170,8 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
   const setBubbleGraph = useBubbleGraphStore((s) => s.setBubbleGraph);
   const [projectName, setProjectName] = useState('My Building');
+  // Live-pushes the generated IFC to the IfcLiteBridge companion app's viewer — see useIfcLiveSync above.
+  const [ifcLiveSyncEnabled, setIfcLiveSyncEnabled] = useState(false);
 
   // Detect dark mode from <html> class
   const [theme, setTheme] = useState<'dark' | 'light'>(
@@ -3673,21 +6185,60 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     return () => obs.disconnect();
   }, []);
 
-  const handleGenerateIfc = useCallback(async () => {
+
+  // Generates the model straight into a running ArchiCAD via the Tapir add-on.
+  // Regenerating deletes what the previous push made, so a saved project asks first.
+  const [archicadBusy, setArchicadBusy] = useState(false);
+  const handlePushToArchicad = useCallback(async () => {
+    setArchicadBusy(true);
     try {
-      const file = generateIfcFromGraph(nodes, edges, projectName, buildingAxes);
-      // Download IFC file
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`IFC generated: ${file.name}`);
+      const result = await pushGraphToArchicad(nodes, edges, {
+        confirmSavedProject: (path) => window.confirm(
+          `The open ArchiCAD project is saved${path ? ` (${path})` : ''}.\n\n`
+          + 'Pushing deletes every wall, column, beam, slab, window and door before '
+          + 'regenerating. Continue?',
+        ),
+      });
+      if (isCancelled(result)) {
+        toast.info('ArchiCAD push cancelled — nothing was changed.');
+        return;
+      }
+      const made = Object.entries(result.created).map(([k, v]) => `${v} ${k}`).join(', ');
+      if (made) {
+        toast.success(`Pushed to ArchiCAD: ${made}`);
+      } else {
+        // An empty push almost always means the GRAPH had nothing to emit, so
+        // say what the mapping actually found instead of a bare "nothing".
+        const found = Object.entries(result.planned).map(([k, v]) => `${v} ${k}`).join(', ');
+        const axCount = nodes.filter((n) => n.type === 'ax').length;
+        toast.info(
+          found
+            ? `Nothing created. The mapping produced only: ${found}.`
+            : `Nothing to push — the graph has no walls, columns, beams or slabs`
+              + `${axCount ? ` (${axCount} ax nodes, none with has_column = True)` : ''}.`,
+        );
+      }
+      // Rejections and skips are the interesting part; never let them pass silently.
+      for (const [kind, r] of Object.entries(result.rejected)) {
+        toast.error(`ArchiCAD refused ${r.count} ${kind}: ${r.reason}`);
+      }
+      for (const h of result.hints) toast.info(h);
+      if (result.skipped.length) {
+        const first = result.skipped[0];
+        const more = result.skipped.length - 1;
+        toast.info(
+          `Skipped ${result.skipped.length} element(s) — ${first.type} ${first.nodeId}: `
+          + `${first.reason}${more ? ` (+${more} more)` : ''}`,
+        );
+      }
     } catch (err) {
-      toast.error(`IFC generation failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`ArchiCAD push failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setArchicadBusy(false);
     }
-  }, [nodes, edges, projectName, buildingAxes]);
+  }, [nodes, edges]);
+
+  const { status: ifcLiveSyncStatus } = useIfcLiveSync(nodes, edges, projectName, ifcLiveSyncEnabled);
 
   // Sync to store when nodes/edges change
   useEffect(() => {
@@ -3752,6 +6303,93 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     return visibleEdges.filter((e) => ids.has(e.from) && ids.has(e.to));
   }, [visibleEdges, displayNodes, hiddenNodeTypes]);
 
+  // ── Grid mode: preview + layout ──
+  // While an axis drag is live, the picture is the edit applied to a COPY of the
+  // graph (so linked storeys preview too), filtered to what this view shows.
+  // Nothing is written until mouse-up.
+  // A stepped cell edge ADDS nodes (the new grid points and the wall that closes
+  // the jog), so the preview keeps anything the edit invented on top of what the
+  // view already showed.
+  const gridPreview = useMemo(() => {
+    if (gridDrag) {
+      const res = applyGridEdit(nodes, edges, gridDrag.edit);
+      if (res.nodes === nodes && res.edges === edges) return null;
+      const before = new Set(nodes.map((n) => n.id));
+      const shown = new Set(displayNodes.map((n) => n.id));
+      const keep = res.nodes.filter((n) => shown.has(n.id) || !before.has(n.id));
+      const ids = new Set(keep.map((n) => n.id));
+      return { nodes: keep, edges: res.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) };
+    }
+    if (openingDrag) {
+      const patched = patchOpening(displayNodes, openingDrag.ref, {
+        [offsetKeyFor(openingDrag.ref)]: openingDrag.offsetMm,
+      });
+      return { nodes: patched, edges: displayEdges };
+    }
+    return null;
+  }, [gridDrag, openingDrag, nodes, edges, displayNodes, displayEdges]);
+  const viewNodes = gridPreview?.nodes ?? displayNodes;
+  const viewEdges = gridPreview?.edges ?? displayEdges;
+
+  const gridLayout = useMemo(() => {
+    if (!gridMode) return null;
+    const storeyIds = viewNodes.filter((n) => n.type === 'storey').map((n) => n.id);
+    return buildGridLayout(viewNodes, storeyIds, { zoom });
+  }, [gridMode, viewNodes, zoom]);
+
+  // ── Grid mode: walls as segments, with the openings cut into them ──
+  // The endpoint order is the one `calcWallGeometry` uses, so an opening lands
+  // on the canvas exactly where it lands in the plan and in 3D.
+  const gridWalls = useMemo<GridWall[]>(() => {
+    if (!gridMode) return [];
+    const map = new Map(viewNodes.map((n) => [n.id, n]));
+    const out: GridWall[] = [];
+    for (const n of viewNodes) {
+      if (n.type !== 'wall') continue;
+      const ends = getConnectedNodesWithGrips(n.id, viewEdges, map)
+        .filter(({ node: m }) => m.type !== 'window' && m.type !== 'door');
+      if (ends.length < 2) continue;
+      const pA = edgeNodePos(ends[0].node, ends[0].gripIdx);
+      const pB = edgeNodePos(ends[1].node, ends[1].gripIdx);
+      const lenMm = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+      if (lenMm < 1) continue;
+      out.push({
+        wall: n,
+        a: { x: pA.x * MM_TO_PX, y: pA.y * MM_TO_PX },
+        b: { x: pB.x * MM_TO_PX, y: pB.y * MM_TO_PX },
+        lenMm,
+        openings: wallOpenings(n, lenMm, viewEdges, map),
+      });
+    }
+    return out;
+  }, [gridMode, viewNodes, viewEdges]);
+
+  const gridOpenings = useMemo(() => {
+    const out: Array<{ wall: GridWall; placement: OpeningPlacement }> = [];
+    for (const w of gridWalls) {
+      for (const op of w.openings) {
+        const placement = placeOpening(w, op, zoom);
+        if (placement) out.push({ wall: w, placement });
+      }
+    }
+    return out;
+  }, [gridWalls, zoom]);
+
+  /** Has-windows / has-doors chips, shown on the selected wall only. */
+  const gridWallChipList = useMemo(() => {
+    const sel = new Set([selectedNodeId, ...selectedNodeIds].filter((id): id is string => !!id));
+    return gridWalls.filter((w) => sel.has(w.wall.id)).flatMap((w) => wallChips(w, zoom));
+  }, [gridWalls, selectedNodeId, selectedNodeIds, zoom]);
+
+  /** The opening currently offering its controls: hovered, dragged, or selected. */
+  const activeOpening = useMemo(() => {
+    const wanted = openingDrag?.ref ?? openingHover;
+    const hit = gridOpenings.find(({ placement }) =>
+      sameOpeningRef(placement.op.ref, wanted) ||
+      (placement.op.ref.kind === 'node' && placement.op.ref.nodeId === selectedNodeId));
+    return hit?.placement ?? null;
+  }, [gridOpenings, openingHover, openingDrag, selectedNodeId]);
+
   // ── Draw ──────────────────────────────────────────────────────────────
 
   const draw = useCallback(() => {
@@ -3785,6 +6423,43 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     ctx.translate(0, canvas.height / zoom);
     ctx.scale(1, -1);
 
+    // Room polygons are collected by the normal pass and consulted by the node
+    // pass below; grid mode draws rooms itself, so the map stays empty there.
+    const roomPolygons = new Map<string, { pts: {x:number;y:number}[]; centX: number; centY: number; area_m2: number }>();
+
+    if (gridMode && gridLayout) {
+      // ── Grid mode: axes, dimensions, dots and a minimal reading of the rest ──
+      drawGridMode(ctx, {
+        nodes: viewNodes,
+        edges: viewEdges,
+        layout: gridLayout,
+        zoom,
+        mmToPx: MM_TO_PX,
+        colors: {
+          text: canvasText,
+          axis: theme === 'dark' ? '#94a3b8' : '#64748b',
+          accent: '#0ea5e9',
+          selection: '#e94560',
+          edge: canvasEdge,
+          surface: canvasBg,
+        },
+        nodeColors: NODE_COLORS,
+        selectedNodeId,
+        selectedNodeIds,
+        selectedEdge,
+        edgeStart,
+        hoveredGrip,
+        hover: gridHover,
+        drag: gridDrag ? { edit: gridDrag.edit } : null,
+        hideDim: editingDim ? { storeyId: editingDim.storeyId, axis: editingDim.axis, index: editingDim.index } : null,
+        roomPts: (n) => getRoomCanvasPts(n, viewNodes, viewEdges),
+        edgeEndpoint: edgeNodePos,
+        walls: gridWalls,
+        openings: gridOpenings,
+        activeOpening,
+        wallChips: gridWallChipList,
+      });
+    } else {
     // Storey frames
     displayNodes.filter((n) => n.type === 'storey').forEach((s) => {
       const w = (s.properties.width as number || 0) * MM_TO_PX;
@@ -3830,7 +6505,6 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     // Fallback  — any other connected non-room nodes (≥3)
     // getRoomCanvasPts is defined as a useCallback above — used directly here
 
-    const roomPolygons = new Map<string, { pts: {x:number;y:number}[]; centX: number; centY: number; area_m2: number }>();
     displayNodes.filter((n) => n.type === 'room').forEach((n) => {
       let pts = getRoomCanvasPts(n);
       if (!pts) return;
@@ -3933,7 +6607,9 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       ctx.stroke();
     });
 
-    // Edge preview (addEdge mode click-click OR grip drag)
+    } // end normal-mode frames / rooms / edges
+
+    // Edge preview (addEdge mode click-click OR grip drag) — both modes
     if ((mode === 'addEdge' || isGripDragging) && edgeStart) {
       const startN = displayNodes.find((n) => n.id === edgeStart);
       if (startN && canvas) {
@@ -4021,6 +6697,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       ctx.restore();
     }
 
+    if (!gridMode) {
     // Non-storey nodes (section/view rendered separately below)
     displayNodes.filter((n) => n.type !== 'storey' && n.type !== 'section' && n.type !== 'view').forEach((n) => {
       // Room nodes with a polygon are already drawn above — skip the circle
@@ -4271,13 +6948,15 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
         ctx.restore();
       });
+    } // end normal-mode nodes / markers
 
     ctx.restore();
 
     // ── Multi-select highlight rings ──────────────────────────────────────────
     // Draw teal glow rings around all multi-selected nodes (second pass, in
     // world space before the axes gizmo which resets the transform).
-    if (selectedNodeIds.length > 0) {
+    // Grid mode draws its own selection rings on the dots.
+    if (!gridMode && selectedNodeIds.length > 0) {
       const multiSet = new Set(selectedNodeIds);
       ctx.save();
       ctx.translate(pan.x, pan.y);
@@ -4400,7 +7079,11 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
     }
-  }, [displayNodes, displayEdges, selectedNodeId, selectedEdge, selectedNodeIds, pan, zoom, mode, edgeStart, edgeStartGrip, hoveredGrip, isGripDragging, edgeMidSnap, lastMousePos, canvasBg, canvasGrid, canvasText, canvasEdge, theme, roomParametricGridsCanvas, boxSelect, dragging, connectTargetId]);
+  }, [displayNodes, displayEdges, selectedNodeId, selectedEdge, selectedNodeIds, pan, zoom, mode, edgeStart, edgeStartGrip, hoveredGrip, isGripDragging, edgeMidSnap, lastMousePos, canvasBg, canvasGrid, canvasText, canvasEdge, theme, roomParametricGridsCanvas, boxSelect, dragging, connectTargetId,
+    // getRoomCanvasPts is declared below draw (TDZ in the deps array) — it only
+    // changes with visibleNodes/visibleEdges, which displayNodes already tracks.
+    gridMode, gridLayout, viewNodes, viewEdges, gridHover, gridDrag, editingDim,
+    gridWalls, gridOpenings, activeOpening, gridWallChipList]);
 
   // Resize canvas
   useEffect(() => {
@@ -4434,10 +7117,14 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
   const ROOM_GEOM_IGNORE_SET = useMemo(() => new Set(['window', 'door', 'room', 'storey']), []);
 
-  const getRoomCanvasPts = useCallback((rn: BubbleGraphNode): {x:number;y:number}[] | null => {
-    const rEdges = visibleEdges.filter((e) => e.from === rn.id || e.to === rn.id);
+  const getRoomCanvasPts = useCallback((
+    rn: BubbleGraphNode,
+    list: BubbleGraphNode[] = visibleNodes,
+    edgeList: BubbleGraphEdge[] = visibleEdges,
+  ): {x:number;y:number}[] | null => {
+    const rEdges = edgeList.filter((e) => e.from === rn.id || e.to === rn.id);
     const rConn  = rEdges
-      .map((e) => visibleNodes.find((vn) => vn.id === (e.from === rn.id ? e.to : e.from)))
+      .map((e) => list.find((vn) => vn.id === (e.from === rn.id ? e.to : e.from)))
       .filter((vn): vn is BubbleGraphNode => !!vn);
 
     // Pattern A: direct ax/column connections
@@ -4451,9 +7138,9 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       const adj    = new Map<string, Set<string>>();
       const nById  = new Map<string, BubbleGraphNode>();
       for (const wall of walls) {
-        const corners = visibleEdges
+        const corners = edgeList
           .filter((e) => e.from === wall.id || e.to === wall.id)
-          .map((e) => visibleNodes.find((vn) => vn.id === (e.from === wall.id ? e.to : e.from)))
+          .map((e) => list.find((vn) => vn.id === (e.from === wall.id ? e.to : e.from)))
           .filter((vn): vn is BubbleGraphNode => !!vn && !ROOM_GEOM_IGNORE_SET.has(vn.type)
             && (vn.type === 'ax' || vn.type === 'column'));
         if (corners.length >= 2) {
@@ -4494,6 +7181,8 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     if (!canvas) return;
     const cx = (sx - pan.x) / zoom;
     const cy = (canvas.height - (sy - pan.y)) / zoom;
+    // Grid mode draws screen-sized glyphs, so hit radii shrink with zoom too.
+    const R = (screenPx: number, normal: number) => (gridMode ? screenPx / zoom : normal);
 
     // ── Section / view nodes — hit against cut-line midpoint and endpoint circles ──
     const sectionNode = displayNodes.find((n) => {
@@ -4505,7 +7194,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         .filter((vn): vn is BubbleGraphNode => !!vn && vn.type === 'ax');
       if (axNds.length < 2) {
         // Not connected yet — fall through to regular radius check
-        return Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy) < 20;
+        return Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy) < R(10, 20);
       }
       const x1 = axNds[0].x * MM_TO_PX, y1 = axNds[0].y * MM_TO_PX;
       const x2 = axNds[1].x * MM_TO_PX, y2 = axNds[1].y * MM_TO_PX;
@@ -4524,7 +7213,13 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       const lx2 = x2 + nxA * plOffPx + uxA * offR;
       const ly2 = y2 + nyA * plOffPx + uyA * offR;
       const midX = (lx1 + lx2) / 2, midY = (ly1 + ly2) / 2;
-      const HIT = 18;
+      const HIT = R(10, 18);
+      if (gridMode) {
+        // Compact marker: the whole line is the target.
+        const L2 = dxA * dxA + dyA * dyA || 1;
+        const t = Math.max(0, Math.min(1, ((cx - lx1) * (lx2 - lx1) + (cy - ly1) * (ly2 - ly1)) / L2));
+        if (Math.hypot(lx1 + t * (lx2 - lx1) - cx, ly1 + t * (ly2 - ly1) - cy) < R(6, 6)) return true;
+      }
       return (
         Math.hypot(midX - cx, midY - cy) < HIT ||
         Math.hypot(lx1  - cx, ly1  - cy) < HIT ||
@@ -4544,12 +7239,11 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       if (!pts || pts.length < 3) return false;
       const hX = pts.reduce((s, p) => s + p.x, 0) / pts.length;
       const hY = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-      return Math.hypot(hX - cx, hY - cy) < ROOM_HANDLE_R + 3;
+      return Math.hypot(hX - cx, hY - cy) < R(8, ROOM_HANDLE_R + 3);
     });
     if (roomHandle) return roomHandle;
 
     // storey nodes are not hit-testable for movement (they are locked in canvas)
-    // First pass: non-room nodes (highest priority)
     // ── Non-room nodes ────────────────────────────────────────────────────
     // Se strâng TOȚI candidații cu distanța lor, apoi decide `pickBestHit`:
     // un punct (ax, stâlp) bate o linie (perete, grindă), iar în aceeași clasă
@@ -4563,10 +7257,17 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       if (n.type === 'section' || n.type === 'view') continue; // handled above
 
       if (n.type === 'ax') {
+        const nx = n.x * MM_TO_PX, ny = n.y * MM_TO_PX;
+        if (gridMode) {
+          candidates.push({ node: n, nodeType: n.type, dist: Math.hypot(nx - cx, ny - cy), radius: R(8, 8) });
+          continue;
+        }
+        // Cutia stâlpului e dreptunghiulară; distanța e cea Chebyshev normalizată
+        // la semilățimi, ca un ax lat să rămână la fel de ușor de ochit.
         const { hw, hd } = parseColHalfDims((n.properties.column_type as string) ?? 'C25x25');
         const hwp = Math.max(12, hw * MM_TO_PX * AX_D), hdp = Math.max(12, hd * MM_TO_PX * AX_D);
-        const nx = n.x * MM_TO_PX, ny = n.y * MM_TO_PX;
-        if (cx >= nx - hwp && cx <= nx + hwp && cy >= ny - hdp && cy <= ny + hdp) {
+        const inside = cx >= nx - hwp && cx <= nx + hwp && cy >= ny - hdp && cy <= ny + hdp;
+        if (inside) {
           candidates.push({ node: n, nodeType: n.type, dist: Math.hypot(nx - cx, ny - cy), radius: Infinity });
         }
         continue;
@@ -4585,7 +7286,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
             ends[0].x * MM_TO_PX, ends[0].y * MM_TO_PX,
             ends[1].x * MM_TO_PX, ends[1].y * MM_TO_PX,
           );
-          candidates.push({ node: n, nodeType: n.type, dist: d, radius: 12 });
+          candidates.push({ node: n, nodeType: n.type, dist: d, radius: R(8, 12) });
           continue;
         }
       }
@@ -4593,7 +7294,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       candidates.push({
         node: n, nodeType: n.type,
         dist: Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy),
-        radius: 20,
+        radius: R(10, 20),
       });
     }
     const nonRoom = pickBestHit(candidates)?.node;
@@ -4614,7 +7315,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         }
         return inside;
       }
-      return Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy) < 20;
+      return Math.hypot(n.x * MM_TO_PX - cx, n.y * MM_TO_PX - cy) < R(10, 20);
     });
     if (roomHit) return roomHit;
 
@@ -4627,7 +7328,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       const fy = n.y * MM_TO_PX - h / 2;
       return cx >= fx && cx <= fx + w && cy >= fy && cy <= fy + h;
     });
-  }, [displayNodes, displayEdges, pan, zoom, getRoomCanvasPts]);
+  }, [displayNodes, displayEdges, pan, zoom, getRoomCanvasPts, gridMode]);
 
   const getEdgeAt = useCallback((sx: number, sy: number): BubbleGraphEdge | undefined => {
     const canvas = canvasRef.current;
@@ -4644,12 +7345,157 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
   // ── Mouse handlers ────────────────────────────────────────────────────
 
+  // ── Grid-mode gestures ──────────────────────────────────────────────────
+  /** Drag a whole axis line: one value per storey in scope, clamped between its neighbours. */
+  const startAxisDrag = useCallback((line: AxisLine, cx: number, cy: number) => {
+    const storeyIds = gridScope === 'linked'
+      ? linkedStoreys(nodes, line.storeyId, line.axis, line.index)
+      : [line.storeyId];
+    if (!storeyIds.length) return;
+    setGridDrag({
+      edit: { kind: 'moveAxis', storeyId: line.storeyId, axis: line.axis, index: line.index, deltaMm: 0, scope: gridScope },
+      startMm: (line.axis === 'x' ? cx : cy) / MM_TO_PX,
+      bounds: axisDeltaBounds(nodes, storeyIds, line.axis, line.index),
+    });
+    setSelectedEdge(null);
+  }, [gridScope, nodes]);
+
+  /**
+   * Drag one cell edge. By default the envelope STEPS: a new axis is inserted,
+   * the corner splits and a cloned wall closes the jog. Alt keeps the older,
+   * purely geometric behaviour — the two points slide off the axis and the wall
+   * between them goes oblique.
+   */
+  const startCellDrag = useCallback((h: CellHandle, cx: number, cy: number, detach: boolean) => {
+    const storeyIds = gridScope === 'linked'
+      ? linkedStoreys(nodes, h.storeyId, h.axis, h.index)
+      : [h.storeyId];
+    if (!storeyIds.length) return;
+    const common = { storeyId: h.storeyId, axis: h.axis, index: h.index, cell: h.cell, deltaMm: 0, scope: gridScope } as const;
+    setGridDrag({
+      edit: detach ? { kind: 'detachCellEdge', ...common } : { kind: 'stepCellEdge', ...common },
+      startMm: (h.axis === 'x' ? cx : cy) / MM_TO_PX,
+      bounds: detach
+        ? cellOffsetBounds(nodes, storeyIds, h.axis, h.index, h.cell)
+        : axisDeltaBounds(nodes, storeyIds, h.axis, h.index),
+    });
+    setSelectedEdge(null);
+  }, [gridScope, nodes]);
+
+  /** How far along its wall (BIM mm) a world-space point sits. */
+  const alongWallMm = useCallback((w: GridWall, cx: number, cy: number) => {
+    const dx = w.b.x - w.a.x, dy = w.b.y - w.a.y;
+    const segLen = Math.hypot(dx, dy);
+    if (segLen < 1e-6) return 0;
+    const t = ((cx - w.a.x) * dx + (cy - w.a.y) * dy) / (segLen * segLen);
+    return t * w.lenMm;
+  }, []);
+
+  /** A click on one of an opening's chips — each one mirrors an inspector control. */
+  const applyOpeningChip = useCallback((placement: OpeningPlacement, chipId: string) => {
+    const ref = placement.op.ref;
+    if (chipId === 'remove') { setNodes((prev) => removeOpening(prev, ref)); return; }
+    const patch = chipId === 'across'
+      ? { flip_across: !placement.op.flipAcross }
+      : { flip_along: !placement.op.flipAlong };
+    setNodes((prev) => patchOpening(prev, ref, patch));
+  }, [setNodes]);
+
+  /** Clicking a bubble selects every intersection on that axis (bulk edit in the inspector). */
+  const selectWholeAxis = useCallback((line: AxisLine) => {
+    const key = line.axis === 'x' ? 'gridX' : 'gridY';
+    const ids = nodes
+      .filter((n) => n.type === 'ax' && n.parentId === line.storeyId && n.properties.bimX == null && Number(n.properties[key]) === line.index)
+      .map((n) => n.id);
+    setSelectedNodeIds?.(ids);
+    setSelectedNodeId(ids.length === 1 ? ids[0] : null);
+    setSelectedEdge(null);
+  }, [nodes, setSelectedNodeIds, setSelectedNodeId]);
+
+  /** Commit the value typed into a dimension label. Shift = move only the next axis. */
+  const commitDimEdit = useCallback((shift: boolean) => {
+    const d = editingDim;
+    setEditingDim(null);
+    if (!d) return;
+    let v: number;
+    try { v = safeEval(d.value); } catch { return; }
+    if (!Number.isFinite(v) || v < GRID_MIN_GAP_MM) return;
+    setNodes((prev) => applyGridEdit(prev, edges, {
+      kind: 'setSpan', storeyId: d.storeyId, axis: d.axis, index: d.index,
+      spanMm: roundToSnap(v), mode: shift ? 'neighbour' : DEFAULT_SPAN_EDIT_MODE, scope: gridScope,
+    }).nodes);
+  }, [editingDim, edges, gridScope, setNodes]);
+
+  /**
+   * Add one hand-drawn edge. A sketch wired to an ax is a special case: the
+   * edge changes what its stored numbers MEAN, so the same commit rewrites
+   * them and the drawing stays where it is (`setSketchRefs`). The first ax
+   * becomes the origin, the second the direction; a third is just an edge.
+   */
+  const addGraphEdge = useCallback((edge: BubbleGraphEdge) => {
+    const a = nodes.find((n) => n.id === edge.from), b = nodes.find((n) => n.id === edge.to);
+    const sk = a?.type === 'sketch' ? a : b?.type === 'sketch' ? b : null;
+    const other = sk === a ? b : a;
+    if (sk && other && (other.type === 'ax' || other.type === 'column')) {
+      const cur = resolveSketchFrame(sk, new Map(nodes.map((n) => [n.id, n])), edges).frame.refIds;
+      if (cur.length < 2 && !cur.includes(other.id)) {
+        const r = setSketchRefs(nodes, edges, sk.id, [...cur, other.id]);
+        if (r.nodes !== nodes) setNodes(r.nodes);
+        if (r.edges !== edges) setEdges(r.edges);
+        return;
+      }
+    }
+    setEdges((prev) => [...prev, edge]);
+  }, [nodes, edges, setNodes, setEdges]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
+
+    // ── Grid mode: dimension labels, cell handles, bubbles, then axis lines ──
+    // Nodes win over an axis line (a wall on the axis is still a wall), but a
+    // click on empty grid, a room interior or the storey frame grabs the line.
+    if (gridMode && gridLayout && mode === 'select' && e.button === 0 && !e.shiftKey && !spaceDown) {
+      const { x: gcx, y: gcy } = screenToWorld(sx, sy, pan, zoom, canvas.height);
+
+      // Openings first: their chips and symbols sit on top of the wall lines.
+      const wc = wallChipHitTest(gridWallChipList, gcx, gcy, zoom);
+      if (wc) {
+        // Alt flips the has_windows / has_doors switch itself; a plain click adds one.
+        setNodes((prev) => (e.altKey ? setHasOpenings(prev, wc.wallId, wc.list, !wc.on) : addOpening(prev, wc.wallId, wc.list)));
+        return;
+      }
+      const oh = openingHitTest(gridOpenings, gcx, gcy, zoom);
+      if (oh) {
+        setOpeningHover(oh.placement.op.ref);
+        if (oh.chip) { applyOpeningChip(oh.placement, oh.chip.id); return; }
+        setOpeningDrag({
+          ref: oh.placement.op.ref,
+          wallId: oh.wall.wall.id,
+          lenMm: oh.wall.lenMm,
+          widthMm: oh.placement.op.widthMm,
+          fromMm: oh.placement.op.distFromStart,
+          offsetMm: oh.placement.op.distFromStart,
+        });
+        return;
+      }
+
+      const gh = gridHitTest(gridLayout, gcx, gcy, zoom, { skipAxisLine: true });
+      if (gh?.kind === 'dim') {
+        setEditingDim({ storeyId: gh.dim.storeyId, axis: gh.dim.axis, index: gh.dim.index, value: String(Math.round(gh.dim.spanMm)) });
+        return;
+      }
+      if (gh?.kind === 'handle') { startCellDrag(gh.handle, gcx, gcy, e.altKey); return; }
+      if (gh?.kind === 'bubble') { selectWholeAxis(gh.line); return; }
+      const hit = getNodeAt(sx, sy);
+      if (!hit || hit.type === 'room' || hit.type === 'storey') {
+        const ah = gridHitTest(gridLayout, gcx, gcy, zoom);
+        if (ah?.kind === 'axis') { startAxisDrag(ah.line, gcx, gcy); return; }
+      }
+    }
 
     if (e.button === 1 || (e.button === 0 && (e.shiftKey || spaceDown))) {
       setIsPanning(true);
@@ -4695,15 +7541,22 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         const sn2 = nodes.find((n) => n.id === e2.from);
         const tn2 = nodes.find((n) => n.id === e2.to);
         if (!sn2 || !tn2) return null;
+        const midX = (sn2.x + tn2.x) / 2;
+        const midY = (sn2.y + tn2.y) / 2;
+        const midParent = sn2.parentId ?? tn2.parentId;
+        const midStorey = midParent ? nodes.find((n) => n.id === midParent && n.type === 'storey') : undefined;
+        // A free ax point: stamp its BIM position so every resolver (plan, 3D,
+        // sections) puts it where the canvas shows it, not on the grid origin.
+        const midBim = midStorey ? canvasToBim(storeyFrame(midStorey), { x: midX, y: midY }) : { x: midX, y: midY };
         const midNode: BubbleGraphNode = {
           id: `node_${uid()}`,
           type: 'ax',
           name: `Ax${nodes.filter((n) => n.type === 'ax').length + 1}`,
-          x: (sn2.x + tn2.x) / 2,
-          y: (sn2.y + tn2.y) / 2,
+          x: midX,
+          y: midY,
           z: 0,
-          parentId: sn2.parentId ?? tn2.parentId,
-          properties: {},
+          parentId: midParent,
+          properties: { bimX: Math.round(midBim.x), bimY: Math.round(midBim.y) },
         };
         setNodes((prev) => [...prev, midNode]);
         setEdges((prev) => [
@@ -4740,11 +7593,11 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
           const endN = hit;
           const eg = endN.type === 'ax' ? (hoveredGrip?.nodeId === endN.id ? hoveredGrip.gripIdx : 0) : 0;
           if (edgeType === 'simple') {
-            setEdges((prev) => [...prev, {
+            addGraphEdge({
               id: `edge_${uid()}`, from: edgeStart, to: endN.id,
               ...(edgeStartGrip !== 0 ? { fromGrip: edgeStartGrip } : {}),
               ...(eg !== 0 ? { toGrip: eg } : {}),
-            }]);
+            });
           } else {
             const intType = edgeType === 'wall' ? 'wall' : 'beam';
             const intDef = getNodeTypeData(intType);
@@ -4842,7 +7695,9 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     }
     setSelectedNodeId(null); setSelectedEdge(null);
     if (!e.ctrlKey && !e.metaKey) setSelectedNodeIds?.([]);
-  }, [mode, pan, zoom, nodes, edges, edgeStart, edgeStartGrip, hoveredGrip, isGripDragging, edgeMidSnap, edgeType, selectedNodeType, continuousMode, activeStoreyId, selectedNodeIds, spaceDown, getNodeAt, getEdgeAt, setNodes, setEdges, setSelectedNodeIds]);
+  }, [mode, pan, zoom, nodes, edges, edgeStart, edgeStartGrip, hoveredGrip, isGripDragging, edgeMidSnap, edgeType, selectedNodeType, continuousMode, activeStoreyId, selectedNodeIds, spaceDown, getNodeAt, getEdgeAt, setNodes, setEdges, addGraphEdge, setSelectedNodeIds,
+    gridMode, gridLayout, startAxisDrag, startCellDrag, selectWholeAxis,
+    gridOpenings, gridWallChipList, applyOpeningChip]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -4851,6 +7706,56 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     setLastMousePos({ x: sx, y: sy });
+
+    // ── Grid mode: a live axis / cell drag, previewed, committed on mouse-up ──
+    if (gridDrag) {
+      const { x: gcx, y: gcy } = screenToWorld(sx, sy, pan, zoom, canvas.height);
+      const curMm = (gridDrag.edit.axis === 'x' ? gcx : gcy) / MM_TO_PX;
+      const delta = Math.min(gridDrag.bounds.hi, Math.max(gridDrag.bounds.lo, roundToSnap(curMm - gridDrag.startMm)));
+      if (delta !== gridDrag.edit.deltaMm) setGridDrag({ ...gridDrag, edit: { ...gridDrag.edit, deltaMm: delta } });
+      return;
+    }
+    // Sliding an opening along its wall writes the same offset the inspector does.
+    if (openingDrag) {
+      const w = gridWalls.find((g) => g.wall.id === openingDrag.wallId);
+      if (w) {
+        const { x: gcx, y: gcy } = screenToWorld(sx, sy, pan, zoom, canvas.height);
+        const offsetMm = offsetForCentre(openingDrag.widthMm, alongWallMm(w, gcx, gcy), w.lenMm, GRID_SNAP_MM);
+        if (offsetMm !== openingDrag.offsetMm) setOpeningDrag({ ...openingDrag, offsetMm });
+      }
+      return;
+    }
+    // Hover feedback for the grid's own targets (and node labels).
+    if (gridMode && gridLayout && mode === 'select' && !dragging && !isPanning && !boxSelect && !isGripDragging) {
+      const { x: gcx, y: gcy } = screenToWorld(sx, sy, pan, zoom, canvas.height);
+      const oh = openingHitTest(gridOpenings, gcx, gcy, zoom);
+      const nextOpening = oh?.placement.op.ref ?? null;
+      if (!sameOpeningRef(nextOpening, openingHover)) setOpeningHover(nextOpening);
+      if (oh) {
+        if (gridHover) setGridHover(null);
+        if (hoveredGrip) setHoveredGrip(null);
+        return;
+      }
+      const gh = gridHitTest(gridLayout, gcx, gcy, zoom, { skipAxisLine: true });
+      let next: GridHover = gh;
+      if (!next) {
+        const hit = getNodeAt(sx, sy);
+        if (hit && hit.type !== 'storey' && hit.type !== 'room') next = { kind: 'node', nodeId: hit.id };
+        else next = gridHitTest(gridLayout, gcx, gcy, zoom);
+      }
+      const same = (p: GridHover, q: GridHover) => {
+        if (p === q) return true;
+        if (!p || !q || p.kind !== q.kind) return false;
+        if (p.kind === 'node' && q.kind === 'node') return p.nodeId === q.nodeId;
+        if (p.kind === 'dim' && q.kind === 'dim') return p.dim === q.dim;
+        if (p.kind === 'handle' && q.kind === 'handle') return p.handle === q.handle;
+        if ((p.kind === 'axis' || p.kind === 'bubble') && (q.kind === 'axis' || q.kind === 'bubble')) return p.line === q.line;
+        return false;
+      };
+      if (!same(next, gridHover)) setGridHover(next);
+    } else if (gridHover) {
+      setGridHover(null);
+    }
 
     // Edge-midpoint snap computation (only while drawing an edge)
     if (mode === 'addEdge' && edgeStart) {
@@ -4873,17 +7778,19 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       setEdgeMidSnap(null);
     }
 
-    // Ax node grip hover detection (always, not just in addEdge mode)
+    // Ax node grip hover detection (always, not just in addEdge mode).
+    // Grid mode shows only the centre dot, sized on screen, so test grip 0 alone.
     {
       const cx = (sx - pan.x) / zoom;
       const cy = (canvas.height - (sy - pan.y)) / zoom;
-      const GRIP_HIT = 12; // canvas units
+      const GRIP_HIT = gridMode ? 8 / zoom : 12; // canvas units
+      const gripCount = gridMode ? 1 : 9;
       let found: { nodeId: string; gripIdx: number } | null = null;
       for (const n of displayNodes) {
         if (n.type !== 'ax') continue;
         const nnx = n.x * MM_TO_PX, nny = n.y * MM_TO_PX;
         const grips = axGrips(n);
-        for (let gi = 0; gi < 9; gi++) {
+        for (let gi = 0; gi < gripCount; gi++) {
           const gpx = nnx + (grips[gi].x * MM_TO_PX - nnx) * AX_D;
           const gpy = nny + (grips[gi].y * MM_TO_PX - nny) * AX_D;
           if (Math.hypot(gpx - cx, gpy - cy) < GRIP_HIT) {
@@ -4945,9 +7852,36 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         setNodes((prev) => prev.map((n) => n.id === dragging.nodeId ? { ...n, x: nx, y: ny } : n));
       }
     }
-  }, [pan, panStart, zoom, isPanning, isGripDragging, dragging, boxSelect, nodes, setNodes, mode, edgeStart, edgeMidSnap, displayEdges, displayNodes, setHoveredGrip, getNodeAt, connectTargetId]);
+  }, [pan, panStart, zoom, isPanning, isGripDragging, dragging, boxSelect, nodes, setNodes, mode, edgeStart, edgeMidSnap, displayEdges, displayNodes, setHoveredGrip, getNodeAt, connectTargetId,
+    gridMode, gridLayout, gridDrag, gridHover, hoveredGrip,
+    gridWalls, gridOpenings, openingDrag, openingHover, alongWallMm]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent<HTMLCanvasElement>) => {
+    // Grid-mode drag: one commit = one undo step (the preview never touched the graph).
+    const gd = gridDragRef.current;
+    if (gd) {
+      if (gd.edit.deltaMm !== 0) {
+        const res = applyGridEdit(nodes, edges, gd.edit);
+        if (res.nodes !== nodes) setNodes(res.nodes);
+        if (res.edges !== edges) setEdges(res.edges);
+      }
+      setGridDrag(null);
+      return;
+    }
+    const od = openingDragRef.current;
+    if (od) {
+      // A click that never moved is a selection: the inspector opens on the
+      // host wall, where the full window / door configurator lives.
+      if (od.offsetMm === od.fromMm) {
+        setSelectedNodeId(od.ref.kind === 'node' ? od.ref.nodeId : od.wallId);
+        setSelectedNodeIds?.([]);
+      } else {
+        setNodes((prev) => patchOpening(prev, od.ref, { [offsetKeyFor(od.ref)]: od.offsetMm }));
+      }
+      setOpeningDrag(null);
+      return;
+    }
+
     // Finalize marquee selection
     const box = boxSelectRef.current;
     if (box) {
@@ -4997,11 +7931,11 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       if (hoveredGrip && hoveredGrip.nodeId !== edgeStart) {
         const eg = hoveredGrip.gripIdx;
         if (edgeType === 'simple' || edgeType === undefined) {
-          setEdges((prev) => [...prev, {
+          addGraphEdge({
             id: `edge_${uid()}`, from: edgeStart, to: hoveredGrip.nodeId,
             ...(edgeStartGrip !== 0 ? { fromGrip: edgeStartGrip } : {}),
             ...(eg !== 0 ? { toGrip: eg } : {}),
-          }]);
+          });
         } else {
           // Wall or beam: create intermediate node + two edges
           const intType = edgeType === 'wall' ? 'wall' : 'beam';
@@ -5041,7 +7975,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       if (o) setNodes((prev) => prev.map((n) => n.id === fromId ? { ...n, x: o.x, y: o.y } : n));
       const exists = edges.some((ed) =>
         (ed.from === fromId && ed.to === toId) || (ed.from === toId && ed.to === fromId));
-      if (!exists) setEdges((prev) => [...prev, { id: `edge_${uid()}`, from: fromId, to: toId }]);
+      if (!exists) addGraphEdge({ id: `edge_${uid()}`, from: fromId, to: toId });
       setConnectTargetId(null);
       setDragging(null);
       setIsPanning(false);
@@ -5051,7 +7985,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     void e;
     setDragging(null);
     setIsPanning(false);
-  }, [isGripDragging, edgeStart, hoveredGrip, edgeStartGrip, edgeType, nodes, edges, dragging, connectTargetId, setEdges, setNodes, pan, zoom, displayNodes, selectedNodeIds, setSelectedNodeIds]);
+  }, [isGripDragging, edgeStart, hoveredGrip, edgeStartGrip, edgeType, nodes, edges, dragging, connectTargetId, setEdges, setNodes, addGraphEdge, pan, zoom, displayNodes, selectedNodeIds, setSelectedNodeIds, setSelectedNodeId]);
 
   // Refs for latest pan/zoom so the wheel handler is registered once without stale closures
   const panRef = useRef(pan);
@@ -5087,6 +8021,17 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
   }, []); // register once — reads latest pan/zoom via refs
+
+  // ESC cancels a grid drag, an opening slide or a dimension edit. Separate from
+  // the []-deps handler below, which cannot see this state.
+  useEffect(() => {
+    if (!gridDrag && !editingDim && !openingDrag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setGridDrag(null); setEditingDim(null); setOpeningDrag(null); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gridDrag, editingDim, openingDrag]);
 
   // Space = temporary pan; ESC = cancel placement / box
   useEffect(() => {
@@ -5132,8 +8077,8 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
   // ── Actions ───────────────────────────────────────────────────────────
 
   const selectedNodeData = useMemo(
-    () => visibleNodes.find((n) => n.id === selectedNodeId) ?? null,
-    [visibleNodes, selectedNodeId],
+    () => (inspectNodes ?? visibleNodes).find((n) => n.id === selectedNodeId) ?? null,
+    [inspectNodes, visibleNodes, selectedNodeId],
   );
 
   const deleteSelected = useCallback(() => {
@@ -5229,6 +8174,9 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) return;
+      // A selected annotation owns the key — the drawing layer deletes it.
+      if (useBubbleGraphStore.getState().selectedAnnotationId) return;
+      if (useArmare.getState().selectieCurenta().length > 0) return;
       deleteSelected();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -5289,7 +8237,11 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     const children = nodes.filter((n) => n.parentId === storeyId);
     const idMap = new Map([[storeyId, newStoreyId]]);
     const newNodes: BubbleGraphNode[] = [
-      { ...storey, id: newStoreyId, name: `${storey.name} (copy)`, x: storey.x + 1000, y: storey.y - 2000, locked: true },
+      {
+        ...storey, id: newStoreyId, name: `${storey.name} (copy)`, x: storey.x + 1000, y: storey.y - 2000, locked: true,
+        // Own axis arrays: a shallow spread would leave both storeys editing one array.
+        properties: { ...storey.properties, axesX: parseAxes(storey.properties.axesX), axesY: parseAxes(storey.properties.axesY) },
+      },
     ];
     children.forEach((c) => {
       const nid = `${c.type}_${newStoreyId}_${uid()}`;
@@ -5304,71 +8256,6 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     setEdges((prev) => [...prev, ...newEdges]);
   }, [nodes, edges, setNodes, setEdges]);
 
-  // ── GraphML ───────────────────────────────────────────────────────────
-
-  const exportGraphML = useCallback(() => {
-    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<graphml xmlns="http://graphml.graphdrawing.org/xmlns">\n  <graph id="G" edgedefault="undirected">\n';
-    nodes.forEach((n) => {
-      xml += `    <node id="${n.id}">\n`;
-      xml += `      <data key="type">${n.type}</data>\n`;
-      xml += `      <data key="name">${n.name}</data>\n`;
-      xml += `      <data key="x">${n.x}</data>\n`;
-      xml += `      <data key="y">${n.y}</data>\n`;
-      xml += `      <data key="z">${n.z}</data>\n`;
-      if (n.parentId) xml += `      <data key="parentId">${n.parentId}</data>\n`;
-      Object.entries(n.properties).forEach(([k, v]) => {
-        xml += `      <data key="${k}">${Array.isArray(v) ? v.join(',') : v}</data>\n`;
-      });
-      xml += '    </node>\n';
-    });
-    edges.forEach((e) => {
-      xml += `    <edge id="${e.id}" source="${e.from}" target="${e.to}"/>\n`;
-    });
-    xml += '  </graph>\n</graphml>';
-    const blob = new Blob([xml], { type: 'application/xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'bubble-graph.graphml'; a.click();
-    URL.revokeObjectURL(url);
-  }, [nodes, edges]);
-
-  const importGraphML = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const doc = new DOMParser().parseFromString(ev.target?.result as string, 'text/xml');
-        const newNodes: BubbleGraphNode[] = [];
-        for (const el of Array.from(doc.getElementsByTagName('node'))) {
-          const id = el.getAttribute('id') ?? `node_${uid()}`;
-          const n: BubbleGraphNode = { id, type: '', name: '', x: 0, y: 0, z: 0, properties: {} };
-          for (const d of Array.from(el.getElementsByTagName('data'))) {
-            const k = d.getAttribute('key'), v = d.textContent ?? '';
-            if (k === 'type') n.type = v;
-            else if (k === 'name') n.name = v;
-            else if (k === 'x') n.x = parseFloat(v);
-            else if (k === 'y') n.y = parseFloat(v);
-            else if (k === 'z') n.z = parseFloat(v);
-            else if (k === 'parentId') n.parentId = v;
-            else if (k) n.properties[k] = v;
-          }
-          newNodes.push(n);
-        }
-        const newEdges: BubbleGraphEdge[] = Array.from(doc.getElementsByTagName('edge')).map((el) => ({
-          id: el.getAttribute('id') ?? `edge_${uid()}`,
-          from: el.getAttribute('source') ?? '',
-          to: el.getAttribute('target') ?? '',
-        }));
-        setNodes(newNodes); setEdges(newEdges);
-        setSelectedNodeId(null); setSelectedEdge(null);
-      } catch (err) {
-        alert('GraphML import error: ' + (err as Error).message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  }, [setNodes, setEdges]);
 
   // ── Node prop update helpers ──────────────────────────────────────────
 
@@ -5391,10 +8278,31 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       ? selectedNodeIds
       : selectedNodeId ? [selectedNodeId] : selectedNodeIds;
     if (targetIds.length === 0) return;
+    // With a scenario active the edit is a decision of THAT scenario: it goes
+    // into its patches and the base graph stays as drawn.
+    const active = useScenarios.getState().activeId;
+    if (active) {
+      for (const id of targetIds) useScenarios.getState().patchNode(active, nodes, id, key, v);
+      return;
+    }
     setNodes((prev) => prev.map((n) =>
       targetIds.includes(n.id) ? { ...n, properties: { ...n.properties, [key]: v } } : n,
     ));
-  }, [selectedNodeId, selectedNodeIds, setNodes]);
+  }, [selectedNodeId, selectedNodeIds, setNodes, nodes]);
+
+  const handleUpdateProps = useCallback((patch: Record<string, unknown>) => {
+    const targetIds = selectedNodeIds.length > 1
+      ? selectedNodeIds
+      : selectedNodeId ? [selectedNodeId] : selectedNodeIds;
+    if (targetIds.length === 0) return;
+    const active = useScenarios.getState().activeId;
+    if (active) {
+      for (const id of targetIds)
+        for (const [k, v] of Object.entries(patch)) useScenarios.getState().patchNode(active, nodes, id, k, v);
+      return;
+    }
+    setNodes((prev) => applyPropPatch(prev, targetIds, patch));
+  }, [selectedNodeId, selectedNodeIds, setNodes, nodes]);
 
   const handleAddProp = useCallback(() => {
     const key = prompt('Property name:');
@@ -5409,6 +8317,43 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       return { ...n, properties: rest };
     }));
   }, [selectedNodeId, setNodes]);
+
+  // Nodes and edges in one go — the two records coalesce into one undo step,
+  // the same way the stair generator's do.
+  const handleRewireGraph = useCallback((fn: (ns: BubbleGraphNode[], es: BubbleGraphEdge[]) => { nodes: BubbleGraphNode[]; edges: BubbleGraphEdge[] }) => {
+    const r = fn(nodes, edges);
+    if (r.nodes !== nodes) setNodes(r.nodes);
+    if (r.edges !== edges) setEdges(r.edges);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  const handleGenerateStair = useCallback((level: 'outline' | 'flights' | 'steps') => {
+    const id = selectedNodeId ?? (selectedNodeIds.length === 1 ? selectedNodeIds[0] : null);
+    const stairwell = id ? nodes.find((n) => n.id === id && n.type === 'stairwell') : null;
+    if (!stairwell) {
+      toast.error('Select a stairwell node first');
+      return;
+    }
+    const result = solveStair({ nodes, edges, stairwellId: stairwell.id, level });
+    const applied = applyStairResult(nodes, edges, result);
+    setNodes(applied.nodes);
+    setEdges(applied.edges);
+
+    const errs = result.diagnostics.filter((d) => d.severity === 'error');
+    if (errs.length) { toast.error(errs[0].message); return; }
+    const g = result.geometry;
+    if (g) {
+      toast.success(
+        `Stair: ${g.steps} risers of ${Math.round(g.riserMm)} mm, going ${Math.round(g.treadMm)} mm `
+        + `(2h+g = ${Math.round(2 * g.riserMm + g.treadMm)})`,
+      );
+    }
+    for (const d of result.diagnostics.filter((x) => x.severity === 'warning')) toast.error(d.message);
+    for (const d of result.diagnostics.filter((x) => x.severity === 'info')) toast.info(d.message);
+  }, [selectedNodeId, selectedNodeIds, nodes, edges, setNodes, setEdges]);
+
+  // Live regeneration: edit a stair parameter or drag the node, and the stair
+  // rebuilds itself. The explicit buttons remain for switching detail level.
+  useAutoRegenerateStairs(nodes, edges, setNodes, setEdges);
 
   const handleGenerateRoof = useCallback((level: 'envelope' | 'skeleton' | 'framing') => {
     const id = selectedNodeId
@@ -5440,7 +8385,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
   );
 
   const bulkCanvasNodes = selectedNodeIds.length > 1
-    ? nodes.filter((n) => selectedNodeIds.includes(n.id))
+    ? (inspectNodes ?? nodes).filter((n) => selectedNodeIds.includes(n.id))
     : undefined;
 
   // Representative node: first of bulk selection, or single selected node
@@ -5452,11 +8397,15 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
       bulkNodes={bulkCanvasNodes}
       onUpdateField={handleUpdateField}
       onUpdateProp={handleUpdateProp}
+      onUpdateProps={handleUpdateProps}
       onAddProp={handleAddProp}
       onDeleteProp={handleDeleteProp}
       onDuplicateStorey={duplicateStorey}
       onOpenSectionTab={onOpenSectionTab}
       onGenerateRoof={handleGenerateRoof}
+      onGenerateStair={handleGenerateStair}
+      projectSystem={projectSystem}
+      onRewireGraph={handleRewireGraph}
     />
   );
 
@@ -5464,8 +8413,43 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
     <div className={panelClass}>
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-muted/30 flex-shrink-0 flex-wrap">
-        <button className="text-xs px-2 py-1 rounded hover:bg-accent" onClick={exportGraphML}>⬆ GraphML</button>
-        <button className="text-xs px-2 py-1 rounded hover:bg-accent" onClick={() => fileInputRef.current?.click()}>⬇ GraphML</button>
+        {/* The model is set up in this order: the axis grid, the storeys on it,
+            then the grid view to edit both on the canvas. Each step says when it is done. */}
+        {(() => {
+          const ro = lang === 'ro';
+          const axesDone = buildingAxes.xValues.length > 0 && buildingAxes.yValues.length > 0;
+          const storeysDone = nodes.some((n) => n.type === 'storey');
+          const steps = [
+            { n: 1, label: ro ? 'Axe' : 'Axes', done: axesDone, active: false, onClick: onOpenAxes,
+              title: ro ? 'Pasul 1 — rețeaua de axe a clădirii' : 'Step 1 — the building axis grid' },
+            { n: 2, label: ro ? 'Niveluri' : 'Storeys', done: storeysDone, active: false, onClick: onAddStorey,
+              title: ro ? 'Pasul 2 — adaugă un nivel pe axe' : 'Step 2 — add a storey on the axes' },
+            { n: 3, label: ro ? 'Grilă' : 'Grid', done: false, active: gridMode, onClick: toggleGridMode,
+              title: ro ? 'Pasul 3 — mod grilă: axele ca linii, intersecțiile ca puncte; trage axele și cotele direct pe canvas'
+                : 'Step 3 — grid mode: axes as lines, crossings as points; drag axes and dimensions on the canvas' },
+          ];
+          return (
+            <div className="bb-setup-steps" role="group" aria-label={ro ? 'Setarea modelului' : 'Model setup'}>
+              {steps.map((st, i) => (
+                <React.Fragment key={st.n}>
+                  {i > 0 && <span className="bb-setup-arrow" aria-hidden="true">›</span>}
+                  <button
+                    type="button"
+                    className={cn('bb-setup-step', st.done && 'done', st.active && 'active')}
+                    onClick={st.onClick}
+                    disabled={!st.onClick}
+                    title={st.title}
+                    aria-pressed={st.n === 3 ? st.active : undefined}
+                  >
+                    <span className="bb-setup-num">{st.done ? '✓' : st.n}</span>
+                    {st.n === 3 && <Grid3x3 className="h-3.5 w-3.5" />}
+                    <span>{st.label}</span>
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+          );
+        })()}
         <div className="w-px h-4 bg-border mx-1" />
         <input
           className="text-xs bg-background border border-border rounded px-2 py-0.5 w-32"
@@ -5474,12 +8458,28 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
           placeholder="Project name"
           title="IFC project name"
         />
-        <button
-          className="text-xs px-2 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-          onClick={handleGenerateIfc}
-        >
-          ⚙ Generate IFC
-        </button>
+        {/* Bridges: the model pushed live to other applications. */}
+        <HudMenu
+          className={cn('bb-bridges', ifcLiveSyncEnabled && 'live')}
+          icon={<span className={cn('bb-bridge-dot', ifcLiveSyncStatus)} aria-hidden="true" />}
+          label={<span>{lang === 'ro' ? 'Bridge-uri' : 'Bridges'}</span>}
+          items={[
+            { label: lang === 'ro' ? 'Trimite modelul către alte aplicații' : 'Send the model to other applications', heading: true },
+            {
+              label: `Live: ifc-lite viewer — ${ifcLiveSyncEnabled
+                ? (ifcLiveSyncStatus === 'connected' ? (lang === 'ro' ? 'conectat' : 'connected')
+                  : ifcLiveSyncStatus === 'connecting' ? (lang === 'ro' ? 'se conectează' : 'connecting')
+                  : ifcLiveSyncStatus === 'error' ? (lang === 'ro' ? 'eroare' : 'error') : (lang === 'ro' ? 'pornit' : 'on'))
+                : (lang === 'ro' ? 'oprit' : 'off')}`,
+              active: ifcLiveSyncEnabled,
+              onClick: () => setIfcLiveSyncEnabled((v) => !v),
+            },
+            {
+              label: archicadBusy ? (lang === 'ro' ? 'ArchiCAD — se trimite…' : 'ArchiCAD — pushing…') : (lang === 'ro' ? 'Generează în ArchiCAD (Tapir)' : 'Generate in ArchiCAD (Tapir)'),
+              onClick: archicadBusy ? undefined : handlePushToArchicad,
+            },
+          ]}
+        />
         <div className="w-px h-4 bg-border mx-1" />
         <button className="text-xs px-2 py-1 rounded hover:bg-accent" onClick={() => {
           const canvas = canvasRef.current; if (!canvas) return;
@@ -5508,7 +8508,6 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
         >
           {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
         </button>
-        <input ref={fileInputRef} type="file" accept=".graphml,.xml" className="hidden" onChange={importGraphML} />
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -5600,6 +8599,27 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
 
           {mode === 'addNode' && (
             <div style={{ width: '100%', padding: '4px 4px 0', borderTop: '1px solid hsl(var(--border))', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+              {/* Type search: the list is long enough that scrolling a 40px
+                  select to "Dom" is slower than typing "do". The first match
+                  becomes the armed type, so search-then-click just works. */}
+              <input
+                value={nodeTypeQuery}
+                onChange={(e) => {
+                  const q = e.target.value;
+                  setNodeTypeQuery(q);
+                  const first = filterNodeTypes(q)[0];
+                  if (first) setSelectedNodeType(first.id);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setNodeTypeQuery(''); e.stopPropagation(); }}
+                placeholder="🔍"
+                title="Caută tip de nod (nume, id, descriere)"
+                style={{
+                  width: 40, boxSizing: 'border-box',
+                  background: 'hsl(var(--background))',
+                  border: '1px solid hsl(var(--border))', borderRadius: 5,
+                  padding: '2px 3px', fontSize: 9, color: 'hsl(var(--foreground))',
+                }}
+              />
               <select
                 value={selectedNodeType}
                 onChange={(e) => setSelectedNodeType(e.target.value)}
@@ -5611,7 +8631,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
                   padding: '2px 0', fontSize: 9, color: 'hsl(var(--foreground))', cursor: 'pointer',
                 }}
               >
-                {NODE_LIBRARY.nodeTypes.map((nt) => (
+                {filterNodeTypes(nodeTypeQuery).map((nt) => (
                   <option key={nt.id} value={nt.id}>{nt.label}</option>
                 ))}
               </select>
@@ -5723,7 +8743,19 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
                   ? 'crosshair'
                   : mode !== 'select'
                     ? 'crosshair'
-                    : 'default',
+                    : gridDrag
+                      ? (gridDrag.edit.axis === 'x' ? 'col-resize' : 'row-resize')
+                      : openingDrag
+                        ? 'move'
+                        : openingHover
+                          ? 'pointer'
+                          : gridHover?.kind === 'axis' || gridHover?.kind === 'handle'
+                        ? ((gridHover.kind === 'axis' ? gridHover.line.axis : gridHover.handle.axis) === 'x' ? 'col-resize' : 'row-resize')
+                        : gridHover?.kind === 'dim'
+                          ? 'text'
+                          : gridHover?.kind === 'bubble' || gridHover?.kind === 'node'
+                            ? 'pointer'
+                            : 'default',
             }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -5731,6 +8763,63 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
             onMouseLeave={handleMouseUp}
             onContextMenu={(e) => e.preventDefault()}
           />
+
+          {/* Grid mode bar: scope toggle + gesture hints */}
+          {gridMode && mode === 'select' && !spaceDown && !boxSelect && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[11px] text-foreground bg-background/90 border border-border px-3 py-1 rounded-full shadow">
+              <span className="font-medium">Grilă</span>
+              <span className="text-muted-foreground">·</span>
+              <div className="flex rounded border border-border overflow-hidden">
+                <button
+                  className={cn('px-2 py-0.5', gridScope === 'linked' ? 'bg-primary/15 text-primary' : 'hover:bg-accent text-muted-foreground')}
+                  onClick={() => setGridScope('linked')}
+                  title="Mutarea se aplică pe toate etajele care au aceeași valoare a axului"
+                >Toate etajele</button>
+                <button
+                  className={cn('px-2 py-0.5', gridScope === 'single' ? 'bg-primary/15 text-primary' : 'hover:bg-accent text-muted-foreground')}
+                  onClick={() => setGridScope('single')}
+                  title="Mutarea se aplică doar pe etajul de sub cursor"
+                >Doar etajul</button>
+              </div>
+              <span className="text-muted-foreground">·</span>
+              <span
+                className="text-muted-foreground"
+                title={'Trage o linie de ax ca s-o muți.\n'
+                  + 'Trage pătratul unei celule: anvelopa face o treaptă și se inserează un ax nou (Alt = doar decalezi punctele, fără ax).\n'
+                  + 'Clic pe o cotă ca s-o scrii: Enter translatează axele următoare, Shift+Enter mută doar axul următor.\n'
+                  + 'Golurile: trage simbolul pe perete, ⇕ / ⇔ întorc fereastra sau ușa, × o șterge.\n'
+                  + 'Selectează un perete pentru chip-urile ▭ / ◗ care adaugă un gol (Alt = comută has_windows / has_doors).'}
+              >trage un ax · trage pătratul unei celule → treaptă · clic pe o cotă · goluri pe perete</span>
+            </div>
+          )}
+
+          {/* Inline dimension editor, positioned over the label it edits */}
+          {gridMode && editingDim && gridLayout && canvasRef.current && (() => {
+            const dim = gridLayout.flatMap((l) => l.dims).find((d) =>
+              d.storeyId === editingDim.storeyId && d.axis === editingDim.axis && d.index === editingDim.index);
+            if (!dim) return null;
+            const sp = worldToScreen(dim.anchor.x, dim.anchor.y, pan, zoom, canvasRef.current.height);
+            return (
+              <input
+                key={`${editingDim.storeyId}-${editingDim.axis}-${editingDim.index}`}
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                className="absolute w-[76px] text-center text-[11px] px-1 py-0.5 rounded border border-primary bg-background text-foreground shadow outline-none"
+                style={{ left: sp.x - 38, top: sp.y - 11 }}
+                value={editingDim.value}
+                title="Enter = aplică (axele următoare se translatează) · Shift+Enter = doar axul următor · Esc = anulează"
+                onChange={(e) => setEditingDim({ ...editingDim, value: e.target.value })}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitDimEdit(e.shiftKey); }
+                  else if (e.key === 'Escape') { e.preventDefault(); setEditingDim(null); }
+                }}
+                onBlur={() => setEditingDim(null)}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            );
+          })()}
 
           {/* Mode hint */}
           {mode !== 'select' && (
@@ -5758,7 +8847,7 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
           </div>
 
           {/* Guided build questline (subtle onboarding HUD) */}
-          <QuestPanel nodes={nodes} edges={edges} buildingAxes={buildingAxes} />
+          <QuestPanel nodes={nodes} edges={edges} buildingAxes={buildingAxes} economy={economy} />
         </section>
 
         {/* ── Docked Properties ── */}
@@ -5830,6 +8919,28 @@ export function BubbleGraphCanvas({ nodes, edges, activeStoreyId, buildingAxes, 
   );
 }
 
+/**
+ * Apply a whole property patch to the chosen nodes in ONE update — so picking a
+ * detail type is one undo step, not nine. A key set to `undefined` is deleted:
+ * switching profiles must not leave the previous profile's dimensions behind.
+ */
+function applyPropPatch(
+  prev: BubbleGraphNode[],
+  ids: string[],
+  patch: Record<string, unknown>,
+): BubbleGraphNode[] {
+  const target = new Set(ids);
+  return prev.map((n) => {
+    if (!target.has(n.id)) return n;
+    const props: Record<string, unknown> = { ...n.properties };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete props[k];
+      else props[k] = v;
+    }
+    return { ...n, properties: props };
+  });
+}
+
 // ─── Electron helpers ────────────────────────────────────────────────────
 
 const eAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
@@ -5865,10 +8976,99 @@ function useElectronBridge(callbacks: {
   }, [onSave, onOpen, onNew, onExportIfc]);
 }
 
+/**
+ * Hook: views pulled out into their own OS window (desktop build only).
+ *
+ * This window owns the model; a detached one only draws it. So the traffic is
+ * one-way — a `GraphBroadcast` on every change — and the only thing coming back
+ * is which tabs currently have a window, so the tab bar can say so.
+ *
+ * The broadcast is throttled because it carries the whole graph (a real project
+ * is well over a hundred kilobytes as JSON) and `nodes` gets a new identity on
+ * every frame of a node drag. Trailing edge, so the last state always lands.
+ */
+const BROADCAST_THROTTLE_MS = 150;
+
+function useDetachedViews(model: {
+  nodes: BubbleGraphNode[];
+  edges: BubbleGraphEdge[];
+  buildingAxes: BuildingAxes;
+  projectName: string;
+  tabs: ViewTab[];
+  viewer3DType: Viewer3DType;
+  activeTab: ViewTab | undefined;
+  setActiveTabId: (id: string) => void;
+}) {
+  const { nodes, edges, buildingAxes, projectName, tabs, viewer3DType, activeTab, setActiveTabId } = model;
+  const [detachedIds, setDetachedIds] = useState<string[]>([]);
+
+  const revRef = useRef(0);
+  const payloadRef = useRef<GraphBroadcast | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const lastSentRef = useRef(0);
+
+  const buildPayload = useCallback((): GraphBroadcast => ({
+    rev: ++revRef.current, projectName, nodes, edges, buildingAxes, tabs, viewer3DType,
+  }), [projectName, nodes, edges, buildingAxes, tabs, viewer3DType]);
+
+  // Who is listening — and the first answer, since a window may have been
+  // opened before this hook mounted (a reload of the main window).
+  useEffect(() => {
+    if (!eAPI) return;
+    eAPI.onDetachedViews(setDetachedIds);
+    eAPI.listDetachedViews().then(setDetachedIds).catch(() => { /* none */ });
+    return () => eAPI.removeAllListeners('view:detached-list');
+  }, []);
+
+  // The model, throttled. Nothing is sent while no window is listening.
+  useEffect(() => {
+    if (!eAPI || detachedIds.length === 0) return;
+    payloadRef.current = buildPayload();
+    const send = () => {
+      timerRef.current = null;
+      lastSentRef.current = Date.now();
+      if (payloadRef.current) eAPI.publishGraph(payloadRef.current);
+    };
+    const since = Date.now() - lastSentRef.current;
+    if (since >= BROADCAST_THROTTLE_MS) send();
+    else if (timerRef.current === null) {
+      timerRef.current = window.setTimeout(send, BROADCAST_THROTTLE_MS - since);
+    }
+    // No cleanup: a pending trailing send is exactly what we want to keep.
+  }, [buildPayload, detachedIds.length]);
+
+  useEffect(() => () => { if (timerRef.current !== null) clearTimeout(timerRef.current); }, []);
+
+  const detach = useCallback((tab: ViewTab) => {
+    if (!eAPI || !isDetachable(tab.type)) return;
+    // Warm the cache first: the new window asks for the model on mount, and
+    // that question can beat the broadcast this detaching triggers.
+    eAPI.publishGraph(buildPayload());
+    lastSentRef.current = Date.now();
+    eAPI.detachView({ viewType: tab.type, tabId: tab.id, label: tab.label });
+  }, [buildPayload]);
+
+  // ⌘⇧D, and a detached window asking to be shown here again.
+  useEffect(() => {
+    if (!eAPI) return;
+    eAPI.onMenuDetachView(() => { if (activeTab) detach(activeTab); });
+    return () => eAPI.removeAllListeners('menu:detach-view');
+  }, [activeTab, detach]);
+
+  useEffect(() => {
+    if (!eAPI) return;
+    eAPI.onActivateTab((tabId) => setActiveTabId(tabId));
+    return () => eAPI.removeAllListeners('view:activate-tab');
+  }, [setActiveTabId]);
+
+  return { detachedIds, detach: isElectron ? detach : undefined };
+}
+
 // ─── BubbleGraphPanel (outer wrapper) ────────────────────────────────────
 
-/** App shell profile — controls which explorer sections and 3D engines are available. */
-export type AppProfile = 'full' | 'minimal' | 'clean';
+/** App shell profile — which modules the shell offers (see shell/capabilities.ts). */
+export type { AppProfile } from '@/components/bubble-graph/shell/capabilities';
+import type { AppProfile } from '@/components/bubble-graph/shell/capabilities';
 
 interface BubbleGraphPanelProps {
   visible: boolean;
@@ -5896,25 +9096,10 @@ interface BubbleGraphPanelProps {
 
 // ─── Discipline badge helpers ───────────────────────────────────────────
 
-const DISC_LABEL: Record<StoreyDiscipline, string> = {
-  architectural: 'A',
-  structural: 'S',
-  mep: 'M',
-};
 const DISC_CLS: Record<StoreyDiscipline, string> = {
   architectural: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   structural: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   mep: 'bg-green-500/20 text-green-400 border-green-500/30',
-};
-const DISC_CLS_BG: Record<StoreyDiscipline, string> = {
-  architectural: '#3b82f61a',
-  structural:    '#f97316 1a',
-  mep:           '#22c55e1a',
-};
-const DISC_CLS_FG: Record<StoreyDiscipline, string> = {
-  architectural: '#60a5fa',
-  structural:    '#fb923c',
-  mep:           '#4ade80',
 };
 
 export function BubbleGraphPanel({
@@ -5925,9 +9110,9 @@ export function BubbleGraphPanel({
   cloudAccount,
 }: BubbleGraphPanelProps) {
   const profile: AppProfile = appProfile ?? (minimalMode ? 'minimal' : 'full');
-  const isFull = profile === 'full';
   const openGeoOnly = profile === 'minimal' || profile === 'clean';
-  const showDrawings = profile === 'full' || profile === 'clean';
+  const caps = capabilitiesFor(profile);
+  const ro = caps.lang === 'ro';
 
   const [navOpen, setNavOpen] = useState(() => {
     try { return localStorage.getItem('bb_clean_nav_open') !== '0'; } catch { return true; }
@@ -5935,8 +9120,34 @@ export function BubbleGraphPanel({
   const [inspOpen, setInspOpen] = useState(() => {
     try { return localStorage.getItem('bb_clean_insp_open') !== '0'; } catch { return true; }
   });
+  // The inspector's width: dragged from its left edge, remembered per browser.
+  const INSP_DEFAULT_W = 300;
+  const clampInspW = (w: number) => Math.round(Math.min(Math.max(w, 240), Math.min(720, (typeof window !== 'undefined' ? window.innerWidth : 1600) * 0.55)));
+  const [inspW, setInspW] = useState(() => {
+    try { const v = Number(localStorage.getItem('bb_insp_w')); return v > 0 ? v : INSP_DEFAULT_W; } catch { return INSP_DEFAULT_W; }
+  });
   useEffect(() => {
-    if (profile !== 'clean') return;
+    try { localStorage.setItem('bb_insp_w', String(inspW)); } catch { /* per-viewer convenience only */ }
+  }, [inspW]);
+  const startInspResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = inspW;
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    document.body.classList.add('bb-resizing');
+    const move = (ev: PointerEvent) => setInspW(clampInspW(w0 + (x0 - ev.clientX)));
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      document.body.classList.remove('bb-resizing');
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspW]);
+  useEffect(() => {
     try {
       localStorage.setItem('bb_clean_nav_open', navOpen ? '1' : '0');
       localStorage.setItem('bb_clean_insp_open', inspOpen ? '1' : '0');
@@ -5956,6 +9167,66 @@ export function BubbleGraphPanel({
   // True only after the initial backend load completes — gates auto-save
   const [isLoaded, setIsLoaded] = useState(false);
   const [projectName, setProjectName] = useState<string>('My Building');
+  /** Project-wide structural system; elements override it via properties.structural_system. */
+  const [structuralSystem, setStructuralSystem] = useState<StructuralSystem>('unset');
+  // Project-level material and finish choices (which brick, which plaster,
+  // which floor). Groups absent here run on the library's declared defaults.
+  const [projectSpecs, setProjectSpecs] = useState<SpecSelection>({});
+  const [specsPanelOpen, setSpecsPanelOpen] = useState(false);
+
+  // Live quantities/costs dashboard. Visibility and the collapsed state are the
+  // user's and survive a reload — a dashboard you have to re-open every session
+  // is not a dashboard.
+  const [dashboardOpen, setDashboardOpen] = useState<boolean>(() => readDashboardPref('open', false));
+  const [dashboardCollapsed, setDashboardCollapsed] = useState<boolean>(() => readDashboardPref('collapsed', false));
+  useEffect(() => { writeDashboardPref({ open: dashboardOpen, collapsed: dashboardCollapsed }); }, [dashboardOpen, dashboardCollapsed]);
+
+  // ── Cost scenarios ──────────────────────────────────────────────────────
+  // The viewers and the quantities read `viewNodes`: the base graph with the
+  // active scenario's delta applied. The canvas keeps editing `nodes`.
+  const scenarioList = useScenarios((s) => s.scenarios);
+  const activeScenarioId = useScenarios((s) => s.activeId);
+  const scenarioBudget = useScenarios((s) => s.budget);
+  const activeScenario = useMemo(
+    () => (activeScenarioId ? scenarioList.find((s) => s.id === activeScenarioId) ?? null : null),
+    [scenarioList, activeScenarioId],
+  );
+  const viewNodes = useMemo(() => applyScenario(nodes, edges, activeScenario), [nodes, edges, activeScenario]);
+  const viewSystem: StructuralSystem = activeScenario?.structuralSystem ?? structuralSystem;
+  const viewSpecs = useMemo<SpecSelection>(
+    () => ({ ...projectSpecs, ...(activeScenario?.specs ?? {}) }),
+    [projectSpecs, activeScenario],
+  );
+  // The takeoff reads the project system and specifications from here (see takeoffContext).
+  useEffect(() => { setTakeoffContext({ structuralSystem: viewSystem, specs: viewSpecs }); }, [viewSystem, viewSpecs]);
+  const scenarioResults = useScenarioResults(nodes, edges, structuralSystem, projectSpecs);
+  const [comparePanelOpen, setComparePanelOpen] = useState(false);
+  const scenarioTotals = useMemo(
+    () => new Map([...scenarioResults.byId].map(([id, r]) => [id, r.metrics.total])),
+    [scenarioResults],
+  );
+  const economy = useMemo<EconomySnapshot>(() => ({
+    baselineTotal: scenarioResults.baseline?.metrics.total ?? 0,
+    unpricedCount: scenarioResults.baseline?.metrics.unpricedCount ?? 0,
+    articleCount: scenarioResults.baseline?.articleCount ?? 0,
+    budget: scenarioBudget,
+    scenarios: scenarioList.map((s) => ({
+      total: scenarioResults.byId.get(s.id)?.metrics.total ?? null,
+      structuralSystem: s.structuralSystem,
+    })),
+    projectSystem: structuralSystem,
+  }), [scenarioResults, scenarioBudget, scenarioList, structuralSystem]);
+
+  // ── Technology adaptation ─────────────────────────────────────────────
+  // What `adaptGraphToSystem` would change to make the model match its
+  // declared system. Offered in a banner, applied as one undo step, never
+  // silently: retyping walls and adding columns is the user's call.
+  const adaptPreview = useMemo(
+    () => (structuralSystem === 'unset' ? null : adaptGraphToSystem(nodes, edges, structuralSystem)),
+    [nodes, edges, structuralSystem],
+  );
+  const [adaptDismissedFor, setAdaptDismissedFor] = useState<StructuralSystem | null>(null);
+  const showAdaptBanner = !!adaptPreview && summaryChanged(adaptPreview.summary) && adaptDismissedFor !== structuralSystem;
 
   // Sync from store when external components (e.g. floor plan draw-wall) change it
   useEffect(() => {
@@ -6007,6 +9278,21 @@ export function BubbleGraphPanel({
     if (openGeoOnly) setViewer3DType('opengeo');
   }, [openGeoOnly, setViewer3DType]);
 
+  // The live model as the exported IFC, for the IFC Tiles engine — built only
+  // while that engine is the one a 3D tab would show.
+  const modelIfc = useModelIfc(
+    viewNodes, edges, projectName,
+    !openGeoOnly && viewer3DType === 'tiles' && viewTabs.some((t) => t.type === '3d-model'),
+  );
+
+  // Views living in their own OS window (desktop build). This window stays the
+  // one that owns the model; they draw what it publishes.
+  const { detachedIds, detach: detachView } = useDetachedViews({
+    nodes, edges, buildingAxes, projectName, tabs: viewTabs, viewer3DType,
+    activeTab: viewTabs.find((t) => t.id === activeTabId),
+    setActiveTabId,
+  });
+
   const selectedNodeId  = useBubbleGraphStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useBubbleGraphStore((s) => s.setSelectedNodeId);
   const selectedNodeIds   = useBubbleGraphStore((s) => s.selectedNodeIds);
@@ -6025,8 +9311,8 @@ export function BubbleGraphPanel({
   const [showMultiSelect,        setShowMultiSelect]        = useState(false);
 
   const selectedNodeData = useMemo(
-    () => nodes.find((n) => n.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId],
+    () => viewNodes.find((n) => n.id === selectedNodeId) ?? null,
+    [viewNodes, selectedNodeId],
   );
 
   const activeTabMeta = useMemo(
@@ -6035,9 +9321,13 @@ export function BubbleGraphPanel({
   );
 
   // Keep the graph-editor tab label in sync (Clean: "Model")
+  // The graph is the model's root, and its tab says so — also after a project
+  // load has brought back a tab saved under another name.
+  const graphTabLabel = viewTabs.find((t) => t.id === 'graph-editor')?.label;
   useEffect(() => {
-    renameViewTab('graph-editor', profile === 'clean' ? 'Model' : projectName);
-  }, [projectName, renameViewTab, profile]);
+    const want = ro ? 'Graf' : 'Graph';
+    if (graphTabLabel !== undefined && graphTabLabel !== want) renameViewTab('graph-editor', want);
+  }, [renameViewTab, ro, graphTabLabel]);
 
   // Clean: prefer Plan for active storey once storeys exist (plan primacy)
   const cleanPlanPrimacyDone = useRef(false);
@@ -6066,8 +9356,12 @@ export function BubbleGraphPanel({
   }, [profile, nodes, activeStoreyId, viewTabs, addViewTab, setActiveTabId, setActiveStoreyId]);
 
   const [showAxesDialog, setShowAxesDialog] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  /** Graph canvas Grid mode (session-only; toggled from the toolbar and the ribbon). */
+  const [gridMode, setGridMode] = useState(false);
   const [showNewStoreyDialog, setShowNewStoreyDialog] = useState(false);
   const [showMaterialEditor, setShowMaterialEditor] = useState(false);
+  const [showStyleDialog, setShowStyleDialog] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showBoardScanner, setShowBoardScanner] = useState(false);
   const [editingStoreyId, setEditingStoreyId] = useState<string | null>(null);
@@ -6086,17 +9380,6 @@ export function BubbleGraphPanel({
     setCleanTheme(next);
   }, [cleanTheme]);
 
-  // Viewer props floating panel state (for non-graph-editor tabs)
-  const [viewerPropsPos, setViewerPropsPos] = useState({ x: typeof window !== 'undefined' ? Math.max(window.innerWidth - 290, 100) : 900, y: 80 });
-  const [viewerPropsDrag, setViewerPropsDrag] = useState(false);
-  const [viewerPropsDragOff, setViewerPropsDragOff] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const mm = (e: MouseEvent) => { if (viewerPropsDrag) setViewerPropsPos({ x: e.clientX - viewerPropsDragOff.x, y: e.clientY - viewerPropsDragOff.y }); };
-    const mu = () => setViewerPropsDrag(false);
-    document.addEventListener('mousemove', mm);
-    document.addEventListener('mouseup', mu);
-    return () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
-  }, [viewerPropsDrag, viewerPropsDragOff]);
 
   const handleInsertLibraryObject = useCallback((entry: ObjectLibraryEntry) => {
     const newNode: BubbleGraphNode = {
@@ -6120,6 +9403,54 @@ export function BubbleGraphPanel({
     setNodes((prev) => [...prev, newNode]);
   }, [activeStoreyId, setNodes]);
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
+
+  // ── Named projects on the backend ──────────────────────────────────────
+  const [showProjects, setShowProjects] = useState(false);
+
+  /**
+   * Switch this tab to another stored project.
+   *
+   * A reload is the honest way to do it: the graph, the axes, the world
+   * placement, the open drawing tabs and every scenario all come from the
+   * project, and swapping them piecemeal in a live tree is how half of one
+   * project ends up in another.
+   */
+  const handleOpenStoredProject = useCallback((slug: string) => {
+    useBubbleGraphStore.getState().setProjectSlug(slug);
+    window.location.reload();
+  }, []);
+
+  /** Save what is open under a new name, and continue in it. */
+  const handleSaveProjectAs = useCallback(async (name: string) => {
+    try {
+      const saved = await saveGraph({
+        projectName: name,
+        nodes: stampDerivedQuantities(nodes, edges) as never[],
+        edges: annotateEdgeTypes(edges, nodes) as never[],
+        buildingAxes,
+        activeStoreyId: null,
+        annotations: useBubbleGraphStore.getState().annotations,
+        dimStyles: useBubbleGraphStore.getState().dimStyles,
+        drawStyles: useBubbleGraphStore.getState().drawStyles,
+        worldLocation: useBubbleGraphStore.getState().worldLocation,
+        globeInstances: useBubbleGraphStore.getState().globeInstances,
+        composerShapes: useBubbleGraphStore.getState().composer.shapes,
+        viewTabs: sanitizeViewTabs(useBubbleGraphStore.getState().viewTabs),
+        activeTabId: useBubbleGraphStore.getState().activeTabId,
+        structuralSystem,
+        specs: projectSpecs,
+        scenarios: exportScenarios(),
+        terrain: useBubbleGraphStore.getState().terrain ?? undefined,
+      });
+      // No slug was sent, so the server routed by name. Follow it, or autosave
+      // would keep writing into the project this one was copied from.
+      if (saved?.slug) useBubbleGraphStore.getState().setProjectSlug(saved.slug);
+      setProjectName(name);
+      toast.success(`Salvat ca „${name}"`);
+    } catch (err) {
+      toast.error(`Salvarea a eșuat: ${err instanceof Error ? err.message : 'eroare necunoscută'}`);
+    }
+  }, [nodes, edges, buildingAxes, structuralSystem, projectSpecs]);
 
   // ─── Collect snapshot of current graph state ──────────────────────────
   const getSnapshot = useCallback((): ProjectData => ({
@@ -6175,6 +9506,7 @@ export function BubbleGraphPanel({
     if (data.projectName) setProjectName(data.projectName);
     if (data.activeStoreyId !== undefined) setActiveStoreyId(data.activeStoreyId ?? null);
     if (data.worldLocation) setWorldLocation(data.worldLocation);
+    useBubbleGraphStore.getState().setTerrain(data.terrain ?? null);
     setCurrentFilePath(filePath);
     await eAPI.setProjectPath(filePath);
     toast.success(`Opened: ${filePath.split(/[\\/]/).pop()}`);
@@ -6189,6 +9521,9 @@ export function BubbleGraphPanel({
     setProjectName('My Building');
     setActiveStoreyId(activeStoreyId || null);
     setCurrentFilePath(null);
+    importScenarios(undefined);
+    useBubbleGraphStore.getState().setDrawingViews([]);
+    useBubbleGraphStore.getState().setAnnotations([]);
     toast.success('New project — 4 storeys ready');
   }, [setBuildingAxes, setActiveStoreyId, breakCoalescing]);
 
@@ -6202,25 +9537,33 @@ export function BubbleGraphPanel({
     setProjectName('My Building');
     setActiveStoreyId(activeStoreyId || null);
     setCurrentFilePath(null);
+    importScenarios(undefined);
+    useBubbleGraphStore.getState().setDrawingViews([]);
+    useBubbleGraphStore.getState().setAnnotations([]);
     restoreViewState(
       [{ id: 'graph-editor', label: 'My Building', type: 'graph-editor', canClose: false }],
       'graph-editor',
-      'ara3d',
+      'tiles',
     );
     toast.success('New project created');
   }, [setBuildingAxes, setActiveStoreyId, restoreViewState, breakCoalescing]);
 
-  const handleWebSaveProject = useCallback(() => {
+  /** The project as a `.bbim` — what Save downloads and the HTML export carries inside. */
+  const buildProjectFile = useCallback(() => {
     const worldLocation = useBubbleGraphStore.getState().worldLocation;
     const globeInstances = useBubbleGraphStore.getState().globeInstances;
     const composerShapes = useBubbleGraphStore.getState().composer.shapes;
-    const file = serializeProject(
-      projectName, nodes, edges, buildingAxes, activeStoreyId,
+    return serializeProject(
+      projectName, stampDerivedQuantities(nodes, edges), annotateEdgeTypes(edges, nodes), buildingAxes, activeStoreyId,
       viewTabs, activeTabId, viewer3DType,
-      worldLocation, globeInstances, composerShapes,
+      worldLocation, globeInstances, composerShapes, structuralSystem, projectSpecs,
+      useBubbleGraphStore.getState().terrain,
     );
-    downloadProject(file);
-  }, [projectName, nodes, edges, buildingAxes, activeStoreyId, viewTabs, activeTabId, viewer3DType]);
+  }, [projectName, nodes, edges, buildingAxes, activeStoreyId, viewTabs, activeTabId, viewer3DType, structuralSystem, projectSpecs]);
+
+  const handleWebSaveProject = useCallback(() => {
+    downloadProject(buildProjectFile());
+  }, [buildProjectFile]);
 
   const handleWebOpenProject = useCallback(async () => {
     const raw = await openProjectFile();
@@ -6229,18 +9572,25 @@ export function BubbleGraphPanel({
       const proj = deserializeProject(raw);
       breakCoalescing();
       setNodes(proj.nodes as BubbleGraphNode[]);
-      setEdges(proj.edges as BubbleGraphEdge[]);
+      setEdges(annotateEdgeTypes(proj.edges as BubbleGraphEdge[], proj.nodes as BubbleGraphNode[]));
       setBuildingAxes(proj.buildingAxes);
       setProjectName(proj.projectName);
+      if (proj.structuralSystem) setStructuralSystem(proj.structuralSystem);
+      setProjectSpecs(parseSpecSelection(proj.specs));
       setActiveStoreyId(proj.activeStoreyId);
       restoreViewState(proj.viewTabs, proj.activeTabId, proj.viewer3DType);
       if (proj.worldLocation) setWorldLocation(proj.worldLocation);
       if (proj.globeInstances?.length) useBubbleGraphStore.getState().setGlobeInstances(proj.globeInstances);
       if (proj.composerShapes?.length) useBubbleGraphStore.getState().composerSetShapes(proj.composerShapes);
+      useBubbleGraphStore.getState().setTerrain(proj.terrain ?? null);
       setCurrentFilePath(null);
-      // Also save to backend so auto-save doesn't overwrite with stale data
+      // Also save to backend so auto-save doesn't overwrite with stale data.
+      // No projectSlug: the server routes by name, so an imported project lands
+      // under its OWN name rather than on top of whatever was open. The slug it
+      // answers with becomes this tab's, or the next autosave would write the
+      // imported graph back into the previous project.
       try {
-        await saveGraph({
+        const saved = await saveGraph({
           nodes: proj.nodes as never[],
           edges: proj.edges as never[],
           buildingAxes: proj.buildingAxes,
@@ -6249,7 +9599,12 @@ export function BubbleGraphPanel({
           worldLocation: proj.worldLocation,
           globeInstances: proj.globeInstances,
           composerShapes: proj.composerShapes,
+          structuralSystem: proj.structuralSystem,
+          specs: proj.specs,
+          scenarios: exportScenarios(),
+          terrain: proj.terrain,
         });
+        if (saved?.slug) useBubbleGraphStore.getState().setProjectSlug(saved.slug);
       } catch { /* ok — backend may be offline */ }
       toast.success(`Opened project: ${proj.projectName}`);
     } catch (err) {
@@ -6277,12 +9632,13 @@ export function BubbleGraphPanel({
       setZoom(1);
       setShowBoardScanner(false);
       try {
-        await saveGraph({
+        const saved = await saveGraph({
           nodes: data.nodes,
           edges: data.edges,
           buildingAxes: data.buildingAxes,
           projectName: data.projectName ?? projectName,
         });
+        if (saved?.slug) useBubbleGraphStore.getState().setProjectSlug(saved.slug);
       } catch { /* backend may be offline */ }
       toast.success(`Board game imported: ${data.nodes.length} nodes, ${data.edges.length} edges`);
     };
@@ -6290,11 +9646,33 @@ export function BubbleGraphPanel({
     return () => window.removeEventListener('message', handler);
   }, [setBuildingAxes, setActiveStoreyId, projectName]);
 
-  const handleBimxExport = useCallback(() => {
-    exportBimxHtml({ projectName, nodes, edges, buildingAxes })
-      .then(() => toast.success('BIMx ZIP exported — extract and open viewer.html'))
-      .catch((err: unknown) => toast.error(`BIMx export failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
-  }, [projectName, nodes, edges, buildingAxes]);
+  // One self-contained .html: the 3D model baked from the viewer's own scene,
+  // the drawings as SVG, the .bbim inside it, and every IFC open in the 3D
+  // viewers next to the project. Opens from a double-click.
+  const handleStandaloneExport = useCallback(() => {
+    const ifcModels = listLoadedIfc();
+    toast.info(ifcModels.length
+      ? `Se pregătește exportul HTML, cu ${ifcModels.length} model(e) IFC…`
+      : 'Se pregătește exportul HTML…');
+    const project = buildProjectFile();
+    import('@/lib/standaloneExport')
+      .then(({ exportStandaloneHtml }) => exportStandaloneHtml({
+        projectName, nodes, edges, buildingAxes, matConfig: getMaterialConfigSync(), project, ifcModels,
+      }))
+      .then((r) => {
+        toast.success([
+          `${r.fileName} — ${(r.bytes / 1048576).toFixed(1)} MB`,
+          `${r.meshes} corpuri`,
+          r.ifcModels ? `${r.ifcModels} model(e) IFC` : null,
+          `${r.drawings} planșe`,
+          r.boqRows ? `${r.boqRows} articole de deviz` : null,
+        ].filter(Boolean).join(', '));
+        if (r.ifcModels < ifcModels.length) {
+          toast.error(`${ifcModels.length - r.ifcModels} model(e) IFC nu au putut fi incluse — vezi consola.`);
+        }
+      })
+      .catch((err: unknown) => toast.error(`Exportul HTML a eșuat: ${err instanceof Error ? err.message : 'eroare necunoscută'}`));
+  }, [projectName, nodes, edges, buildingAxes, buildProjectFile]);
 
   // ── Viewer tab openers ────────────────────────────────────────────────
   const handleOpen3DTab = useCallback(() => {
@@ -6303,17 +9681,129 @@ export function BubbleGraphPanel({
     addViewTab({ type: '3d-model', label: `${projectName} — 3D`, canClose: true });
   }, [viewTabs, projectName, addViewTab, setActiveTabId]);
 
-  const handleOpenFloorPlanTab = useCallback((storeyId: string, storeyName: string, disc?: StoreyDiscipline) => {
-    const existing = viewTabs.find((t) => t.type === 'floorplan' && t.storeyId === storeyId && t.discipline === (disc ?? 'architectural'));
-    if (existing) { setActiveTabId(existing.id); return; }
-    addViewTab({
-      type: 'floorplan',
-      label: `${storeyName} — Plan`,
-      storeyId,
-      discipline: disc ?? 'architectural',
+  // ── 2D views: things of the project, not tabs (lib/views/drawingViews) ──
+  const drawingViews = useBubbleGraphStore((s) => s.drawingViews);
+  const setDrawingViews = useBubbleGraphStore((s) => s.setDrawingViews);
+  // Every storey has a plan, every section node its view, every drawing tab
+  // its view — kept so as the model and the tabs change.
+  useEffect(() => {
+    const r = syncViews(drawingViews, nodes, viewTabs);
+    if (!r) return;
+    setDrawingViews(r.views);
+    for (const l of r.links) updateViewTabParams(l.tabId, { drawingViewId: l.viewId });
+  }, [drawingViews, nodes, viewTabs, setDrawingViews, updateViewTabParams]);
+
+  /** Bring a view up: the tab it is open in, or a new one. */
+  const openDrawingView = useCallback((v: DrawingView) => {
+    const open = useBubbleGraphStore.getState().viewTabs.find((t) => t.params?.drawingViewId === v.id);
+    if (open) { setActiveTabId(open.id); return; }
+    const id = addViewTab({
+      type: tabTypeOf(v),
+      label: v.name,
+      storeyId: v.storeyId,
+      discipline: v.discipline,
       canClose: true,
+      params: {
+        ...(v.kind === 'elevation' && v.engine === 'classic'
+          ? { startElevation: -5000, endElevation: 15000, cutDepth: 999_999, cutX: 999_999, cutY: -999_999 } : {}),
+        ...(v.params ?? {}),
+        ...(v.dir ? { viewDirection: v.dir } : {}),
+        ...(v.sectionNodeId ? { nodeId: v.sectionNodeId } : {}),
+        drawingViewId: v.id,
+      },
     });
-  }, [viewTabs, addViewTab, setActiveTabId]);
+    setActiveTabId(id);
+  }, [addViewTab, setActiveTabId]);
+
+  /** A new view in the registry, opened. */
+  const createDrawingView = useCallback((req: NewViewRequest) => {
+    const id = newViewId();
+    const views = useBubbleGraphStore.getState().drawingViews;
+    const v: DrawingView = {
+      id, name: uniqueViewName(req.name, views), kind: req.kind, engine: req.engine,
+      storeyId: req.storeyId, discipline: req.kind === 'plan' ? req.discipline ?? 'architectural' : undefined,
+      dir: req.kind === 'plan' ? undefined : req.dir, annKey: `view:${id}`,
+    };
+    setDrawingViews([...views, v]);
+    openDrawingView(v);
+  }, [setDrawingViews, openDrawingView]);
+
+  /** Open a storey's plan: the first of that discipline, made if there is none. */
+  const handleOpenFloorPlanTab = useCallback((storeyId: string, storeyName: string, disc?: StoreyDiscipline) => {
+    const d = disc ?? 'architectural';
+    const views = useBubbleGraphStore.getState().drawingViews;
+    const v = views.find((x) => x.kind === 'plan' && x.storeyId === storeyId && (x.discipline ?? 'architectural') === d && x.engine === DEFAULT_ENGINE)
+      ?? views.find((x) => x.kind === 'plan' && x.storeyId === storeyId && (x.discipline ?? 'architectural') === d);
+    if (v) { openDrawingView(v); return; }
+    createDrawingView({ kind: 'plan', engine: DEFAULT_ENGINE, storeyId, discipline: d,
+      name: d === 'architectural' ? storeyName : `${storeyName} — ${d === 'structural' ? 'structură' : 'instalații'}` });
+  }, [openDrawingView, createDrawingView]);
+
+  const renameDrawingView = useCallback((id: string, name: string) => {
+    const views = useBubbleGraphStore.getState().drawingViews;
+    const unique = uniqueViewName(name, views, id);
+    setDrawingViews(views.map((v) => (v.id === id ? { ...v, name: unique } : v)));
+    for (const t of useBubbleGraphStore.getState().viewTabs) if (t.params?.drawingViewId === id) renameViewTab(t.id, unique);
+  }, [setDrawingViews, renameViewTab]);
+
+  const duplicateDrawingView = useCallback((id: string, detailing: boolean) => {
+    const st = useBubbleGraphStore.getState();
+    const v = st.drawingViews.find((x) => x.id === id);
+    if (!v) return;
+    const dup = duplicateView(v, st.drawingViews, st.annotations, detailing);
+    setDrawingViews([...st.drawingViews, dup.view]);
+    if (dup.annotations.length) st.setAnnotations([...st.annotations, ...dup.annotations]);
+    openDrawingView(dup.view);
+  }, [setDrawingViews, openDrawingView]);
+
+  const deleteDrawingView = useCallback((id: string) => {
+    const st = useBubbleGraphStore.getState();
+    const v = st.drawingViews.find((x) => x.id === id);
+    if (!v) return;
+    if (v.kind === 'plan' && !st.drawingViews.some((x) => x.id !== id && x.kind === 'plan' && x.storeyId === v.storeyId)) {
+      toast.info('Fiecare nivel își păstrează cel puțin un plan — duplică-l înainte să-l ștergi pe acesta.');
+      return;
+    }
+    if (!window.confirm(`Ștergi vederea „${v.name}” și adnotările ei?`)) return;
+    const rest = st.drawingViews.filter((x) => x.id !== id);
+    setDrawingViews(rest);
+    // Its notes go with it — unless another view still files under the same key.
+    if (!rest.some((x) => x.annKey === v.annKey)) st.clearViewAnnotations(v.annKey);
+    for (const t of st.viewTabs) if (t.params?.drawingViewId === id) closeViewTab(t.id);
+  }, [setDrawingViews, closeViewTab]);
+
+  /**
+   * Draw a view with the other engine. The view stays the same view — name,
+   * notes — and its tab reopens on the new engine. A section cut by a marker
+   * on the plan has no OpenGeometry counterpart (that engine cuts on a side).
+   */
+  const switchViewEngine = useCallback((id: string, engine: DrawingEngine) => {
+    const st = useBubbleGraphStore.getState();
+    const v = st.drawingViews.find((x) => x.id === id);
+    if (!v || v.engine === engine) return;
+    if (v.kind === 'section' && v.sectionNodeId && engine === 'og') {
+      toast.info('Secțiunea desenată pe plan se taie doar cu desenul clasic — pentru OpenGeometry fă o secțiune pe o direcție.');
+      return;
+    }
+    const next: DrawingView = { ...v, engine, ...(v.kind !== 'plan' && !v.dir ? { dir: 'N' as const } : {}) };
+    setDrawingViews(st.drawingViews.map((x) => (x.id === id ? next : x)));
+    for (const t of st.viewTabs) if (t.params?.drawingViewId === id) closeViewTab(t.id);
+    openDrawingView(next);
+  }, [setDrawingViews, closeViewTab, openDrawingView]);
+
+  const setViewGraphic = useCallback((id: string, graphic: GraphicStyleId) => {
+    const st = useBubbleGraphStore.getState();
+    setDrawingViews(st.drawingViews.map((x) => (x.id === id ? { ...x, graphic } : x)));
+  }, [setDrawingViews]);
+
+  /** The tab bar renames the view, not just the tab. */
+  const renameTabOrView = useCallback((tabId: string, label: string) => {
+    const t = useBubbleGraphStore.getState().viewTabs.find((x) => x.id === tabId);
+    const vid = t?.params?.drawingViewId as string | undefined;
+    if (vid) renameDrawingView(vid, label); else renameViewTab(tabId, label);
+  }, [renameDrawingView, renameViewTab]);
+
+  const [newViewInit, setNewViewInit] = useState<Partial<NewViewRequest> | null>(null);
 
   const handleOpenFemTab = useCallback((storeyId: string, storeyName: string) => {
     const existing = viewTabs.find((t) => t.type === 'fem' && t.storeyId === storeyId);
@@ -6342,6 +9832,12 @@ export function BubbleGraphPanel({
     const existing = viewTabs.find((t) => t.type === 'report');
     if (existing) { setActiveTabId(existing.id); return; }
     addViewTab({ type: 'report', label: `${projectName} — Calculation memo`, canClose: true });
+  }, [viewTabs, projectName, addViewTab, setActiveTabId]);
+
+  const handleOpenTopologyTab = useCallback(() => {
+    const existing = viewTabs.find((t) => t.type === 'topology');
+    if (existing) { setActiveTabId(existing.id); return; }
+    addViewTab({ type: 'topology', label: `${projectName} — Topologie`, canClose: true });
   }, [viewTabs, projectName, addViewTab, setActiveTabId]);
 
   const handleOpenIFCPlanTab = useCallback(() => {
@@ -6374,53 +9870,42 @@ export function BubbleGraphPanel({
    * Create (or focus) default North / South / East / West elevation tabs.
    * start/end elevation defaults: -5000 mm to 15000 mm.
    */
+  /** The four elevations, as views — the ones missing are made, the last is opened. */
   const handleGenerateDefaultElevations = useCallback(() => {
-    const defs: Array<{ dir: 'N' | 'S' | 'E' | 'W'; label: string }> = [
-      { dir: 'W', label: 'West Elevation' },
-      { dir: 'E', label: 'East Elevation' },
-      { dir: 'S', label: 'South Elevation' },
-      { dir: 'N', label: 'North Elevation' },
+    const defs: Array<{ dir: 'N' | 'S' | 'E' | 'W'; name: string }> = [
+      { dir: 'W', name: 'Fațada vest' },
+      { dir: 'E', name: 'Fațada est' },
+      { dir: 'S', name: 'Fațada sud' },
+      { dir: 'N', name: 'Fațada nord' },
     ];
-    let lastId = '';
-    for (const { dir, label } of defs) {
-      const existing = viewTabs.find(
-        (t) => t.type === 'elevation' && t.params?.viewDirection === dir && !t.params?.nodeId,
-      );
-      if (existing) { lastId = existing.id; continue; }
-      const id = addViewTab({
-        type: 'elevation',
-        label,
-        canClose: true,
-        params: {
-          viewDirection: dir,
-          startElevation: -5000,
-          endElevation: 15000,
-          // Large depth so the entire building depth is captured for each facade
-          cutDepth: 999_999,
-          cutX: 999_999,   // E/W: xNear=999999, xFar=0 — covers [0, 999999 mm]
-          cutY: -999_999,  // N/S: zNear covers far-south, depth covers all north
-        },
-      });
-      lastId = id;
+    let views = useBubbleGraphStore.getState().drawingViews;
+    let last: DrawingView | null = null;
+    for (const { dir, name } of defs) {
+      const existing = views.find((v) => v.kind === 'elevation' && v.dir === dir);
+      if (existing) { last = existing; continue; }
+      const id = newViewId();
+      const v: DrawingView = {
+        id, name: uniqueViewName(name, views), kind: 'elevation', engine: DEFAULT_ENGINE, dir,
+        annKey: DEFAULT_ENGINE === 'og' ? `og:elevation:${dir}` : `elevation:${dir}`,
+      };
+      // The first elevation on a side keeps the key that side's notes always had.
+      if (views.some((x) => x.annKey === v.annKey)) v.annKey = `view:${id}`;
+      views = [...views, v];
+      last = v;
     }
-    if (lastId) setActiveTabId(lastId);
-  }, [viewTabs, addViewTab, setActiveTabId]);
+    setDrawingViews(views);
+    if (last) openDrawingView(last);
+  }, [setDrawingViews, openDrawingView]);
 
   /** Open a parametric section/elevation tab from a section/view node. */
   const handleOpenSectionTab = useCallback((nodeId: string) => {
     const n = nodes.find((nd) => nd.id === nodeId);
     if (!n || (n.type !== 'section' && n.type !== 'view')) return;
 
-    // Resolve ax positions using the anchor's own parent storey (global — not the section's storey)
-    const getAxPos = (axN: BubbleGraphNode) => {
-      const axStorey = axN.parentId ? nodes.find((nd) => nd.id === axN.parentId) : undefined;
-      const aX = (axStorey?.properties?.axesX as number[]) ?? [];
-      const aY = (axStorey?.properties?.axesY as number[]) ?? [];
-      return {
-        x: (Array.isArray(aX) ? aX : [])[Number(axN.properties.gridX ?? 0)] ?? 0,
-        y: (Array.isArray(aY) ? aY : [])[Number(axN.properties.gridY ?? 0)] ?? 0,
-      };
-    };
+    // Resolve ax positions through the shared resolver (own parent storey, free
+    // points and grid offsets included) — not a local re-implementation.
+    const nodeMapAll = new Map(nodes.map((nd) => [nd.id, nd]));
+    const getAxPos = (axN: BubbleGraphNode) => getAxRealPos(axN, nodeMapAll);
 
     const connEdges = edges.filter((e) => e.from === nodeId || e.to === nodeId);
     const axNodes = connEdges
@@ -6495,9 +9980,15 @@ export function BubbleGraphPanel({
     let cancelled = false;
     loadGraph().then((data) => {
       if (cancelled) return;
+      // The server says which project this is; every later save names it back.
+      if (data.projectSlug) useBubbleGraphStore.getState().setProjectSlug(data.projectSlug);
       if (data.nodes.length > 0 || data.edges.length > 0) {
-        setNodes(data.nodes as BubbleGraphNode[]);
-        setEdges(data.edges as BubbleGraphEdge[]);
+        const loadedNodes = data.nodes as BubbleGraphNode[];
+        setNodes(loadedNodes);
+        // Backfill relation types on graphs saved before edges had any — one
+        // pass here means the rest of the app sees a typed graph, and a no-op
+        // (same array reference) once a project has already been annotated.
+        setEdges(annotateEdgeTypes(data.edges as BubbleGraphEdge[], loadedNodes));
       }
       if (data.buildingAxes && (
         (data.buildingAxes.xValues?.length ?? 0) > 0 ||
@@ -6508,12 +9999,25 @@ export function BubbleGraphPanel({
       if (data.projectName) {
         setProjectName(data.projectName);
       }
+      setProjectSpecs(parseSpecSelection(data.specs));
+      const loadedSystem = parseStructuralSystem(data.structuralSystem);
+      if (loadedSystem) setStructuralSystem(loadedSystem);
+      importScenarios(data.scenarios);
       if (data.annotations?.length) {
         useBubbleGraphStore.getState().setAnnotations(data.annotations);
       }
+      // The project's 2D views; a project saved before them gets its views
+      // made from its storeys, sections and open tabs (syncViews).
+      useBubbleGraphStore.getState().setDrawingViews(data.drawingViews ?? []);
+      // Always run, even for a project saved before styles existed:
+      // `setDimStyles` puts the built-ins back, so the dimensions in an old
+      // project resolve through a style that exists instead of falling back.
+      useBubbleGraphStore.getState().setDimStyles(data.dimStyles ?? []);
+      useBubbleGraphStore.getState().setDrawStyles(data.drawStyles ?? []);
       if (data.worldLocation) {
         useBubbleGraphStore.getState().setWorldLocation(data.worldLocation);
       }
+      useBubbleGraphStore.getState().setTerrain(data.terrain ?? null);
       if (data.globeInstances?.length) {
         useBubbleGraphStore.getState().setGlobeInstances(data.globeInstances as import('@/store').GlobeInstance[]);
       }
@@ -6566,8 +10070,8 @@ export function BubbleGraphPanel({
   }, [viewTabs, activeTabId, activeStoreyId, storeyNodes, handleOpenFloorPlanTab, setPlanTool, planTool]);
 
   const takeoffF3Count = useMemo(
-    () => computeFullTakeoff(nodes, edges).f3.length,
-    [nodes, edges],
+    () => computeFullTakeoff(viewNodes, edges, { structuralSystem: viewSystem, specs: viewSpecs }).f3.length,
+    [viewNodes, edges, viewSystem],
   );
 
   const handleQuantityHighlight = useCallback((nodeIds: string[]) => {
@@ -6585,16 +10089,9 @@ export function BubbleGraphPanel({
       const n = nodes.find((nd) => nd.id === nodeId);
       if (!n) return;
 
-      // Resolve each ax node's position using its own parent storey (global)
-      const getAxPos = (axN: BubbleGraphNode) => {
-        const axStorey = axN.parentId ? nodes.find((nd) => nd.id === axN.parentId) : undefined;
-        const aX = (axStorey?.properties?.axesX as number[]) ?? [];
-        const aY = (axStorey?.properties?.axesY as number[]) ?? [];
-        return {
-          x: (Array.isArray(aX) ? aX : [])[Number(axN.properties.gridX ?? 0)] ?? 0,
-          y: (Array.isArray(aY) ? aY : [])[Number(axN.properties.gridY ?? 0)] ?? 0,
-        };
-      };
+      // Resolve each ax node's position through the shared resolver.
+      const nodeMapAll = new Map(nodes.map((nd) => [nd.id, nd]));
+      const getAxPos = (axN: BubbleGraphNode) => getAxRealPos(axN, nodeMapAll);
 
       const connEdges = edges.filter((e) => e.from === nodeId || e.to === nodeId);
       const axNodes = connEdges
@@ -6638,6 +10135,8 @@ export function BubbleGraphPanel({
       x: source.x + 1000,
       y: source.y - 2000,
       locked: true,
+      // Own axis arrays: a shallow spread would leave both storeys editing one array.
+      properties: { ...source.properties, axesX: parseAxes(source.properties.axesX), axesY: parseAxes(source.properties.axesY) },
     };
     const newChildren = children.map((c) => ({
       ...c,
@@ -6677,10 +10176,30 @@ export function BubbleGraphPanel({
       ? selectedNodeIds
       : selectedNodeId ? [selectedNodeId] : selectedNodeIds;
     if (targetIds.length === 0) return;
+    // Same rule as the graph-editor inspector: an active scenario takes the edit.
+    const active = useScenarios.getState().activeId;
+    if (active) {
+      for (const id of targetIds) useScenarios.getState().patchNode(active, nodes, id, key, v);
+      return;
+    }
     setNodes((prev) => prev.map((n) =>
       targetIds.includes(n.id) ? { ...n, properties: { ...n.properties, [key]: v } } : n,
     ));
-  }, [selectedNodeId, selectedNodeIds, setNodes]);
+  }, [selectedNodeId, selectedNodeIds, setNodes, nodes]);
+
+  const handleViewerUpdateProps = useCallback((patch: Record<string, unknown>) => {
+    const targetIds = selectedNodeIds.length > 1
+      ? selectedNodeIds
+      : selectedNodeId ? [selectedNodeId] : selectedNodeIds;
+    if (targetIds.length === 0) return;
+    const active = useScenarios.getState().activeId;
+    if (active) {
+      for (const id of targetIds)
+        for (const [k, v] of Object.entries(patch)) useScenarios.getState().patchNode(active, nodes, id, k, v);
+      return;
+    }
+    setNodes((prev) => applyPropPatch(prev, targetIds, patch));
+  }, [selectedNodeId, selectedNodeIds, setNodes, nodes]);
 
   const handleViewerAddProp = useCallback(() => {
     const key = prompt('Property name:');
@@ -6749,6 +10268,190 @@ export function BubbleGraphPanel({
     const rafters = out.nodes.filter((n) => n.type === 'rafter' && n.properties.source_roof_id === out.roofId).length;
     toast.success(`Roof complete — ${rafters} rafters. Change type/pitch in Inspector + regenerate.`);
   }, [activeStoreyId, storeyNodes, nodes, edges, setNodes, setEdges, setSelectedNodeId, setSelectedNodeIds]);
+
+  const handleRewireGraph = useCallback((fn: (ns: BubbleGraphNode[], es: BubbleGraphEdge[]) => { nodes: BubbleGraphNode[]; edges: BubbleGraphEdge[] }) => {
+    const r = fn(nodes, edges);
+    if (r.nodes !== nodes) setNodes(r.nodes);
+    if (r.edges !== edges) setEdges(r.edges);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  const handleGenerateStair = useCallback((level: 'outline' | 'flights' | 'steps') => {
+    const id = selectedNodeIds.length === 1 ? selectedNodeIds[0] : selectedNodeId;
+    const stairwell = id ? nodes.find((n) => n.id === id && n.type === 'stairwell') : null;
+    if (!stairwell) {
+      toast.error('Select a stairwell node first');
+      return;
+    }
+    const result = solveStair({ nodes, edges, stairwellId: stairwell.id, level });
+    const applied = applyStairResult(nodes, edges, result);
+    setNodes(applied.nodes);
+    setEdges(applied.edges);
+
+    const errs = result.diagnostics.filter((d) => d.severity === 'error');
+    if (errs.length) { toast.error(errs[0].message); return; }
+    const g = result.geometry;
+    if (g) {
+      toast.success(
+        `Stair: ${g.steps} risers of ${Math.round(g.riserMm)} mm, going ${Math.round(g.treadMm)} mm `
+        + `(2h+g = ${Math.round(2 * g.riserMm + g.treadMm)})`,
+      );
+    }
+    // Every limit the sizing misses is worth seeing, not just the first.
+    for (const d of result.diagnostics.filter((x) => x.severity === 'warning')) toast.error(d.message);
+    for (const d of result.diagnostics.filter((x) => x.severity === 'info')) toast.info(d.message);
+  }, [selectedNodeId, selectedNodeIds, nodes, edges, setNodes, setEdges]);
+
+  // Live regeneration: edit a stair parameter or drag the node, and the stair
+  // rebuilds itself. The explicit buttons remain for switching detail level.
+  useAutoRegenerateStairs(nodes, edges, setNodes, setEdges);
+
+  const handleAddStairwellForActiveStorey = useCallback(() => {
+    const sid = activeStoreyId ?? storeyNodes[0]?.id;
+    if (!sid) {
+      toast.error('Add a storey first');
+      return;
+    }
+    // Drop it at the middle of what already exists, so it lands somewhere useful
+    // rather than at the origin on top of the grid.
+    const placed = nodes.filter((n) => n.type === 'ax');
+    const at = placed.length
+      ? {
+          x: Math.round(placed.reduce((s, n) => s + n.x, 0) / placed.length),
+          y: Math.round(placed.reduce((s, n) => s + n.y, 0) / placed.length),
+        }
+      : { x: 0, y: 0 };
+
+    const out = createStairwellForStorey(sid, nodes, edges, undefined, at);
+    if (!out.stairwellId) {
+      toast.error(out.diagnostics[0]?.message ?? 'Could not create stairwell');
+      return;
+    }
+    setNodes(out.nodes);
+    setEdges(out.edges);
+    setSelectedNodeId(out.stairwellId);
+    setSelectedNodeIds([]);
+    const errs = out.diagnostics.filter((d) => d.severity === 'error');
+    if (errs.length) { toast.error(errs[0].message); return; }
+    const sw = out.nodes.find((n) => n.id === out.stairwellId);
+    toast.success(
+      `Stairwell: ${sw?.properties.solved_steps ?? '?'} risers of `
+      + `${sw?.properties.solved_riser_mm ?? '?'} mm. Set type/width in the Inspector, then regenerate.`,
+    );
+    for (const d of out.diagnostics.filter((x) => x.severity === 'warning')) toast.error(d.message);
+  }, [activeStoreyId, storeyNodes, nodes, edges, setNodes, setEdges, setSelectedNodeId, setSelectedNodeIds]);
+
+  /** Add a sweep node for the active storey — the user then wires it to axes. */
+  const handleAddSweepForActiveStorey = useCallback(() => {
+    const sid = activeStoreyId ?? storeyNodes[0]?.id;
+    if (!sid) {
+      toast.error('Add a storey first');
+      return;
+    }
+    const placed = nodes.filter((n) => n.type === 'ax');
+    const at = placed.length
+      ? {
+          x: Math.round(placed.reduce((s, n) => s + n.x, 0) / placed.length),
+          y: Math.round(placed.reduce((s, n) => s + n.y, 0) / placed.length),
+        }
+      : { x: 0, y: 0 };
+    const nt = getNodeTypeData('sweep');
+    const id = `node_sweep_${Date.now().toString(36)}`;
+    setNodes((prev) => [...prev, {
+      id, type: 'sweep',
+      name: `Sweep${prev.filter((n) => n.type === 'sweep').length + 1}`,
+      x: at.x, y: at.y, z: 0,
+      parentId: sid,
+      properties: { ...(nt?.defaultProperties ?? {}) },
+    }]);
+    setSelectedNodeId(id);
+    setSelectedNodeIds([]);
+    toast.success('Sweep adăugat — leagă-l de 1 ax (vertical), 2 (segment) sau mai multe (polilinie).');
+  }, [activeStoreyId, storeyNodes, nodes, setNodes, setSelectedNodeId, setSelectedNodeIds]);
+
+  /** Add a dome node for the active storey — the user then wires its base contour. */
+  const handleAddDomeForActiveStorey = useCallback(() => {
+    const sid = activeStoreyId ?? storeyNodes[0]?.id;
+    if (!sid) {
+      toast.error('Add a storey first');
+      return;
+    }
+    const placed = nodes.filter((n) => n.type === 'ax');
+    const at = placed.length
+      ? {
+          x: Math.round(placed.reduce((s, n) => s + n.x, 0) / placed.length),
+          y: Math.round(placed.reduce((s, n) => s + n.y, 0) / placed.length),
+        }
+      : { x: 0, y: 0 };
+    const nt = getNodeTypeData('dome');
+    const id = `node_dome_${Date.now().toString(36)}`;
+    setNodes((prev) => [...prev, {
+      id, type: 'dome',
+      name: `Dom${prev.filter((n) => n.type === 'dome').length + 1}`,
+      x: at.x, y: at.y, z: 0,
+      parentId: sid,
+      properties: { ...(nt?.defaultProperties ?? {}) },
+    }]);
+    setSelectedNodeId(id);
+    setSelectedNodeIds([]);
+    toast.success('Dom adăugat — leagă-l de un ax și dă-i o rază, sau de 3+ axe în ordinea conturului.');
+  }, [activeStoreyId, storeyNodes, nodes, setNodes, setSelectedNodeId, setSelectedNodeIds]);
+
+  /** Add the site node — one per project; the user wires it to the anchor axis. */
+  const handleAddSite = useCallback(() => {
+    const sid = activeStoreyId ?? storeyNodes[0]?.id;
+    if (!sid) {
+      toast.error('Add a storey first');
+      return;
+    }
+    const existing = nodes.find((n) => n.type === 'site');
+    if (existing) {
+      setSelectedNodeId(existing.id);
+      setSelectedNodeIds([]);
+      toast.info('Proiectul are deja un teren — l-am selectat.');
+      return;
+    }
+    // On the storey at ±0.00, anchored to the middle of its axes, 0.45 m
+    // below the floor — a ground that shows straight away (lib/terrain/siteNode).
+    const made = createSiteNode(nodes, getNodeTypeData('site')?.defaultProperties ?? {});
+    if (!made) { toast.error('Add a storey first'); return; }
+    setNodes((prev) => [...prev, made.node]);
+    if (made.edge) setEdges((prev) => [...prev, made.edge!]);
+    setSelectedNodeId(made.node.id);
+    setSelectedNodeIds([]);
+    toast.success(made.edge
+      ? 'Teren adăugat la −0.45 m, centrat pe clădire.'
+      : 'Teren adăugat — leagă-l de axul unde vrei centrul grilei.');
+  }, [activeStoreyId, storeyNodes, nodes, setNodes, setEdges, setSelectedNodeId, setSelectedNodeIds]);
+
+  /** Add an igloo-style entrance; the user wires it to a dome and to an axis. */
+  const handleAddDomeEntrance = useCallback(() => {
+    const sid = activeStoreyId ?? storeyNodes[0]?.id;
+    if (!sid) {
+      toast.error('Add a storey first');
+      return;
+    }
+    const domes = nodes.filter((n) => n.type === 'dome' && n.parentId === sid);
+    if (domes.length === 0) {
+      toast.error('Adaugă întâi un dom — intrarea se deschide într-unul.');
+      return;
+    }
+    const nt = getNodeTypeData('dome_entrance');
+    const id = `node_domeent_${Date.now().toString(36)}`;
+    const host = domes.find((d) => d.id === selectedNodeId) ?? domes[0];
+    setNodes((prev) => [...prev, {
+      id, type: 'dome_entrance',
+      name: `Intrare${prev.filter((n) => n.type === 'dome_entrance').length + 1}`,
+      x: host.x + 60, y: host.y + 60, z: 0,
+      parentId: sid,
+      properties: { ...(nt?.defaultProperties ?? {}) },
+    }]);
+    // Wired to the dome straight away — an entrance with no dome has nothing
+    // to open into, and that edge is never the interesting choice.
+    setEdges((prev) => [...prev, { id: `edge_${id}`, from: host.id, to: id }]);
+    setSelectedNodeId(id);
+    setSelectedNodeIds([]);
+    toast.success(`Intrare adăugată în „${host.name}" — leag-o de axul unde vrei gura tunelului.`);
+  }, [activeStoreyId, storeyNodes, nodes, selectedNodeId, setNodes, setEdges, setSelectedNodeId, setSelectedNodeIds]);
 
   /** Delete a full storey + its children */
   const deleteStorey = useCallback((storeyId: string) => {
@@ -7103,7 +10806,7 @@ export function BubbleGraphPanel({
         }
 
         // ── Rooms, slabs, shells, coverings, foundations: centroid ─────────
-        if (['room', 'slab', 'foundation', 'shell', 'covering', 'roof'].includes(n.type) && connectedNodes.length > 0) {
+        if (['room', 'slab', 'foundation', 'shell', 'cell', 'covering', 'roof'].includes(n.type) && connectedNodes.length > 0) {
           const positions = connectedNodes.map(draftBimPos);
           const sumX = positions.reduce((s, p) => s + p.x, 0);
           const sumY = positions.reduce((s, p) => s + p.y, 0);
@@ -7146,7 +10849,7 @@ export function BubbleGraphPanel({
   }, [buildingAxes, storeyNodes, setBuildingAxes, handleRegenerateStoreyAxes]);
 
   // Auto-save and auto-backup state (moved from BubbleGraphCanvas to BubbleGraphPanel for header scope)
-  const { lastSaved, isSaving, saveError, performSave } = useAutoSave(nodes, edges, buildingAxes, projectName, isLoaded, 10000);
+  const { lastSaved, isSaving, saveError, performSave } = useAutoSave(nodes, edges, buildingAxes, projectName, structuralSystem, isLoaded, 10000);
   useAutoBackup(nodes, 300000);
 
   // Applies a restored (or freshly re-loaded) backend graph into local state — same
@@ -7157,12 +10860,504 @@ export function BubbleGraphPanel({
   // bridge handleWebOpenProject already uses for the same reason.
   const handleRestoreFromHistory = useCallback((data: GraphData) => {
     breakCoalescing(); // a restore is a hard reset — never merge into a preceding undo step
-    setNodes(data.nodes as unknown as BubbleGraphNode[]);
-    setEdges(data.edges as unknown as BubbleGraphEdge[]);
+    const restoredNodes = data.nodes as unknown as BubbleGraphNode[];
+    setNodes(restoredNodes);
+    setEdges(annotateEdgeTypes(data.edges as unknown as BubbleGraphEdge[], restoredNodes));
     if (data.buildingAxes) setBuildingAxes(data.buildingAxes);
     if (data.projectName) setProjectName(data.projectName);
+    setProjectSpecs(parseSpecSelection(data.specs));
+    const restoredSystem = parseStructuralSystem(data.structuralSystem);
+    if (restoredSystem) setStructuralSystem(restoredSystem);
+    importScenarios(data.scenarios);
     if (data.activeStoreyId !== undefined) setActiveStoreyId(data.activeStoreyId ?? null);
   }, [breakCoalescing, setBuildingAxes, setActiveStoreyId]);
+
+  // ── Shell: modes (the graph first), project and panel menus, commands ──
+  const shellModes = modesFor(caps);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  /** Bumped to save a version from outside the versions panel (Ctrl+Shift+S, the palette). */
+  const [versionSaveRequest, setVersionSaveRequest] = useState(0);
+
+  const openOrAdd = useCallback((type: 'terrain' | 'worldview' | 'ifc-tiles' | 'composer', label: string) => {
+    const existing = useBubbleGraphStore.getState().viewTabs.find((t) => t.type === type);
+    if (existing) { setActiveTabId(existing.id); return; }
+    const id = addViewTab({ type, label, canClose: true });
+    setActiveTabId(id);
+  }, [addViewTab, setActiveTabId]);
+
+  const goToMode = useCallback((m: ShellMode) => {
+    if (m === 'graph') { setActiveTabId('graph-editor'); return; }
+    if (m === '3d') { handleOpen3DTab(); return; }
+    if (m === 'plan') {
+      const s = storeyNodes.find((x) => x.id === activeStoreyId) ?? storeyNodes[0];
+      if (!s) { toast.info(ro ? 'Adaugă întâi un nivel în graf.' : 'Add a storey to the graph first.'); return; }
+      handleOpenFloorPlanTab(s.id, s.name, 'architectural');
+      return;
+    }
+    if (m === 'sheets') {
+      const ex = useBubbleGraphStore.getState().viewTabs.find((t) => t.type === 'sheet');
+      if (ex) setActiveTabId(ex.id); else handleOpenSimpleTab('sheet', ro ? 'Planșa A1' : 'Sheet A1');
+      return;
+    }
+    openOrAdd('terrain', ro ? 'Teren' : 'Terrain Modeler');
+  }, [setActiveTabId, handleOpen3DTab, storeyNodes, activeStoreyId, handleOpenFloorPlanTab, handleOpenSimpleTab, openOrAdd, ro]);
+
+  const [showProjectConfig, setShowProjectConfig] = useState(false);
+  const appliedStyle = useMemo(() => readAppliedStyle(nodes), [nodes]);
+
+  const configGroups = useMemo<ConfigGroup[]>(() => {
+    const specsN = Object.keys(projectSpecs).length;
+    const styleLabel = appliedStyle ? STYLE_PACK_MAP.get(appliedStyle.packId)?.label ?? appliedStyle.packId : null;
+    return [
+      {
+        label: ro ? 'Goluri' : 'Openings',
+        cards: [
+          { id: 'win', icon: RectangleHorizontal, title: ro ? 'Ferestre' : 'Windows',
+            text: ro ? 'Tipurile de fereastră ale proiectului: dimensiuni, ramă, simbolul din plan.' : 'The project\'s window types: sizes, frame, plan symbol.',
+            action: { label: ro ? 'Configurează' : 'Configure', onClick: () => { setShowDoorConfigurator(false); setShowWindowConfigurator(true); } } },
+          { id: 'door', icon: DoorOpen, title: ro ? 'Uși' : 'Doors',
+            text: ro ? 'Tipurile de ușă: foi, deschidere, toc, simbolul din plan.' : 'Door types: leaves, swing, frame, plan symbol.',
+            action: { label: ro ? 'Configurează' : 'Configure', onClick: () => { setShowWindowConfigurator(false); setShowDoorConfigurator(true); } } },
+        ],
+      },
+      {
+        label: ro ? 'Materiale' : 'Materials',
+        cards: [
+          ...(caps.projectSpecs ? [{ id: 'specs', icon: Layers, title: ro ? 'Materialele proiectului' : 'Project materials',
+            text: ro ? 'Ce cărămidă, ce tencuială, ce termoizolație, ce pardoseală — pentru tot proiectul.' : 'Which brick, render, insulation, flooring — for the whole project.',
+            state: specsN ? `${specsN} ${ro ? 'alese' : 'chosen'}` : undefined,
+            action: { label: specsPanelOpen ? (ro ? 'Ascunde' : 'Hide') : (ro ? 'Alege' : 'Choose'), onClick: () => setSpecsPanelOpen((v) => !v), active: specsPanelOpen } }] : []),
+          { id: 'look', icon: Palette, title: ro ? 'Aspectul materialelor' : 'Material look',
+            text: ro ? 'Culori, transparență și hașuri, în 3D și în planuri.' : 'Colours, transparency and hatches, in 3D and in plans.',
+            action: { label: ro ? 'Editează' : 'Edit', onClick: () => setShowMaterialEditor(true) } },
+          { id: 'lib', icon: BookMarked, title: ro ? 'Librărie: articole și procese' : 'Library: items and processes',
+            text: ro ? 'Articolele de deviz, mapările și specificațiile — pe utilizator sau pe proiect.' : 'Cost items, mappings and specs — per user or per project.',
+            action: { label: ro ? 'Deschide' : 'Open', onClick: () => setShowLibrary(true) } },
+        ],
+      },
+      {
+        label: ro ? 'Arhitectură și structură' : 'Architecture and structure',
+        cards: [
+          { id: 'style', icon: House, title: ro ? 'Stil arhitectural' : 'Architectural style',
+            text: ro ? 'Reguli aplicate grafului: acoperiș, intrare, soclu, ornamente, terase.' : 'Rules applied to the graph: roof, entrance, plinth, ornament, terraces.',
+            state: styleLabel ?? (ro ? 'niciun stil aplicat' : 'no style applied'),
+            action: { label: styleLabel ? (ro ? 'Schimbă' : 'Change') : (ro ? 'Alege un stil' : 'Pick a style'), onClick: () => setShowStyleDialog(true) } },
+          ...(caps.projectSpecs ? [{ id: 'system', icon: Building2, title: ro ? 'Sistem structural' : 'Structural system',
+            text: STRUCTURAL_SYSTEM_HINTS[structuralSystem],
+            control: (
+              <select className="bb-btn bb-config-select" value={structuralSystem}
+                aria-label={ro ? 'Sistem structural' : 'Structural system'}
+                onChange={(e) => setStructuralSystem(e.target.value as StructuralSystem)}>
+                {STRUCTURAL_SYSTEMS.map((sy) => (
+                  <option key={sy} value={sy}>{sy === 'unset' ? (ro ? 'nedeclarat' : 'unset') : STRUCTURAL_SYSTEM_LABELS[sy]}</option>
+                ))}
+              </select>
+            ) }] : []),
+        ],
+      },
+      {
+        label: ro ? 'Desen' : 'Drawing',
+        cards: caps.extras ? [{ id: 'sym', icon: Shapes, title: ro ? 'Simboluri 2D' : '2D symbols',
+          text: ro ? 'Cum se desenează fiecare tip de element în plan.' : 'How each element type is drawn in plan.',
+          action: { label: ro ? 'Configurează' : 'Configure', onClick: () => setShowSymbolConfig(true) } }] : [],
+      },
+    ];
+  }, [ro, caps.projectSpecs, caps.extras, projectSpecs, specsPanelOpen, appliedStyle, structuralSystem, setStructuralSystem]);
+
+  // ── Project browser (Revit-style tree) ──
+  const browserItems = useMemo<TreeItem[]>(() => {
+    const L = (r: string, e: string) => (ro ? r : e);
+    const tabLeaf = (t: ViewTab, icon: TreeItem['icon']): TreeItem => ({
+      id: `tab:${t.id}`, label: t.label, icon, active: activeTabId === t.id, onOpen: () => setActiveTabId(t.id),
+      actions: t.canClose ? [{ label: L('Închide', 'Close'), glyph: '✕', danger: true, onClick: () => closeViewTab(t.id) }] : undefined,
+    });
+    const items: TreeItem[] = [];
+    // Storeys top down, as a section through the building reads.
+    const levels = [...storeyNodes].sort((a, b) => Number(b.properties.bottomElevation ?? 0) - Number(a.properties.bottomElevation ?? 0));
+
+    // The graph: the root, with its storeys — which part of it you work on.
+    items.push({
+      id: 'graph', label: L('Graf', 'Graph'), icon: Share2, root: true, kbd: '1', defaultOpen: true,
+      active: activeTabMeta?.type === 'graph-editor',
+      hint: L('Rădăcina modelului — toate vederile de mai jos se desenează din el', 'The model\'s root — every view below is drawn from it'),
+      onOpen: () => setActiveTabId('graph-editor'),
+      children: [
+        { id: 'graph:all', label: L('Toate nivelurile', 'All storeys'), icon: Layers3, active: !activeStoreyId,
+          onOpen: () => { setActiveStoreyId(null); setActiveTabId('graph-editor'); } },
+        ...levels.map((st): TreeItem => ({
+          id: `graph:${st.id}`, label: st.name, icon: Layers3, active: activeStoreyId === st.id,
+          badge: (() => { const z = Number(st.properties.bottomElevation ?? 0); return `${z >= 0 ? '+' : '−'}${(Math.abs(z) / 1000).toFixed(2)}`; })(),
+          hint: L('Clic: lucrezi pe acest nivel · dublu-clic: planul lui', 'Click: work on this storey · double-click: its plan'),
+          onOpen: () => { setActiveStoreyId(st.id); setActiveTabId('graph-editor'); },
+          onDoubleClick: caps.drawings ? () => handleOpenFloorPlanTab(st.id, st.name, 'architectural') : undefined,
+          actions: [
+            { label: L('Editează nivelul', 'Edit storey'), glyph: '✎', onClick: () => setEditingStoreyId(st.id) },
+            { label: L('Duplică nivelul', 'Duplicate storey'), glyph: '⧉', onClick: () => duplicateStorey(st.id) },
+            { label: L('Șterge nivelul', 'Delete storey'), glyph: '✕', danger: true, onClick: () => deleteStorey(st.id) },
+          ],
+        })),
+        { id: 'graph:new', label: L('Nivel nou…', 'New storey…'), create: true, onOpen: () => setShowNewStoreyDialog(true) },
+      ],
+    });
+
+    // Views, by kind, as Revit sorts them — each a thing of the project, with
+    // its own name and notes; a tab is only where one is open.
+    const views: TreeItem[] = [];
+    const elev = (id?: string) => Number(storeyNodes.find((x) => x.id === id)?.properties.bottomElevation ?? 0);
+    const viewLeaf = (v: DrawingView): TreeItem => {
+      const tab = viewTabs.find((t) => t.params?.drawingViewId === v.id);
+      return {
+        id: `dv:${v.id}`, label: v.name, tag: v.engine === 'og' ? 'OG' : undefined,
+        icon: v.kind === 'plan' ? PanelTop : v.kind === 'section' ? Scissors : Columns2,
+        active: !!tab && activeTabId === tab.id,
+        onOpen: () => openDrawingView(v),
+        onRename: (name) => renameDrawingView(v.id, name),
+        actions: [
+          { label: L('Duplică', 'Duplicate'), glyph: '⧉', onClick: () => duplicateDrawingView(v.id, false) },
+          { label: L('Duplică cu adnotări', 'Duplicate with detailing'), glyph: '⧉✎', onClick: () => duplicateDrawingView(v.id, true) },
+          { label: L('Șterge vederea', 'Delete view'), glyph: '✕', danger: true, onClick: () => deleteDrawingView(v.id) },
+        ],
+      };
+    };
+    const plansFolder = (disc: StoreyDiscipline, id: string, label: string, open = false): TreeItem => {
+      const list = drawingViews
+        .filter((v) => v.kind === 'plan' && (v.discipline ?? 'architectural') === disc)
+        .sort((a, b) => elev(b.storeyId) - elev(a.storeyId) || a.name.localeCompare(b.name));
+      return {
+        id, label, icon: Folder, badge: list.length, defaultOpen: open,
+        children: [
+          ...list.map(viewLeaf),
+          { id: `${id}:new`, label: L('Plan nou…', 'New plan…'), create: true, onOpen: () => setNewViewInit({ kind: 'plan', discipline: disc, storeyId: activeStoreyId ?? undefined }) },
+        ],
+      };
+    };
+    if (caps.drawings) {
+      views.push(plansFolder('architectural', 'plans', L('Planuri de nivel', 'Floor plans'), true));
+      if (caps.lab) {
+        views.push(plansFolder('structural', 'plans-s', L('Planuri de structură', 'Structural plans')));
+        views.push(plansFolder('mep', 'plans-m', L('Planuri de instalații', 'MEP plans')));
+      }
+    }
+    const tabs3d = viewTabs.filter((t) => t.type === '3d-model' || t.type === 'opengeo-3d');
+    views.push({
+      id: '3d', label: L('Vederi 3D', '3D views'), icon: Folder, badge: tabs3d.length, defaultOpen: true,
+      children: [
+        ...tabs3d.map((t) => tabLeaf(t, Box)),
+        ...(tabs3d.length ? [] : [{ id: '3d:new', label: '{3D}', icon: Box, onOpen: handleOpen3DTab } satisfies TreeItem]),
+      ],
+    });
+    if (caps.drawings) {
+      const elevations = drawingViews.filter((v) => v.kind === 'elevation').sort((a, b) => a.name.localeCompare(b.name));
+      views.push({
+        id: 'elev', label: L('Fațade', 'Elevations'), icon: Folder, badge: elevations.length,
+        children: [
+          ...elevations.map(viewLeaf),
+          { id: 'elev:four', label: L('Generează cele 4 fațade', 'Generate the 4 elevations'), create: true, onOpen: handleGenerateDefaultElevations },
+          { id: 'elev:new', label: L('Fațadă nouă…', 'New elevation…'), create: true, onOpen: () => setNewViewInit({ kind: 'elevation' }) },
+        ],
+      });
+      const sections = drawingViews.filter((v) => v.kind === 'section').sort((a, b) => a.name.localeCompare(b.name));
+      views.push({
+        id: 'sec', label: L('Secțiuni', 'Sections'), icon: Folder, badge: sections.length,
+        children: [
+          ...sections.map(viewLeaf),
+          { id: 'sec:draw', label: L('Desenează o secțiune', 'Draw a section'), create: true, onOpen: () => startPlanSectionTool('draw-section') },
+          { id: 'sec:axis', label: L('Secțiune pe ax', 'Section on an axis'), create: true, onOpen: () => startPlanSectionTool('section-on-axis') },
+          { id: 'sec:new', label: L('Secțiune OpenGeometry…', 'OpenGeometry section…'), create: true, onOpen: () => setNewViewInit({ kind: 'section', engine: 'og' }) },
+        ],
+      });
+    }
+    if (caps.site) {
+      const world = viewTabs.find((t) => t.type === 'worldview');
+      const terr = viewTabs.find((t) => t.type === 'terrain');
+      views.push({
+        id: 'site', label: L('Sit', 'Site'), icon: Folder,
+        children: [
+          { id: 'site:terrain', label: L('Teren', 'Terrain'), icon: Mountain, active: !!terr && activeTabId === terr.id, onOpen: () => openOrAdd('terrain', L('Teren', 'Terrain Modeler')) },
+          { id: 'site:world', label: L('Lume', 'World'), icon: Globe2, active: !!world && activeTabId === world.id, onOpen: () => openOrAdd('worldview', 'World View') },
+        ],
+      });
+    }
+    items.push({
+      id: 'views', label: L('Vederi', 'Views'), icon: Folder, defaultOpen: true,
+      children: caps.drawings
+        ? [...views, { id: 'views:new', label: L('Vedere nouă…', 'New view…'), create: true, onOpen: () => setNewViewInit({}) }]
+        : views,
+    });
+
+    // Schedules and quantities.
+    if (caps.quantities) {
+      const report = viewTabs.find((t) => t.type === 'report');
+      const tables = viewTabs.filter((t) => t.type === 'table');
+      items.push({
+        id: 'sched', label: L('Tabele și cantități', 'Schedules and quantities'), icon: Folder,
+        children: [
+          { id: 'sched:memo', label: L('Memoriu de calcul', 'Calculation memo'), icon: Calculator, active: !!report && activeTabId === report.id, onOpen: handleOpenReportTab },
+          ...tables.map((t) => tabLeaf(t, Table2)),
+          { id: 'sched:table', label: L('Tabel nou', 'New schedule'), create: true, onOpen: () => handleOpenSimpleTab('table', L('Tabel elemente', 'Element Schedule')) },
+          { id: 'sched:qty', label: L('Cantități pe articole', 'Quantities by item'), icon: Calculator, badge: takeoffF3Count,
+            content: <QuantitiesPanel nodes={viewNodes} edges={edges} projectName={projectName} onHighlightNodes={handleQuantityHighlight} /> },
+        ],
+      });
+    }
+
+    // Sheets.
+    if (caps.drawings) {
+      const sheets = viewTabs.filter((t) => t.type === 'sheet');
+      items.push({
+        id: 'sheets', label: L('Planșe', 'Sheets'), icon: Folder, badge: sheets.length,
+        children: [
+          ...sheets.map((t) => tabLeaf(t, FileStack)),
+          { id: 'sheets:new', label: L('Planșă nouă', 'New sheet'), create: true, onOpen: () => handleOpenSimpleTab('sheet', L('Planșa A1', 'Sheet A1')) },
+        ],
+      });
+    }
+
+    // Families: the types the model uses, by category; a type selects its elements.
+    const byCat = new Map<string, Map<string, string[]>>();
+    for (const n of nodes) {
+      if (NOT_A_FAMILY.has(n.type)) continue;
+      const cat = byCat.get(n.type) ?? new Map<string, string[]>();
+      const t = familyTypeOf(n);
+      cat.set(t, [...(cat.get(t) ?? []), n.id]);
+      byCat.set(n.type, cat);
+    }
+    const catLabel = (t: string) => (ro ? FAMILY_LABEL_RO[t] : undefined) ?? getNodeTypeData(t)?.label ?? t;
+    items.push({
+      id: 'fam', label: L('Familii', 'Families'), icon: Package, badge: byCat.size,
+      hint: L('Tipurile folosite în model — clic pe un tip selectează elementele lui', 'The types the model uses — click a type to select its elements'),
+      children: [...byCat.entries()]
+        .sort((a, b) => catLabel(a[0]).localeCompare(catLabel(b[0])))
+        .map(([type, types]): TreeItem => ({
+          id: `fam:${type}`, label: catLabel(type), icon: Folder,
+          badge: [...types.values()].reduce((sum, ids) => sum + ids.length, 0),
+          children: [...types.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([t, ids]): TreeItem => ({
+            id: `fam:${type}:${t}`, label: t, icon: Shapes, badge: ids.length,
+            active: ids.length > 0 && selectedNodeIds.length === ids.length && ids.every((id) => selectedNodeIds.includes(id)),
+            hint: L('Selectează elementele de acest tip', 'Select the elements of this type'),
+            onOpen: () => { setSelectedNodeIds(ids); setSelectedNodeId(ids[0] ?? null); setInspOpen(true); },
+          })),
+        })),
+    });
+
+    // Structural analysis.
+    if (caps.fem && storeyNodes.length) {
+      const femTab = (id: string) => viewTabs.find((t) => t.type === 'fem' && t.storeyId === id);
+      items.push({
+        id: 'fem', label: L('Analiză structurală', 'Structural analysis'), icon: Building2,
+        children: [
+          ...(storeyNodes.length > 1 ? [{ id: 'fem:all', label: L('Toată clădirea', 'Whole building'), icon: Building2,
+            active: !!femTab('all') && activeTabId === femTab('all')!.id,
+            onOpen: () => handleOpenFemTab('all', L('Toată clădirea', 'Whole building')) } satisfies TreeItem] : []),
+          ...storeyNodes.map((st): TreeItem => ({ id: `fem:${st.id}`, label: st.name, icon: Layers3,
+            active: !!femTab(st.id) && activeTabId === femTab(st.id)!.id, onOpen: () => handleOpenFemTab(st.id, st.name) })),
+        ],
+      });
+    }
+
+    // The lab: other engines and experimental views.
+    if (caps.lab) {
+      const labTabs = viewTabs.filter((t) => ['composer', 'topology', 'ifc-plan', 'ifc-tiles', 'opengeo-floorplan', 'opengeo-section', 'opengeo-elevation'].includes(t.type));
+      items.push({
+        id: 'lab', label: L('Laborator', 'Lab'), icon: FlaskConical, badge: labTabs.length,
+        children: [
+          { id: 'lab:tiles', label: 'IFC Tiles', icon: Box, onOpen: () => openOrAdd('ifc-tiles', 'IFC Tiles') },
+          { id: 'lab:ifcplan', label: L('Plan IFC 2D', 'IFC 2D plan'), icon: PanelTop, onOpen: handleOpenIFCPlanTab },
+          { id: 'lab:composer', label: 'Composer', icon: Shapes, onOpen: () => openOrAdd('composer', 'Composer') },
+          { id: 'lab:topo', label: L('Analiză topologică', 'Topology analysis'), icon: Share2, onOpen: handleOpenTopologyTab },
+          { id: 'lab:og', label: 'OG 2D', icon: Folder, children: [
+            ...storeyNodes.map((st): TreeItem => ({ id: `lab:og:${st.id}`, label: `${L('Plan', 'Plan')} — ${st.name}`, icon: PanelTop, onOpen: () => handleOpenOGFloorPlanTab(st.id, st.name) })),
+            ...(['N', 'S', 'E', 'W'] as const).map((d): TreeItem => ({ id: `lab:ogs:${d}`, label: `${L('Secțiune', 'Section')} ${d}`, icon: Scissors, onOpen: () => handleOpenOGSectionTab(d) })),
+            ...(['N', 'S', 'E', 'W'] as const).map((d): TreeItem => ({ id: `lab:oge:${d}`, label: `${L('Fațadă', 'Elevation')} ${d}`, icon: Columns2, onOpen: () => handleOpenOGElevationTab(d) })),
+          ] },
+          ...labTabs.map((t) => tabLeaf(t, Box)),
+        ],
+      });
+    }
+    return items;
+  }, [ro, caps, nodes, edges, viewNodes, projectName, storeyNodes, viewTabs, activeTabId, activeTabMeta, activeStoreyId, selectedNodeIds,
+    takeoffF3Count, setActiveTabId, closeViewTab, setActiveStoreyId, handleOpenFloorPlanTab, duplicateStorey, deleteStorey,
+    handleOpen3DTab, handleOpenSectionTab, handleGenerateDefaultElevations, startPlanSectionTool, openOrAdd, handleOpenReportTab,
+    handleOpenSimpleTab, handleQuantityHighlight, setSelectedNodeIds, setSelectedNodeId, handleOpenFemTab, handleOpenIFCPlanTab,
+    handleOpenTopologyTab, handleOpenOGFloorPlanTab, handleOpenOGSectionTab, handleOpenOGElevationTab,
+    drawingViews, openDrawingView, renameDrawingView, duplicateDrawingView, deleteDrawingView]);
+
+  const handleExportGraphML = useCallback(() => {
+    downloadBlob(new Blob([graphMLText(nodes, edges)], { type: 'application/xml' }), 'bubble-graph.graphml');
+  }, [nodes, edges]);
+  const handleImportGraphML = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.graphml,.xml';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      void file.text().then((text) => {
+        try {
+          const g = parseGraphML(text);
+          setNodes(g.nodes);
+          setEdges(g.edges);
+          setSelectedNodeId(null);
+        } catch (err) {
+          toast.error(`GraphML: ${(err as Error).message}`);
+        }
+      });
+    };
+    input.click();
+  }, [setNodes, setEdges, setSelectedNodeId]);
+  /**
+   * The model as IFC4, built in the browser — the same builder the 3D viewers
+   * draw from (walls, openings, roofs and their timber, dormers, sweeps,
+   * styles, IFC library elements), georeferenced when the project is placed.
+   * No backend: every edition can download it.
+   */
+  const handleDownloadIfc = useCallback(async () => {
+    try {
+      let libraryParts: Map<string, import('@/lib/ifc/buildIfcModel').LibraryPart[]> | undefined;
+      try {
+        const { collectAllIfcLibraryPaths, libraryPartsForExport } = await import('@/lib/ifcLibraryLoader');
+        const paths = collectAllIfcLibraryPaths(nodes);
+        if (paths.length) {
+          const entries = await Promise.all(paths.map(async (p) => [p, await libraryPartsForExport(p).catch(() => [])] as const));
+          libraryParts = new Map(entries.filter(([, parts]) => parts.length));
+        }
+      } catch { /* the generic frames stand in for library elements */ }
+      const { content } = buildIfcModel(nodes, edges, projectName, {
+        georeference: exportGeoreference(useBubbleGraphStore.getState().worldLocation),
+        materialConfig: getMaterialConfigSync(),
+        libraryParts,
+      });
+      const name = safeFilename(projectName || 'model', 'ifc');
+      downloadBlob(new Blob([content], { type: 'application/x-step' }), name);
+      toast.success(`IFC: ${name} — ${(content.length / 1048576).toFixed(1)} MB`);
+    } catch (err) {
+      toast.error(`IFC: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [nodes, edges, projectName]);
+
+  const projectMenu = useMemo<MenuItem[]>(() => {
+    const items: MenuItem[] = isElectron
+      ? [
+        { label: ro ? 'Proiect nou' : 'New project', keys: 'Ctrl N', onClick: handleNewProject },
+        { label: ro ? 'Deschide…' : 'Open…', keys: 'Ctrl O', onClick: handleOpenProject },
+        { label: ro ? 'Salvează' : 'Save', keys: 'Ctrl S', onClick: handleSaveProject },
+        { label: ro ? 'Salvează ca…' : 'Save as…', onClick: handleSaveAs },
+      ]
+      : [
+        { label: ro ? 'Proiect nou' : 'New project', onClick: handleWebNewProject },
+        { label: ro ? 'Deschide un fișier .bbim…' : 'Open a .bbim file…', onClick: handleWebOpenProject },
+        { label: ro ? 'Descarcă .bbim' : 'Download .bbim', onClick: handleWebSaveProject },
+      ];
+    items.push(
+      { label: ro ? 'Proiecte salvate pe server' : 'Projects on the server', onClick: () => setShowProjects(true) },
+      { label: ro ? 'Export și import' : 'Export and import', heading: true },
+      { label: ro ? 'Descarcă IFC (IFC4)' : 'Download IFC (IFC4)', onClick: () => { void handleDownloadIfc(); } },
+      { label: ro ? 'Export HTML de sine stătător' : 'Standalone HTML export', onClick: handleStandaloneExport },
+      { label: ro ? 'Exportă graful (GraphML)' : 'Export the graph (GraphML)', onClick: handleExportGraphML },
+      { label: ro ? 'Importă un graf (GraphML)…' : 'Import a graph (GraphML)…', onClick: handleImportGraphML },
+    );
+    if (caps.extras) items.push({ label: ro ? 'Importă joc de societate (JSON)' : 'Import board game (JSON)', onClick: handleImportBoardGame });
+    // A hosted edition goes back to its project list; a desktop one has nowhere to go.
+    if (cloudAccount) items.push({ label: ro ? 'Închide proiectul' : 'Close project', onClick: onClose });
+    return items;
+  }, [ro, caps.extras, cloudAccount, onClose, handleNewProject, handleOpenProject, handleSaveProject, handleSaveAs,
+    handleWebNewProject, handleWebOpenProject, handleWebSaveProject, handleStandaloneExport, handleImportBoardGame,
+    handleDownloadIfc, handleExportGraphML, handleImportGraphML]);
+
+  const panelsMenu = useMemo<MenuItem[]>(() => {
+    const items: MenuItem[] = [
+      { label: ro ? 'Configurare proiect' : 'Project setup', active: showProjectConfig, onClick: () => setShowProjectConfig((v) => !v) },
+      { label: ro ? 'Bibliotecă de obiecte' : 'Object library', active: showObjectLibrary, onClick: () => setShowObjectLibrary((v) => !v) },
+    ];
+    items.push({ label: ro ? 'Ajutor' : 'Help', heading: true });
+    if (caps.chat) items.push({ label: ro ? 'Chat AI pe graf' : 'AI chat on the graph', active: showChat, onClick: () => setShowChat((v) => !v) });
+    items.push(
+      { label: ro ? 'Ghid de lucru' : 'Workflow guide', onClick: () => setShowHelp(true) },
+      { label: ro ? 'Navigator' : 'Navigator', active: navOpen, onClick: () => setNavOpen((v) => !v) },
+      { label: 'Inspector', active: inspOpen, onClick: () => setInspOpen((v) => !v) },
+    );
+    return items;
+  }, [ro, caps.chat, showProjectConfig, showObjectLibrary, showChat, navOpen, inspOpen]);
+
+  const commands = useMemo<ShellCommand[]>(() => {
+    const out: ShellCommand[] = [];
+    const g = { mode: ro ? 'Mod' : 'Mode', file: ro ? 'Proiect' : 'Project', panel: ro ? 'Panou' : 'Panel',
+      add: ro ? 'Adaugă' : 'Add', view: ro ? 'Vedere' : 'View', tool: ro ? 'Unealtă' : 'Tool' };
+    for (const m of shellModes) out.push({ id: `mode:${m.id}`, group: g.mode, label: m.label[caps.lang], keys: m.key, run: () => goToMode(m.id) });
+    const fromMenu = (items: MenuItem[], group: string, prefix: string) => items.forEach((it, i) => {
+      if (it.heading || it.node || !it.onClick) return;
+      out.push({ id: `${prefix}:${i}`, group, label: it.label, keys: it.keys, run: it.onClick });
+    });
+    fromMenu(projectMenu, g.file, 'file');
+    fromMenu(panelsMenu, g.panel, 'panel');
+    out.push(
+      { id: 'setup:axes', group: g.tool, label: ro ? '1 · Axe' : '1 · Axes', run: () => setShowAxesDialog(true) },
+      { id: 'setup:storey', group: g.tool, label: ro ? '2 · Nivel nou' : '2 · New storey', run: () => setShowNewStoreyDialog(true) },
+      { id: 'style', group: g.tool, label: ro ? 'Stil arhitectural' : 'Architectural style', run: () => setShowStyleDialog(true) },
+      { id: 'ver:save', group: g.file, label: ro ? 'Salvează o versiune' : 'Save a version', keys: 'Ctrl Shift S', run: () => setVersionSaveRequest((n) => n + 1) },
+      { id: 'ver:history', group: g.file, label: ro ? 'Istoric versiuni' : 'Version history', run: () => setShowHistoryPanel(true) },
+      { id: 'add:roof', group: g.add, label: ro ? 'Acoperiș pe nivelul activ' : 'Roof on the active storey', run: handleAddRoofForActiveStorey },
+      { id: 'add:stair', group: g.add, label: ro ? 'Casa scării pe nivelul activ' : 'Stairwell on the active storey', run: handleAddStairwellForActiveStorey },
+      { id: 'add:sweep', group: g.add, label: 'Sweep', run: handleAddSweepForActiveStorey },
+      { id: 'add:dome', group: g.add, label: ro ? 'Cupolă' : 'Dome', run: handleAddDomeForActiveStorey },
+      { id: 'add:site', group: g.add, label: ro ? 'Teren (sit)' : 'Site terrain', run: handleAddSite },
+      { id: 'tool:windows', group: g.tool, label: ro ? 'Configurator ferestre' : 'Window configurator', run: () => setShowWindowConfigurator(true) },
+      { id: 'tool:doors', group: g.tool, label: ro ? 'Configurator uși' : 'Door configurator', run: () => setShowDoorConfigurator(true) },
+      { id: 'tool:select', group: g.tool, label: ro ? 'Selecție după filtru' : 'Select by filter', run: () => setShowMultiSelect(true) },
+      { id: 'tool:grid', group: g.tool, label: ro ? '3 · Mod grilă în graf' : '3 · Graph grid mode', run: () => { setActiveTabId('graph-editor'); setGridMode((v) => !v); } },
+      { id: 'tool:symbols', group: g.tool, label: ro ? 'Simboluri 2D' : '2D symbols', run: () => setShowSymbolConfig(true) },
+      { id: 'tool:look', group: g.tool, label: ro ? 'Aspectul materialelor' : 'Material look', run: () => setShowMaterialEditor(true) },
+      { id: 'tool:library', group: g.tool, label: ro ? 'Librărie: articole și procese' : 'Library: items and processes', run: () => setShowLibrary(true) },
+    );
+    if (caps.drawings) {
+      out.push(
+        { id: 'view:section', group: g.view, label: ro ? 'Desenează o secțiune' : 'Draw a section', run: () => startPlanSectionTool('draw-section') },
+        { id: 'view:section-axis', group: g.view, label: ro ? 'Secțiune pe ax' : 'Section on an axis', run: () => startPlanSectionTool('section-on-axis') },
+        { id: 'view:elevations', group: g.view, label: ro ? 'Fațadele (4)' : 'The four elevations', run: handleGenerateDefaultElevations },
+        { id: 'view:sheet', group: g.view, label: ro ? 'Planșă nouă' : 'New sheet', run: () => handleOpenSimpleTab('sheet', ro ? 'Planșa A1' : 'Sheet A1') },
+      );
+      for (const s of storeyNodes) {
+        out.push({ id: `view:plan:${s.id}`, group: g.view, label: `${ro ? 'Plan' : 'Plan'} — ${s.name}`, run: () => handleOpenFloorPlanTab(s.id, s.name, 'architectural') });
+      }
+    }
+    if (caps.site) out.push({ id: 'view:world', group: g.view, label: ro ? 'Harta lumii' : 'World view', run: () => openOrAdd('worldview', 'World View') });
+    if (caps.quantities) {
+      const sim = ro ? 'Simulări' : 'Simulations';
+      out.push(
+        { id: 'view:memo', group: g.view, label: ro ? 'Memoriu de calcul' : 'Calculation memo', run: handleOpenReportTab },
+        { id: 'sim:dashboard', group: sim, label: 'Dashboard', run: () => setDashboardOpen((v) => !v) },
+        { id: 'sim:cost', group: sim, label: ro ? 'Structura costurilor' : 'Cost breakdown', run: () => setCostPanelOpen((v) => !v) },
+        { id: 'sim:compare', group: sim, label: ro ? 'Compară scenarii' : 'Compare scenarios', run: () => setComparePanelOpen((v) => !v) },
+      );
+    }
+    if (caps.fem) out.push({ id: 'view:fem', group: g.view, label: ro ? 'Model structural (FEM) — toată clădirea' : 'Structural model (FEM) — whole building', run: () => handleOpenFemTab('all', ro ? 'Toată clădirea' : 'Whole building') });
+    for (const s of storeyNodes) out.push({ id: `storey:${s.id}`, group: ro ? 'Nivel' : 'Storey', label: s.name, run: () => setActiveStoreyId(s.id) });
+    return out;
+  }, [ro, caps, shellModes, goToMode, projectMenu, panelsMenu, storeyNodes, handleAddRoofForActiveStorey, handleAddStairwellForActiveStorey,
+    handleAddSweepForActiveStorey, handleAddDomeForActiveStorey, handleAddSite, startPlanSectionTool, handleGenerateDefaultElevations,
+    handleOpenSimpleTab, handleOpenFloorPlanTab, openOrAdd, handleOpenReportTab, handleOpenFemTab, setActiveStoreyId]);
+
+  // Mode keys 1–5 and Ctrl K, anywhere but in a text field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      // Ctrl+Shift+S: a version, named later in the history if need be.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setVersionSaveRequest((n) => n + 1);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      const m = shellModes.find((x) => x.key === e.key);
+      if (m) { e.preventDefault(); goToMode(m.id); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [shellModes, goToMode]);
 
   if (!visible) return null;
 
@@ -7170,232 +11365,113 @@ export function BubbleGraphPanel({
   const storeyLabel = storeyNodes.find((s) => s.id === activeStoreyId)?.name ?? 'All storeys';
 
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-background${profile === 'clean' ? ' ac-shell' : ''}`}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background ac-shell">
       <div className="bg-background w-full h-full flex flex-col overflow-hidden">
-        {/* ── Header ── */}
-        <div className="bb-header">
-          {/* Logo + product */}
-          {profile === 'clean' ? (
-            <div className="bb-brand">
-              <span className="bb-brand-mark">B</span>
-              <span className="bb-brand-name">BubbleBIM</span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 4 }}>
-              <span style={{
-                fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em',
-                color: 'hsl(var(--primary))', lineHeight: 1,
-              }}>⬡</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'hsl(var(--foreground))' }}>
-                BubbleBIM
-              </span>
-            </div>
-          )}
-
-          <div className="bb-sep" />
-
-          {/* Project name */}
-          {profile === 'clean' ? (
-            <span className="bb-project-chip" title={currentFilePath ?? projectName}>
-              {currentFilePath ? currentFilePath.split(/[\\/]/).pop() : projectName}
-            </span>
-          ) : (
-            <span style={{ fontSize: 11.5, color: 'hsl(var(--muted-foreground))', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentFilePath ? currentFilePath.split(/[\\/]/).pop() : projectName}
-            </span>
-          )}
-
-          {/* Save status */}
-          {isSaving && (
-            <span style={{ fontSize: 10.5, color: 'hsl(var(--primary))', opacity: 0.8, animation: 'pulse 1s infinite' }}>
-              • Saving…
-            </span>
-          )}
-          {saveError && (
-            <span style={{ fontSize: 10.5, color: '#ef4444' }} title={saveError}>
-              ⚠ Save failed
-            </span>
-          )}
-          {lastSaved && !isSaving && !saveError && (
-            <span style={{ fontSize: 10.5, color: '#22c55e', opacity: 0.75 }}
-              title={`Last saved: ${lastSaved.toLocaleTimeString()}`}>
-              ✓
-            </span>
-          )}
-
-          {/* Spacer */}
-          <div style={{ flex: 1 }} />
-
-          {/* ── Undo / redo ── */}
-          <button className="bb-btn ghost" onClick={undo} disabled={!canUndo}
-            style={{ opacity: canUndo ? 1 : 0.4 }} title="Undo (Ctrl+Z)">
-            <Undo2 size={14} />
-          </button>
-          <button className="bb-btn ghost" onClick={redo} disabled={!canRedo}
-            style={{ opacity: canRedo ? 1 : 0.4 }} title="Redo (Ctrl+Shift+Z)">
-            <Redo2 size={14} />
-          </button>
-          <button className="bb-btn ghost" onClick={() => setShowHistoryPanel(true)} title="Version history — checkpoints, auto-saves, restore">
-            🕐
-          </button>
-          <div className="bb-sep" />
-
-          {/* ── Project actions ── */}
-          {isElectron ? (
-            <>
-              <button className="bb-btn ghost" onClick={handleNewProject} title="New project (Ctrl+N)">New</button>
-              <button className="bb-btn ghost" onClick={handleOpenProject} title="Open project (Ctrl+O)">Open</button>
-              <button className="bb-btn primary" onClick={handleSaveProject} title="Save (Ctrl+S)">Save</button>
-              <button className="bb-btn ghost" onClick={handleSaveAs} title="Save As">As…</button>
-            </>
-          ) : (
-            <>
-              <button className="bb-btn ghost" onClick={handleWebNewProject} title="New empty project">New</button>
-              <button className="bb-btn ghost" onClick={handleWebOpenProject} title="Open .bbim file">Open</button>
-              <button className="bb-btn primary" onClick={handleWebSaveProject} title="Download .bbim">Save</button>
-              {profile !== 'clean' && (
-                <>
-                  <button className="bb-btn"
-                    style={{ borderColor: '#f59e0b44', color: '#f59e0b', background: '#f59e0b0d' }}
-                    onClick={handleBimxExport} title="Export as BIMx HTML">BIMx</button>
-                  <button className="bb-btn"
-                    style={{ borderColor: '#4fc3f744', color: '#4fc3f7', background: '#4fc3f70d' }}
-                    onClick={handleImportBoardGame} title="Import Board Game JSON">🎲 Board</button>
-                </>
-              )}
-            </>
-          )}
-
-          <div className="bb-sep" />
-
-          {/* Building tools — ribbon owns these in clean */}
-          {profile !== 'clean' && (
-            <>
-              <button className="bb-btn" onClick={() => setShowAxesDialog(true)} title="Building axis grid">
-                <span>⊞</span> Axes
-                {buildingAxes.xValues.length > 0 && (
-                  <span style={{ fontSize: 9.5, color: 'hsl(var(--muted-foreground))' }}>
-                    {buildingAxes.xValues.length}×{buildingAxes.yValues.length}
+        {/* ── HUD: project, modes (the graph first), commands ── */}
+        <HudBar
+          lang={caps.lang}
+          projectName={currentFilePath ? (currentFilePath.split(/[\\/]/).pop() ?? projectName) : projectName}
+          saving={isSaving}
+          saveError={saveError}
+          lastSaved={lastSaved}
+          projectMenu={projectMenu}
+          panelsMenu={panelsMenu}
+          onCommand={() => setPaletteOpen(true)}
+          undo={undo}
+          redo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          simulations={caps.quantities ? (() => {
+            const total = activeScenarioId ? scenarioTotals.get(activeScenarioId) ?? null : scenarioResults.baseline?.metrics.total ?? null;
+            const name = activeScenario?.name ?? 'Baseline';
+            return (
+              <HudPopover
+                className="bb-hud-sim"
+                ariaLabel={ro ? 'Simulări' : 'Simulations'}
+                icon={<FlaskConical className="bb-ico" strokeWidth={1.75} />}
+                label={(
+                  <span className="bb-hud-sim-label">
+                    <span>{ro ? 'Simulări' : 'Simulations'}</span>
+                    <span className="bb-hud-sim-chip">{name}{total != null ? ` · ${Math.round(total).toLocaleString('ro-RO')} ${CURRENCY}` : ''}</span>
                   </span>
                 )}
-              </button>
-              <button className="bb-btn" onClick={() => setShowMaterialEditor(true)} title="Material config">
-                <span>◈</span> Materials
-              </button>
-              <button className="bb-btn primary" onClick={() => setShowNewStoreyDialog(true)} title="Add storey">
-                + Storey
-              </button>
-              <div className="bb-sep" />
-            </>
-          )}
-
-          {/* Panel toggles — decluttered in clean profile */}
-          {profile === 'clean' ? (
-            <>
-              <button
-                className={`bb-btn${showObjectLibrary ? ' active' : ''}`}
-                onClick={() => setShowObjectLibrary((v) => !v)} title="Object Library"
               >
-                <BookOpen className="bb-ico" strokeWidth={1.75} /> Library
-              </button>
-              <button className="bb-btn" onClick={() => setShowHelp(true)} title="Workflow guide">
-                <CircleHelp className="bb-ico" strokeWidth={1.75} /> Help
-              </button>
-              <button
-                className="bb-btn ghost"
-                onClick={toggleCleanTheme}
-                title={cleanTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-              >
-                {cleanTheme === 'dark'
-                  ? <Sun className="bb-ico" strokeWidth={1.75} />
-                  : <Moon className="bb-ico" strokeWidth={1.75} />}
-              </button>
-              {cloudAccount && (
-                <>
-                  <div className="bb-sep" />
-                  <span
-                    className="bb-project-chip"
-                    title={cloudAccount.username}
-                    style={{ maxWidth: 120 }}
-                  >
-                    {cloudAccount.username}
-                  </span>
-                  <button
-                    className="bb-btn ghost"
-                    onClick={cloudAccount.onProjects}
-                    title="Back to projects"
-                  >
-                    Projects
-                  </button>
-                  {cloudAccount.onSupport && (
-                    <button
-                      className="bb-btn ghost"
-                      onClick={cloudAccount.onSupport}
-                      title="Contact admin / support"
-                      style={{ position: 'relative' }}
-                    >
-                      Support
-                      {(cloudAccount.supportUnreadCount ?? 0) > 0 && (
-                        <span style={{
-                          position: 'absolute', top: 2, right: 2,
-                          width: 8, height: 8, borderRadius: '50%', background: '#ef4444',
-                        }} />
-                      )}
-                    </button>
+                <div className="bb-sim">
+                  <h4>{ro ? 'Scenarii de cost' : 'Cost scenarios'}</h4>
+                  <p>{ro ? 'Același model, alte decizii: alege scenariul pe care îl arată vederile, adaugă unul, compară-le.' : 'The same model, other decisions: pick the scenario the views show, add one, compare them.'}</p>
+                  <ScenarioBar
+                    inline
+                    base={nodes}
+                    edges={edges}
+                    projectSystem={structuralSystem}
+                    projectSpecs={projectSpecs}
+                    baselineTotal={scenarioResults.baseline?.metrics.total ?? null}
+                    totals={scenarioTotals}
+                    onOpenCompare={() => setComparePanelOpen(true)}
+                  />
+                  <div className="bb-sim-actions">
+                    <button type="button" className={`bb-btn${comparePanelOpen ? ' active' : ''}`} onClick={() => setComparePanelOpen((v) => !v)}>{ro ? 'Compară scenarii' : 'Compare scenarios'}</button>
+                    <button type="button" className={`bb-btn${costPanelOpen ? ' active' : ''}`} onClick={() => setCostPanelOpen((v) => !v)}>{ro ? 'Structura costurilor' : 'Cost breakdown'}</button>
+                    <button type="button" className={`bb-btn${dashboardOpen ? ' active' : ''}`} onClick={() => setDashboardOpen((v) => !v)}>Dashboard</button>
+                  </div>
+                  {caps.fem && (
+                    <>
+                      <h4>{ro ? 'Structură' : 'Structure'}</h4>
+                      <div className="bb-sim-actions">
+                        <button type="button" className="bb-btn" onClick={() => handleOpenFemTab('all', ro ? 'Toată clădirea' : 'Whole building')}>
+                          {ro ? 'Analiză FEM — toată clădirea' : 'FEM analysis — whole building'}
+                        </button>
+                      </div>
+                    </>
                   )}
-                  <button
-                    className="bb-btn ghost"
-                    onClick={cloudAccount.onSignOut}
-                    title="Sign out"
-                  >
-                    Sign out
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <button
-                className={`bb-btn${showChat ? ' active' : ''}`}
-                onClick={() => setShowChat((v) => !v)} title="AI Chat"
-              >
-                ✦ Chat
-              </button>
-              <button
-                className={`bb-btn${showObjectLibrary ? ' active' : ''}`}
-                onClick={() => setShowObjectLibrary((v) => !v)} title="Object Library"
-              >
-                ⊞ Library
-              </button>
-              <button className="bb-btn" onClick={() => setShowSymbolConfig(true)} title="Symbol config">
-                ◈ Symbols
-              </button>
-              <button className="bb-btn" onClick={() => setShowHelp(true)} title="Workflow guide">
-                ? Help
-              </button>
-
-              <div className="bb-sep" />
-
-              <Button variant="ghost" size="icon-sm" onClick={onClose}
-                className="hover:bg-red-500/20 hover:text-red-400" title="Close">
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </>
+                </div>
+              </HudPopover>
+            );
+          })() : undefined}
+          onConfig={() => setShowProjectConfig((v) => !v)}
+          configActive={showProjectConfig}
+          versions={(
+            <VersionControl
+              lang={caps.lang}
+              onSaveBeforeCommit={performSave}
+              onRestore={handleRestoreFromHistory}
+              onOpenHistory={() => setShowHistoryPanel(true)}
+              saveRequest={versionSaveRequest}
+            />
           )}
-        </div>
+          theme={cleanTheme}
+          onToggleTheme={toggleCleanTheme}
+          account={cloudAccount ? (
+            <HudMenu
+              align="right"
+              className="ghost bb-hud-account"
+              label={<span className="bb-hud-avatar" title={cloudAccount.username}>{cloudAccount.username.slice(0, 2).toUpperCase()}{(cloudAccount.supportUnreadCount ?? 0) > 0 && <span className="bb-hud-unread" />}</span>}
+              items={[
+                { label: cloudAccount.username, heading: true },
+                { label: ro ? 'Proiectele mele' : 'My projects', onClick: cloudAccount.onProjects },
+                ...(cloudAccount.onSupport ? [{
+                  label: `${ro ? 'Suport' : 'Support'}${(cloudAccount.supportUnreadCount ?? 0) > 0 ? ` (${cloudAccount.supportUnreadCount})` : ''}`,
+                  onClick: cloudAccount.onSupport,
+                }] : []),
+                { label: ro ? 'Ieși din cont' : 'Sign out', onClick: cloudAccount.onSignOut },
+              ]}
+            />
+          ) : undefined}
+        />
+        {paletteOpen && <CommandPalette commands={commands} lang={caps.lang} onClose={() => setPaletteOpen(false)} />}
 
         {/* ── Body ── */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* ════════════════════════════════════════════════
               STOREY EXPLORER / NAVIGATOR
               ════════════════════════════════════════════════ */}
-          {profile === 'clean' && !navOpen ? (
+          {!navOpen ? (
             <button
               type="button"
               className="bb-dock-rail bb-dock-rail-left"
-              title="Show navigator"
-              aria-label="Show navigator"
+              title={ro ? 'Arată navigatorul' : 'Show navigator'}
+              aria-label={ro ? 'Arată navigatorul' : 'Show navigator'}
               onClick={() => setNavOpen(true)}
             >
               <ChevronRight size={14} strokeWidth={1.85} />
@@ -7403,470 +11479,13 @@ export function BubbleGraphPanel({
             </button>
           ) : (
           <aside className="bb-sidebar">
-            {profile === 'clean' ? (
-              <CleanNavigator
-                storeyNodes={storeyNodes}
-                activeStoreyId={activeStoreyId}
-                setActiveStoreyId={setActiveStoreyId}
-                onEditStorey={(id) => setEditingStoreyId(id)}
-                onDuplicateStorey={duplicateStorey}
-                onDeleteStorey={deleteStorey}
-                onOpenPlan={(id, name) => handleOpenFloorPlanTab(id, name, 'architectural')}
-                onOpen3D={handleOpen3DTab}
-                onOpenSection={() => startPlanSectionTool('draw-section')}
-                onSectionOnAxis={() => startPlanSectionTool('section-on-axis')}
-                onOpenElevation={handleGenerateDefaultElevations}
-                onOpenWorld={() => {
-                  const existing = viewTabs.find((t) => t.type === 'worldview');
-                  if (existing) { setActiveTabId(existing.id); return; }
-                  addViewTab({ type: 'worldview', label: 'World View', canClose: true });
-                }}
-                onOpenTerrain={() => {
-                  const existing = viewTabs.find((t) => t.type === 'terrain');
-                  if (existing) { setActiveTabId(existing.id); return; }
-                  const id = addViewTab({ type: 'terrain', label: 'Terrain Modeler', canClose: true });
-                  setActiveTabId(id);
-                }}
-                onOpenSheet={() => handleOpenSimpleTab('sheet', 'Sheet A1')}
-                onOpenFem={handleOpenFemTab}
-                viewTabs={cleanViewTabs}
-                activeTabId={activeTabId}
-                setActiveTabId={setActiveTabId}
-                closeViewTab={closeViewTab}
-                onCollapse={() => setNavOpen(false)}
-              />
-            ) : (
-            <>
-            <div style={{
-              padding: '7px 10px 6px',
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'hsl(var(--muted-foreground))',
-              borderBottom: '1px solid hsl(var(--border))',
-              userSelect: 'none',
-            }}>
-              Explorer
-            </div>
-
-            <div style={{ flex: 1, overflow: 'auto' }}>
-
-            {/* ── STOREYS ── */}
-            <ExplorerSection icon="⊞" label="Storeys" defaultOpen count={storeyNodes.length}>
-              <button
-                className={`bb-row${!activeStoreyId ? ' active' : ''}`}
-                onClick={() => setActiveStoreyId(null)}
-              >
-                <span style={{ opacity: 0.5, fontSize: 11 }}>⊞</span>
-                <span>All storeys</span>
-              </button>
-              {storeyNodes.length === 0 && (
-                <div style={{ padding: '6px 14px', fontSize: 10.5, color: 'hsl(var(--muted-foreground))', fontStyle: 'italic', lineHeight: 1.6 }}>
-                  No storeys yet.<br />Set axes, then add a storey.
-                </div>
-              )}
-              {storeyNodes.map((s) => {
-                const disc = (s.properties.discipline as StoreyDiscipline) ?? 'architectural';
-                const isActive = activeStoreyId === s.id;
-                return (
-                  <div
-                    key={s.id}
-                    className={`bb-row${isActive ? ' active' : ''}`}
-                    style={{ paddingRight: 4 }}
-                    onClick={() => setActiveStoreyId(s.id)}
-                    onDoubleClick={(e) => { e.stopPropagation(); setEditingStoreyId(s.id); }}
-                  >
-                    <span style={{
-                      fontSize: 9, fontWeight: 700,
-                      padding: '1px 4px', borderRadius: 3,
-                      background: DISC_CLS_BG[disc], color: DISC_CLS_FG[disc],
-                      flexShrink: 0,
-                    }}>
-                      {DISC_LABEL[disc]}
-                    </span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.name}
-                    </span>
-                    <div style={{ display: 'flex', gap: 1, opacity: 0, transition: 'opacity 0.1s' }}
-                      className="group-actions"
-                      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0')}
-                    >
-                      <button style={{ padding: '1px 4px', fontSize: 11, opacity: 0.6 }}
-                        onClick={(e) => { e.stopPropagation(); setEditingStoreyId(s.id); }} title="Edit">✎</button>
-                      <button style={{ padding: '1px 4px', fontSize: 11, opacity: 0.6 }}
-                        onClick={(e) => { e.stopPropagation(); duplicateStorey(s.id); }} title="Duplicate">⧉</button>
-                      <button style={{ padding: '1px 4px', fontSize: 11, color: '#ef4444', opacity: 0.7 }}
-                        onClick={(e) => { e.stopPropagation(); deleteStorey(s.id); }} title="Delete">✕</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </ExplorerSection>
-
-            {/* ── 3D MODELS ── */}
-            <ExplorerSection icon="⬡" label="3D Models" count={viewTabs.filter(t => t.type === '3d-model').length}>
-              {openGeoOnly ? (
-                <button className="bb-row" style={{ color: 'hsl(var(--primary))' }} onClick={handleOpen3DTab}>
-                  <span style={{ fontSize: 13, lineHeight: 1 }}>⬡</span>
-                  <span>Open 3D (OpenGeometry)</span>
-                </button>
-              ) : (
-                <>
-                  <button className="bb-row" style={{ color: 'hsl(var(--primary))' }} onClick={handleOpen3DTab}>
-                    <span style={{ fontSize: 13, lineHeight: 1 }}>＋</span>
-                    <span>Generate 3D Model</span>
-                  </button>
-                  {viewTabs.filter(t => t.type === '3d-model').map(tab => (
-                    <div key={tab.id}
-                      className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                      onClick={() => setActiveTabId(tab.id)}>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                      <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                        onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                    </div>
-                  ))}
-                </>
-              )}
-            </ExplorerSection>
-
-            {/* ── QUANTITIES (F3 schedule) ── */}
-            <ExplorerSection icon="📋" label="Quantities" defaultOpen count={takeoffF3Count}>
-              <button
-                className="bb-row"
-                style={{ width: 'calc(100% - 16px)', margin: '0 8px 4px', justifyContent: 'center', fontSize: 10.5, color: 'hsl(var(--primary))' }}
-                onClick={handleOpenReportTab}
-                title="Open the calculation memo in a dedicated tab"
-              >
-                🧮 Open calculation memo
-              </button>
-              <button
-                className="bb-row"
-                style={{ width: 'calc(100% - 16px)', margin: '0 8px 6px', justifyContent: 'center', fontSize: 10.5, color: 'hsl(var(--primary))' }}
-                onClick={() => setCostPanelOpen((p) => !p)}
-                title="Floating panel with construction cost breakdown"
-              >
-                {costPanelOpen ? '◧ Hide costs' : '◧ Cost structure'}
-              </button>
-              <QuantitiesPanel
-                nodes={nodes}
-                edges={edges}
-                projectName={projectName}
-                onHighlightNodes={handleQuantityHighlight}
-              />
-            </ExplorerSection>
-
-            {/* ── COMPOSER (full only) ── */}
-            {isFull && (
-            <ExplorerSection icon="◇" label="Composer" count={viewTabs.filter(t => t.type === 'composer').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => {
-                  const existing = viewTabs.find(t => t.type === 'composer');
-                  if (existing) { setActiveTabId(existing.id); return; }
-                  const id = addViewTab({ type: 'composer', label: 'Composer', canClose: true });
-                  setActiveTabId(id);
-                }}>
-                <span style={{ fontSize: 13 }}>＋</span><span>Open Composer</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'composer').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-            )}
-
-            {showDrawings && (<>
-            <ExplorerSection icon="▦" label="Floor Plans" count={viewTabs.filter(t => t.type === 'floorplan').length}>
-              {storeyNodes.length === 0
-                ? <div style={{ padding: '6px 14px', fontSize: 10.5, color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>Add storeys first.</div>
-                : storeyNodes.map(s => (
-                  <div key={s.id}>
-                    <div style={{ padding: '4px 10px 2px', fontSize: 9.5, color: 'hsl(var(--muted-foreground))', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                      {s.name}
-                    </div>
-                    {(['architectural', 'structural', 'mep'] as StoreyDiscipline[]).map(disc => {
-                      const tab = viewTabs.find(t => t.type === 'floorplan' && t.storeyId === s.id && t.discipline === disc);
-                      return (
-                        <button key={disc}
-                          className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                          style={{ paddingLeft: 20 }}
-                          onClick={() => handleOpenFloorPlanTab(s.id, s.name, disc)}>
-                          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
-                            background: DISC_CLS_BG[disc], color: DISC_CLS_FG[disc] }}>
-                            {DISC_LABEL[disc]}
-                          </span>
-                          <span style={{ textTransform: 'capitalize' }}>{disc}</span>
-                          {tab && <span style={{ marginLeft: 'auto', fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))
-              }
-            </ExplorerSection>
-
-            {/* ── STRUCTURAL (FEM) — spike, full profile only ── */}
-            {isFull && (
-            <ExplorerSection icon="🏗" label="Structural (FEM)" count={viewTabs.filter(t => t.type === 'fem').length}>
-              {storeyNodes.length === 0
-                ? <div style={{ padding: '6px 14px', fontSize: 10.5, color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>Add storeys first.</div>
-                : <>
-                {storeyNodes.length > 1 && (() => {
-                  const allTab = viewTabs.find(t => t.type === 'fem' && t.storeyId === 'all');
-                  return (
-                    <button className={`bb-row${allTab && activeTabId === allTab.id ? ' active' : ''}`}
-                      style={{ fontWeight: 600 }}
-                      title="Build a linear-elastic FEM model of the WHOLE building — every storey stacked at its real elevation, columns continuous storey-to-storey"
-                      onClick={() => handleOpenFemTab('all', 'Whole building')}>
-                      <span style={{ fontSize: 11 }}>🏢</span>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>Whole building</span>
-                      {allTab && <span style={{ marginLeft: 'auto', fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                    </button>
-                  );
-                })()}
-                {storeyNodes.map(s => {
-                  const tab = viewTabs.find(t => t.type === 'fem' && t.storeyId === s.id);
-                  return (
-                    <button key={s.id}
-                      className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                      title="Build a linear-elastic FEM model of this storey (columns/beams/walls/slabs, self-weight only) and run it"
-                      onClick={() => handleOpenFemTab(s.id, s.name)}>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                      {tab && <span style={{ marginLeft: 'auto', fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                    </button>
-                  );
-                })}
-                </>
-              }
-            </ExplorerSection>
-            )}
-
-            {/* ── SECTIONS ── */}
-            <ExplorerSection icon="✂" label="Sections" count={viewTabs.filter(t => t.type === 'section').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => handleOpenSimpleTab('section', 'Section A-A')}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New Section</span>
-              </button>
-              {nodes.filter(n => n.type === 'section').map(n => {
-                const tab = viewTabs.find(t => t.type === 'section' && t.params?.nodeId === n.id);
-                return (
-                  <button key={n.id}
-                    className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                    onClick={() => handleOpenSectionTab(n.id)}>
-                    <span style={{ fontSize: 10, color: '#e11d48' }}>✂</span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.name}</span>
-                    {tab && <span style={{ fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                  </button>
-                );
-              })}
-              {viewTabs.filter(t => t.type === 'section' && !t.params?.nodeId).map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── ELEVATIONS ── */}
-            <ExplorerSection icon="↑" label="Elevations" count={viewTabs.filter(t => t.type === 'elevation').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={handleGenerateDefaultElevations}>
-                <span style={{ fontSize: 13 }}>＋</span><span>Generate 4 Facades</span>
-              </button>
-              {nodes.filter(n => n.type === 'view').map(n => {
-                const tab = viewTabs.find(t => t.type === 'elevation' && t.params?.nodeId === n.id);
-                return (
-                  <button key={n.id}
-                    className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                    onClick={() => handleOpenSectionTab(n.id)}>
-                    <span style={{ fontSize: 10, color: '#f97316' }}>↑</span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.name}</span>
-                    {tab && <span style={{ fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                  </button>
-                );
-              })}
-              {viewTabs.filter(t => t.type === 'elevation' && !t.params?.nodeId).map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── OG 2D VIEWS (full only — duplicates SVG floorplan/section/elevation) ── */}
-            {isFull && (
-            <ExplorerSection icon="◈" label="OG 2D Views" count={viewTabs.filter(t => t.type === 'opengeo-floorplan' || t.type === 'opengeo-section' || t.type === 'opengeo-elevation').length}>
-              {storeyNodes.length === 0
-                ? <div style={{ padding: '6px 14px', fontSize: 10.5, color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>Add storeys first.</div>
-                : storeyNodes.map(s => {
-                  const tab = viewTabs.find(t => t.type === 'opengeo-floorplan' && t.storeyId === s.id);
-                  return (
-                    <button key={s.id}
-                      className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                      onClick={() => handleOpenOGFloorPlanTab(s.id, s.name)}>
-                      <span style={{ fontSize: 10, color: '#6366f1' }}>▦</span>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name} — Plan</span>
-                      {tab && <span style={{ fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                    </button>
-                  );
-                })
-              }
-              <div style={{ padding: '3px 10px 1px', fontSize: 9, color: 'hsl(var(--muted-foreground))', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Sections</div>
-              {(['N', 'S', 'E', 'W'] as const).map(d => {
-                const tab = viewTabs.find(t => t.type === 'opengeo-section' && t.params?.viewDirection === d);
-                const lbl = { N: '↑ North', S: '↓ South', E: '→ East', W: '← West' }[d];
-                return (
-                  <button key={d} className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                    style={{ paddingLeft: 16 }}
-                    onClick={() => handleOpenOGSectionTab(d)}>
-                    <span style={{ fontSize: 10, color: '#6366f1', width: 12, flexShrink: 0 }}>
-                      {{ N: '↑', S: '↓', E: '→', W: '←' }[d]}
-                    </span>
-                    <span>{lbl.split(' ')[1]}</span>
-                    {tab && <span style={{ marginLeft: 'auto', fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                  </button>
-                );
-              })}
-              <div style={{ padding: '3px 10px 1px', fontSize: 9, color: 'hsl(var(--muted-foreground))', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Elevations</div>
-              {(['N', 'S', 'E', 'W'] as const).map(d => {
-                const tab = viewTabs.find(t => t.type === 'opengeo-elevation' && t.params?.viewDirection === d);
-                return (
-                  <button key={d} className={`bb-row${tab && activeTabId === tab.id ? ' active' : ''}`}
-                    style={{ paddingLeft: 16 }}
-                    onClick={() => handleOpenOGElevationTab(d)}>
-                    <span style={{ fontSize: 10, color: '#6366f1', width: 12, flexShrink: 0 }}>
-                      {{ N: '↑', S: '↓', E: '→', W: '←' }[d]}
-                    </span>
-                    <span>{{ N: 'North', S: 'South', E: 'East', W: 'West' }[d]}</span>
-                    {tab && <span style={{ marginLeft: 'auto', fontSize: 8, color: 'hsl(var(--primary))' }}>●</span>}
-                  </button>
-                );
-              })}
-            </ExplorerSection>
-            )}
-
-            {/* ── TABLES ── */}
-            <ExplorerSection icon="≡" label="Tables" count={viewTabs.filter(t => t.type === 'table').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => handleOpenSimpleTab('table', 'Element Schedule')}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New Table</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'table').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── SHEETS ── */}
-            <ExplorerSection icon="▭" label="Sheets" count={viewTabs.filter(t => t.type === 'sheet').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => handleOpenSimpleTab('sheet', 'Sheet A1')}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New Sheet</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'sheet').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── WORLD ── */}
-            <ExplorerSection icon="🌍" label="World" count={viewTabs.filter(t => t.type === 'worldview').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => addViewTab({ type: 'worldview', label: 'World View', canClose: true })}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New World View</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'worldview').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── IFC PLAN (full only) ── */}
-            {isFull && (
-            <ExplorerSection icon="📐" label="IFC Plan" count={viewTabs.filter(t => t.type === 'ifc-plan').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={handleOpenIFCPlanTab}>
-                <span style={{ fontSize: 13 }}>＋</span><span>IFC 2D Plan View</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'ifc-plan').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-            )}
-
-            {/* ── TERRAIN ── */}
-            <ExplorerSection icon="🏔" label="Terrain" count={viewTabs.filter(t => t.type === 'terrain').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => {
-                  const existing = viewTabs.find(t => t.type === 'terrain');
-                  if (existing) { setActiveTabId(existing.id); return; }
-                  const id = addViewTab({ type: 'terrain', label: 'Terrain Modeler', canClose: true });
-                  setActiveTabId(id);
-                }}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New Terrain View</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'terrain').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-
-            {/* ── IFC TILES (full only) ── */}
-            {isFull && (
-            <ExplorerSection icon="📦" label="IFC Tiles" count={viewTabs.filter(t => t.type === 'ifc-tiles').length}>
-              <button className="bb-row" style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => {
-                  const existing = viewTabs.find(t => t.type === 'ifc-tiles');
-                  if (existing) { setActiveTabId(existing.id); return; }
-                  const id = addViewTab({ type: 'ifc-tiles', label: 'IFC Tiles', canClose: true });
-                  setActiveTabId(id);
-                }}>
-                <span style={{ fontSize: 13 }}>＋</span><span>New IFC Tiles Viewer</span>
-              </button>
-              {viewTabs.filter(t => t.type === 'ifc-tiles').map(tab => (
-                <div key={tab.id} className={`bb-row${activeTabId === tab.id ? ' active' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                  <button style={{ fontSize: 12, color: '#ef4444', opacity: 0.7, padding: '0 3px' }}
-                    onClick={e => { e.stopPropagation(); closeViewTab(tab.id); }}>✕</button>
-                </div>
-              ))}
-            </ExplorerSection>
-            )}
-            </>)}
-            </div>
-            </>
-            )}
+            <ProjectBrowser
+              lang={caps.lang}
+              title={ro ? 'Browser proiect' : 'Project browser'}
+              projectName={projectName}
+              items={browserItems}
+              onCollapse={() => setNavOpen(false)}
+            />
           </aside>
           )}
 
@@ -7875,6 +11494,7 @@ export function BubbleGraphPanel({
               ════════════════════════════════════════════════ */}
           {(() => {
             const activeTab = viewTabs.find((t) => t.id === activeTabId);
+            const activeViewDef = drawingViews.find((v) => v.id === activeTab?.params?.drawingViewId);
             return (
               <div className="flex-1 flex flex-col min-h-0 min-w-0">
                 {/* Tab bar */}
@@ -7883,85 +11503,79 @@ export function BubbleGraphPanel({
                   activeTabId={activeTabId}
                   onSelect={setActiveTabId}
                   onClose={closeViewTab}
-                  onRename={renameViewTab}
-                  useLucide={profile === 'clean'}
+                  onRename={renameTabOrView}
+                  useLucide
+                  onDetach={detachView}
+                  detachedIds={detachedIds}
                 />
 
-                {/* Contextual ribbon (clean) or universal tools strip */}
-                {profile === 'clean' ? (
-                  <CleanRibbon
-                    viewType={activeTab?.type}
-                    viewLabel={activeTab?.label}
-                    actions={{
-                      onWindows: () => { setShowWindowConfigurator((p) => !p); setShowDoorConfigurator(false); setShowMultiSelect(false); },
-                      onDoors: () => { setShowDoorConfigurator((p) => !p); setShowWindowConfigurator(false); setShowMultiSelect(false); },
-                      onSelect: () => { setShowMultiSelect((p) => !p); setShowWindowConfigurator(false); setShowDoorConfigurator(false); },
-                      onClearSelection: () => setSelectedNodeIds([]),
-                      onAxes: () => setShowAxesDialog(true),
-                      onMaterials: () => setShowMaterialEditor(true),
-                      onAddStorey: () => setShowNewStoreyDialog(true),
-                      onAddRoof: handleAddRoofForActiveStorey,
-                      onOpen3D: handleOpen3DTab,
-                      onOpenSheet: () => handleOpenSimpleTab('sheet', 'Sheet A1'),
-                      onDrawSection: () => startPlanSectionTool('draw-section'),
-                      onSectionOnAxis: () => startPlanSectionTool('section-on-axis'),
-                      drawSectionActive: planTool === 'draw-section',
-                      sectionOnAxisActive: planTool === 'section-on-axis',
-                      windowsActive: showWindowConfigurator,
-                      doorsActive: showDoorConfigurator,
-                      selectActive: showMultiSelect,
-                      selectionCount: selectedNodeIds.length,
-                    }}
-                  />
-                ) : (
-                <div className="bb-tools">
-                  <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'hsl(var(--muted-foreground))', userSelect: 'none' }}>
-                    Tools
-                  </span>
-                  <div className="bb-sep" />
-                  {/* Windows configurator */}
-                  <button
-                    onClick={() => { setShowWindowConfigurator((p) => !p); setShowDoorConfigurator(false); setShowMultiSelect(false); }}
-                    className={`bb-btn${showWindowConfigurator ? ' active' : ''}`}
-                    title="Window symbol configurator"
-                  >
-                    <span>▭</span>
-                    <span>Windows</span>
-                  </button>
-                  {/* Doors configurator */}
-                  <button
-                    onClick={() => { setShowDoorConfigurator((p) => !p); setShowWindowConfigurator(false); setShowMultiSelect(false); }}
-                    className={`bb-btn${showDoorConfigurator ? ' active' : ''}`}
-                    title="Door symbol configurator"
-                  >
-                    <span>◫</span>
-                    <span>Doors</span>
-                  </button>
-                  <div className="bb-sep" />
-                  {/* Multi-select filter */}
-                  <button
-                    onClick={() => { setShowMultiSelect((p) => !p); setShowWindowConfigurator(false); setShowDoorConfigurator(false); }}
-                    className={`bb-btn${showMultiSelect || selectedNodeIds.length > 0 ? ' active' : ''}`}
-                    title="Multi-select filter"
-                  >
-                    <span>⊞</span>
-                    <span>Select{selectedNodeIds.length > 0 ? ` (${selectedNodeIds.length})` : ''}</span>
-                  </button>
-                  {selectedNodeIds.length > 0 && !showMultiSelect && (
-                    <button
-                      onClick={() => setSelectedNodeIds([])}
-                      className="bb-btn"
-                      style={{ color: '#14b8a6', borderColor: '#14b8a630', background: '#14b8a60d' }}
-                      title="Clear selection"
-                    >
-                      × Clear
-                    </button>
-                  )}
-                </div>
-                )}
+                {/* Context bar: the actions of the view in front, in every edition */}
+                <CleanRibbon
+                  viewType={activeTab?.type}
+                  viewLabel={activeTab?.label}
+                  extra={activeViewDef ? (
+                    <div className="bb-ribbon-group bb-view-look">
+                      <div className="bb-sep" />
+                      <span className="bb-tools-label">{ro ? 'Desen' : 'Drawing'}</span>
+                      <div className="bb-seg bb-seg-sm" role="radiogroup" aria-label={ro ? 'Motorul de desen' : 'Drawing engine'}>
+                        {([['og', 'OpenGeometry'], ['classic', ro ? 'Clasic' : 'Classic']] as const).map(([e, l]) => (
+                          <button key={e} type="button" role="radio" aria-checked={activeViewDef.engine === e}
+                            className={activeViewDef.engine === e ? 'on' : ''}
+                            onClick={() => switchViewEngine(activeViewDef.id, e)}>{l}</button>
+                        ))}
+                      </div>
+                      <label className="bb-view-style">
+                        <span className="bb-tools-label">{ro ? 'Stil' : 'Style'}</span>
+                        <select
+                          className="bb-input bb-input-sm"
+                          value={activeViewDef.graphic ?? 'color'}
+                          disabled={activeViewDef.kind === 'plan' && activeViewDef.engine === 'classic'}
+                          title={activeViewDef.kind === 'plan' && activeViewDef.engine === 'classic'
+                            ? (ro ? 'Stilurile grafice sunt pentru desenele OpenGeometry, secțiuni și fațade' : 'Graphic styles apply to OpenGeometry drawings, sections and elevations')
+                            : (ro ? 'Cum arată desenul acestei vederi' : 'How this view is drawn')}
+                          onChange={(e) => setViewGraphic(activeViewDef.id, e.target.value as GraphicStyleId)}
+                        >
+                          {GRAPHIC_STYLE_IDS.map((g) => <option key={g} value={g}>{GRAPHIC_STYLES[g].label}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  ) : undefined}
+                  actions={{
+                    onWindows: () => { setShowWindowConfigurator((p) => !p); setShowDoorConfigurator(false); setShowMultiSelect(false); },
+                    onDoors: () => { setShowDoorConfigurator((p) => !p); setShowWindowConfigurator(false); setShowMultiSelect(false); },
+                    onSelect: () => { setShowMultiSelect((p) => !p); setShowWindowConfigurator(false); setShowDoorConfigurator(false); },
+                    onClearSelection: () => setSelectedNodeIds([]),
+                    onAxes: () => setShowAxesDialog(true),
+                    onGridMode: () => setGridMode((v) => !v),
+                    gridModeActive: gridMode,
+                    onMaterials: () => setShowMaterialEditor(true),
+                    onStyle: () => setShowStyleDialog(true),
+                    onAddStorey: () => setShowNewStoreyDialog(true),
+                    onAddRoof: handleAddRoofForActiveStorey,
+                    onAddStairwell: handleAddStairwellForActiveStorey,
+                    onAddSweep: handleAddSweepForActiveStorey,
+                    onAddDome: handleAddDomeForActiveStorey,
+                    onAddDomeEntrance: handleAddDomeEntrance,
+                    onAddSite: handleAddSite,
+                    onOpen3D: handleOpen3DTab,
+                    onOpenSheet: () => handleOpenSimpleTab('sheet', 'Sheet A1'),
+                    onDrawSection: () => startPlanSectionTool('draw-section'),
+                    onSectionOnAxis: () => startPlanSectionTool('section-on-axis'),
+                    drawSectionActive: planTool === 'draw-section',
+                    sectionOnAxisActive: planTool === 'section-on-axis',
+                    windowsActive: showWindowConfigurator,
+                    doorsActive: showDoorConfigurator,
+                    selectActive: showMultiSelect,
+                    selectionCount: selectedNodeIds.length,
+                  }}
+                />
 
                 {/* Tab content */}
-                <div className={`flex-1 min-h-0 min-w-0 relative${profile === 'clean' ? ' bb-workspace' : ''}`}>
+                <div className="flex-1 min-h-0 min-w-0 relative bb-workspace">
+                  {/* A viewer that throws must not take the tab bar, the explorer
+                      and the unsaved model down with it. Keyed by tab so moving
+                      away and back gives the view a clean retry. */}
+                  <ErrorBoundary label={activeTab?.label} resetKey={activeTabId}>
                   {/* Window configurator overlay */}
                   {showWindowConfigurator && (
                     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/25">
@@ -7978,7 +11592,7 @@ export function BubbleGraphPanel({
                   {showMultiSelect && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/25">
                       <NodeMultiSelectFilter
-                        nodes={nodes}
+                        nodes={viewNodes}
                         onSelect={(ids) => { setSelectedNodeIds(ids); }}
                         onClose={() => setShowMultiSelect(false)}
                       />
@@ -7988,6 +11602,8 @@ export function BubbleGraphPanel({
                   <div className={cn('absolute inset-0', activeTab?.type !== 'graph-editor' && 'invisible pointer-events-none')}>
                     <BubbleGraphCanvas
                       nodes={nodes}
+                      inspectNodes={activeScenario ? viewNodes : undefined}
+                      economy={economy}
                       edges={edges}
                       activeStoreyId={activeStoreyId}
                       buildingAxes={buildingAxes}
@@ -7998,9 +11614,15 @@ export function BubbleGraphPanel({
                       selectedNodeIds={selectedNodeIds}
                       setSelectedNodeIds={setSelectedNodeIds}
                       onOpenSectionTab={handleOpenSectionTab}
-                      hidePropsPanel={profile === 'clean'}
+                      hidePropsPanel
+                      gridMode={gridMode}
+                      onToggleGridMode={() => setGridMode((v) => !v)}
+                      onOpenAxes={() => setShowAxesDialog(true)}
+                      onAddStorey={() => setShowNewStoreyDialog(true)}
+                      lang={caps.lang}
                       undo={undo}
                       redo={redo}
+                      projectSystem={structuralSystem}
                     />
                   </div>
                   {/* 3D viewer */}
@@ -8011,15 +11633,16 @@ export function BubbleGraphPanel({
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20 flex-shrink-0">
                           <span className="text-xs text-muted-foreground">3D Engine:</span>
                           <button
-                            onClick={() => setViewer3DType('ara3d')}
+                            onClick={() => setViewer3DType('tiles')}
                             className={cn(
                               'px-3 py-1 text-xs rounded transition-colors',
-                              viewer3DType === 'ara3d'
+                              viewer3DType === 'tiles'
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted text-muted-foreground hover:bg-accent'
                             )}
+                            title="Motorul nostru: modelul exact ca IFC-ul exportat, împărțit în tile-uri și randat cu BatchedMesh"
                           >
-                            Three.js (Ara3D)
+                            BubbleBIM (IFC Tiles)
                           </button>
                           <button
                             onClick={() => setViewer3DType('webifc')}
@@ -8059,18 +11682,18 @@ export function BubbleGraphPanel({
                       )}
                       {/* Viewer container */}
                       <div className="flex-1 min-h-0 relative">
-                        {(openGeoOnly ? 'opengeo' : viewer3DType) === 'ara3d' ? (
-                          <Ara3DViewer
-                            nodes={nodes}
+                        {(openGeoOnly ? 'opengeo' : viewer3DType) === 'tiles' ? (
+                          <IFCTilesViewer
+                            source={modelIfc.model}
+                            nodes={viewNodes}
                             edges={edges}
-                            buildingAxes={buildingAxes}
                             className="w-full h-full"
-                            onSelectNode={handleViewerSelectNode}
+                            onSelectNode={(id) => handleViewerSelectNode(id)}
                             selectedNodeId={selectedNodeId}
                           />
                         ) : (openGeoOnly ? 'opengeo' : viewer3DType) === 'opengeo' ? (
                           <OpenGeoViewer
-                            nodes={nodes}
+                            nodes={viewNodes}
                             edges={edges}
                             buildingAxes={buildingAxes}
                             className="w-full h-full"
@@ -8079,7 +11702,7 @@ export function BubbleGraphPanel({
                           />
                         ) : (openGeoOnly ? 'opengeo' : viewer3DType) === 'brep' ? (
                           <BrepViewer
-                            nodes={nodes}
+                            nodes={viewNodes}
                             edges={edges}
                             className="w-full h-full"
                             onSelectNode={handleViewerSelectNode}
@@ -8087,7 +11710,7 @@ export function BubbleGraphPanel({
                           />
                         ) : (
                           <WebIfcViewer
-                            nodes={nodes}
+                            nodes={viewNodes}
                             edges={edges}
                             buildingAxes={buildingAxes}
                             className="w-full h-full"
@@ -8102,14 +11725,17 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'floorplan' && (
                     <div className="absolute inset-0">
                       <FloorPlan2DViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         buildingAxes={buildingAxes}
                         storeyId={activeTab.storeyId ?? null}
                         discipline={activeTab.discipline ?? null}
+                        annotationKey={activeViewDef?.annKey}
                         className="w-full h-full"
                         selectedNodeId={selectedNodeId}
                         onSelectNode={handleViewerSelectNode}
+                        selectedNodeIds={selectedNodeIds}
+                        onSelectNodes={setSelectedNodeIds}
                       />
                     </div>
                   )}
@@ -8117,7 +11743,7 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'fem' && (
                     <div className="absolute inset-0">
                       <FemViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         storeyId={activeTab.storeyId ?? null}
                         className="w-full h-full"
@@ -8129,7 +11755,7 @@ export function BubbleGraphPanel({
                     <div className="absolute inset-0 overflow-y-auto bg-[hsl(var(--background))]">
                       <div className="mx-auto" style={{ maxWidth: 1000 }}>
                         <ReportTabView
-                          nodes={nodes}
+                          nodes={viewNodes}
                           edges={edges}
                           projectName={projectName}
                           onHighlightNodes={handleQuantityHighlight}
@@ -8141,13 +11767,15 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'section' && (
                     <div className="absolute inset-0">
                       <Section2DViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         cutY={activeTab.params?.cutY as number | undefined}
                         cutDepth={activeTab.params?.cutDepth as number | undefined}
                         startElevation={activeTab.params?.startElevation as number | undefined}
                         endElevation={activeTab.params?.endElevation as number | undefined}
                         sectionNodeId={activeTab.params?.nodeId as string | undefined}
+                        annotationKey={activeViewDef?.annKey}
+                        graphicStyle={activeViewDef?.graphic}
                         className="w-full h-full"
                       />
                     </div>
@@ -8156,11 +11784,13 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'elevation' && (
                     <div className="absolute inset-0">
                       <Elevation2DViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         viewDirection={activeTab.params?.viewDirection as 'N' | 'S' | 'E' | 'W' | undefined}
                         startElevation={activeTab.params?.startElevation as number | undefined}
                         endElevation={activeTab.params?.endElevation as number | undefined}
+                        annotationKey={activeViewDef?.annKey}
+                        graphicStyle={activeViewDef?.graphic}
                         className="w-full h-full"
                       />
                     </div>
@@ -8169,10 +11799,12 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'opengeo-floorplan' && (
                     <div className="absolute inset-0">
                       <OGFloorPlanViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         storeyId={activeTab.storeyId}
                         tabId={activeTab.id}
+                        annotationKey={activeViewDef?.annKey}
+                        graphicStyle={activeViewDef?.graphic}
                         initialCutPos={activeTab.params?.cutPos as number | undefined}
                         initialCutDepth={activeTab.params?.cutDepth as number | undefined}
                         className="w-full h-full"
@@ -8183,10 +11815,12 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'opengeo-section' && (
                     <div className="absolute inset-0">
                       <OGSectionViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         viewDirection={activeTab.params?.viewDirection as 'N' | 'S' | 'E' | 'W' | undefined}
                         tabId={activeTab.id}
+                        annotationKey={activeViewDef?.annKey}
+                        graphicStyle={activeViewDef?.graphic}
                         initialCutPos={activeTab.params?.cutPos as number | undefined}
                         initialCutDepth={activeTab.params?.cutDepth as number | undefined}
                         className="w-full h-full"
@@ -8197,10 +11831,12 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'opengeo-elevation' && (
                     <div className="absolute inset-0">
                       <OGElevationViewer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         viewDirection={activeTab.params?.viewDirection as 'N' | 'S' | 'E' | 'W' | undefined}
                         tabId={activeTab.id}
+                        annotationKey={activeViewDef?.annKey}
+                        graphicStyle={activeViewDef?.graphic}
                         initialCutPos={activeTab.params?.cutPos as number | undefined}
                         initialCutDepth={activeTab.params?.cutDepth as number | undefined}
                         className="w-full h-full"
@@ -8235,7 +11871,7 @@ export function BubbleGraphPanel({
                   {activeTab?.type === 'sheet' && (
                     <div className="absolute inset-0">
                       <SheetComposer
-                        nodes={nodes}
+                        nodes={viewNodes}
                         edges={edges}
                         tab={activeTab}
                         className="w-full h-full"
@@ -8248,6 +11884,19 @@ export function BubbleGraphPanel({
                       <ComposerCanvas />
                     </div>
                   )}
+                  {/* Room topology — the backend's CellComplex of the rooms */}
+                  {activeTab?.type === 'topology' && (
+                    <div className="absolute inset-0">
+                      <TopologyView
+                        nodes={viewNodes}
+                        edges={edges}
+                        selectedNodeId={selectedNodeId}
+                        onSelectNode={handleViewerSelectNode}
+                        projectName={projectName}
+                        className="w-full h-full"
+                      />
+                    </div>
+                  )}
                   {/* Placeholder views (table only) */}
                   {profile !== 'clean' && activeTab?.type === 'table' && (
                     <div className="absolute inset-0">
@@ -8255,17 +11904,73 @@ export function BubbleGraphPanel({
                     </div>
                   )}
 
-                  {/* ── Panou flotant: costurile construcției ── */}
-                  {profile !== 'clean' && costPanelOpen && (
-                    <CostFloatingPanel nodes={nodes} edges={edges} onClose={() => setCostPanelOpen(false)} />
+                  {specsPanelOpen && (
+                    <div
+                      style={{
+                        position: 'absolute', top: 8, right: 16, zIndex: 42, width: 320,
+                        background: 'hsl(var(--card, var(--background)))', border: '1px solid hsl(var(--border))',
+                        borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.28)', padding: '10px 12px',
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 12 }}>⚒ Materiale și finisaje</span>
+                        <button onClick={() => setSpecsPanelOpen(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--muted-foreground))', fontSize: 15, lineHeight: 1 }}>×</button>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'hsl(var(--muted-foreground))', marginBottom: 8, lineHeight: 1.45 }}>
+                        Alegerile proiectului. Un scenariu le poate schimba peste, iar un element le poate
+                        suprascrie punctual din inspector. Opțiunile vin din librăria de norme.
+                      </div>
+                      <SpecPicker value={projectSpecs} onChange={setProjectSpecs} />
+                      {Object.keys(projectSpecs).length > 0 && (
+                        <button
+                          onClick={() => setProjectSpecs({})}
+                          style={{ marginTop: 8, fontSize: 10.5, color: 'hsl(var(--primary))', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          revino la implicit
+                        </button>
+                      )}
+                    </div>
                   )}
+                  {showAdaptBanner && adaptPreview && (
+                    <SystemAdaptBanner
+                      system={structuralSystem}
+                      summary={adaptPreview.summary}
+                      onApply={() => setNodes(adaptPreview.nodes)}
+                      onDismiss={() => setAdaptDismissedFor(structuralSystem)}
+                    />
+                  )}
+                  {profile !== 'clean' && comparePanelOpen && (
+                    <CompareFloatingPanel
+                      base={nodes}
+                      edges={edges}
+                      projectSystem={structuralSystem}
+                      projectSpecs={projectSpecs}
+                      baseline={scenarioResults.baseline}
+                      onClose={() => setComparePanelOpen(false)}
+                    />
+                  )}
+                  {profile !== 'clean' && costPanelOpen && (
+                    <CostFloatingPanel nodes={viewNodes} edges={edges} onClose={() => setCostPanelOpen(false)} />
+                  )}
+                  {profile !== 'clean' && dashboardOpen && (
+                    <DashboardPanel
+                      result={activeScenarioId ? scenarioResults.byId.get(activeScenarioId) ?? null : scenarioResults.baseline}
+                      sourceLabel={activeScenario ? activeScenario.name : 'Baseline'}
+                      envelopeMissing={envelopeMissing(viewNodes)}
+                      collapsed={dashboardCollapsed}
+                      onToggleCollapsed={() => setDashboardCollapsed((v) => !v)}
+                      onClose={() => setDashboardOpen(false)}
+                    />
+                  )}
+                  </ErrorBoundary>
                 </div>
               </div>
             );
           })()}
 
           {/* ── Clean shell Inspector (docked properties) ── */}
-          {profile === 'clean' && !inspOpen && (
+          {!inspOpen && (
             <button
               type="button"
               className="bb-dock-rail bb-dock-rail-right"
@@ -8277,8 +11982,25 @@ export function BubbleGraphPanel({
               <ChevronLeft size={14} strokeWidth={1.85} />
             </button>
           )}
-          {profile === 'clean' && inspOpen && (
-            <aside className="bb-inspector">
+          {inspOpen && (
+            <aside className="bb-inspector" style={{ width: inspW }}>
+              <div
+                className="bb-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={ro ? 'Lățimea inspectorului — trage, sau săgeți stânga/dreapta' : 'Inspector width — drag, or arrow keys'}
+                aria-valuenow={inspW}
+                aria-valuemin={240}
+                aria-valuemax={720}
+                tabIndex={0}
+                title={ro ? 'Trage ca să lățești sau să îngustezi · dublu-clic: lățimea implicită' : 'Drag to widen or narrow · double-click: default width'}
+                onPointerDown={startInspResize}
+                onDoubleClick={() => setInspW(INSP_DEFAULT_W)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft') { e.preventDefault(); setInspW((w) => clampInspW(w + 24)); }
+                  else if (e.key === 'ArrowRight') { e.preventDefault(); setInspW((w) => clampInspW(w - 24)); }
+                }}
+              />
               <div className="bb-inspector-head">
                 <span>
                   {selectedNodeIds.length > 1
@@ -8298,7 +12020,7 @@ export function BubbleGraphPanel({
               <div className="bb-inspector-body">
                 {(() => {
                   const bulk = selectedNodeIds.length > 1
-                    ? nodes.filter((n) => selectedNodeIds.includes(n.id))
+                    ? viewNodes.filter((n) => selectedNodeIds.includes(n.id))
                     : undefined;
                   const node = bulk
                     ? (bulk[0] ?? null)
@@ -8306,7 +12028,7 @@ export function BubbleGraphPanel({
                   if (!node && !bulk) {
                     return (
                       <div className="bb-inspector-empty">
-                        Select an element in the Model or Plan to edit properties.
+                        {ro ? 'Selectează un element în graf, în plan sau în 3D ca să-i editezi proprietățile.' : 'Select an element in the graph, a plan or the 3D view to edit its properties.'}
                       </div>
                     );
                   }
@@ -8316,11 +12038,15 @@ export function BubbleGraphPanel({
                       bulkNodes={bulk}
                       onUpdateField={handleViewerUpdateField}
                       onUpdateProp={handleViewerUpdateProp}
+                      onUpdateProps={handleViewerUpdateProps}
                       onAddProp={handleViewerAddProp}
                       onDeleteProp={handleViewerDeleteProp}
                       onDuplicateStorey={duplicateStorey}
                       onOpenSectionTab={handleOpenSectionTab}
                       onGenerateRoof={handleGenerateRoof}
+                      onGenerateStair={handleGenerateStair}
+                      projectSystem={structuralSystem}
+                      onRewireGraph={handleRewireGraph}
                     />
                   );
                 })()}
@@ -8328,65 +12054,14 @@ export function BubbleGraphPanel({
             </aside>
           )}
 
-          {/* ── Properties Panel (non-graph-editor tabs) — floating portal (full/minimal) ── */}
-          {profile !== 'clean' && (() => {
-            const showBulk = activeTabMeta?.type !== 'graph-editor' && selectedNodeIds.length > 1;
-            const showSingle = activeTabMeta?.type !== 'graph-editor' && !showBulk && selectedNodeId && selectedNodeData;
-            if (!showBulk && !showSingle) return null;
-
-            const bulkNodeList = showBulk ? nodes.filter((n) => selectedNodeIds.includes(n.id)) : undefined;
-            const representativeNode = showBulk ? (bulkNodeList![0] ?? null) : selectedNodeData;
-
-            return createPortal(
-              <div style={{
-                position: 'fixed', zIndex: 200,
-                left: viewerPropsPos.x, top: viewerPropsPos.y,
-                width: 270, height: 520,
-                background: 'var(--bb-props-bg, #ffffff)',
-                border: '1px solid hsl(var(--border))',
-                borderTop: '2px solid hsl(var(--primary))',
-                borderRadius: 8,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.32)',
-                display: 'flex', flexDirection: 'column', overflow: 'hidden',
-              }}>
-                <div
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '7px 10px', flexShrink: 0,
-                    background: 'hsl(var(--secondary))', borderBottom: '1px solid hsl(var(--border))',
-                    cursor: 'move', userSelect: 'none',
-                  }}
-                  onMouseDown={(e) => {
-                    setViewerPropsDrag(true);
-                    setViewerPropsDragOff({ x: e.clientX - viewerPropsPos.x, y: e.clientY - viewerPropsPos.y });
-                  }}
-                >
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'hsl(var(--muted-foreground))' }}>
-                    {showBulk ? `Properties · ${selectedNodeIds.length}` : 'Properties'}
-                  </span>
-                  <button
-                    style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', background: 'none', border: 'none', cursor: 'pointer', padding: '1px 5px', borderRadius: 3, lineHeight: 1 }}
-                    onClick={() => { setSelectedNodeId(null); setSelectedNodeIds([]); }}
-                    title="Close"
-                  >✕</button>
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  <PropertiesPanel
-                    node={representativeNode}
-                    bulkNodes={showBulk ? bulkNodeList : undefined}
-                    onUpdateField={handleViewerUpdateField}
-                    onUpdateProp={handleViewerUpdateProp}
-                    onAddProp={handleViewerAddProp}
-                    onDeleteProp={handleViewerDeleteProp}
-                    onDuplicateStorey={duplicateStorey}
-                    onOpenSectionTab={handleOpenSectionTab}
-                    onGenerateRoof={handleGenerateRoof}
-                  />
-                </div>
-              </div>,
-              document.body,
-            );
-          })()}
+          {showProjects && (
+            <ProjectsDialog
+              currentSlug={useBubbleGraphStore.getState().projectSlug}
+              onOpen={handleOpenStoredProject}
+              onSaveAs={(name) => { void handleSaveProjectAs(name); setShowProjects(false); }}
+              onClose={() => setShowProjects(false)}
+            />
+          )}
 
           {/* ── Chat Panel ── */}
           {showChat && (
@@ -8401,6 +12076,28 @@ export function BubbleGraphPanel({
               </div>
               <ChatPanel className="flex-1 min-h-0" />
             </aside>
+          )}
+
+          {newViewInit && (
+            <NewViewDialog
+              storeys={[...storeyNodes].sort((a, b) => Number(b.properties.bottomElevation ?? 0) - Number(a.properties.bottomElevation ?? 0))}
+              views={drawingViews}
+              initial={newViewInit}
+              showDisciplines={caps.lab}
+              onCreate={createDrawingView}
+              onDrawSection={() => startPlanSectionTool('draw-section')}
+              onClose={() => setNewViewInit(null)}
+            />
+          )}
+
+          {/* ── Project setup: windows, doors, materials, style, system ── */}
+          {showProjectConfig && (
+            <ProjectConfigPanel
+              title={ro ? 'Configurare proiect' : 'Project setup'}
+              closeLabel={ro ? 'Închide' : 'Close'}
+              groups={configGroups}
+              onClose={() => setShowProjectConfig(false)}
+            />
           )}
 
           {/* ── Object Library Panel ── */}
@@ -8419,23 +12116,19 @@ export function BubbleGraphPanel({
           )}
         </div>
 
-        {profile === 'clean' && (
-          <div className="bb-statusbar">
-            <span className={`bb-status-dot${saveError ? ' warn' : ''}`} />
-            <span>
-              <strong>{projectName}</strong>
-            </span>
-            <span>View: <strong>{activeTabLabel}</strong></span>
-            <span>Storey: <strong>{storeyLabel}</strong></span>
-            <span>Nodes: <strong>{nodes.length}</strong></span>
-            {selectedNodeIds.length > 0 && (
-              <span>Sel: <strong>{selectedNodeIds.length}</strong></span>
-            )}
-            <span className="bb-status-spacer" />
-            <span>{isSaving ? 'Saving…' : lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : 'Ready'}</span>
-            <span>OpenGeometry</span>
-          </div>
-        )}
+        <div className="bb-statusbar">
+          <span className={`bb-status-dot${saveError ? ' warn' : ''}`} />
+          <span><strong>{projectName}</strong></span>
+          <span>{ro ? 'Vedere' : 'View'}: <strong>{activeTabLabel}</strong></span>
+          <span>{ro ? 'Nivel' : 'Storey'}: <strong>{storeyLabel}</strong></span>
+          <span>{ro ? 'Noduri' : 'Nodes'}: <strong>{nodes.length}</strong></span>
+          {selectedNodeIds.length > 0 && (
+            <span>{ro ? 'Selecție' : 'Selection'}: <strong>{selectedNodeIds.length}</strong></span>
+          )}
+          <span className="bb-status-spacer" />
+          <span>{isSaving ? (ro ? 'Se salvează…' : 'Saving…') : lastSaved ? `${ro ? 'Salvat' : 'Saved'} ${lastSaved.toLocaleTimeString()}` : (ro ? 'Gata' : 'Ready')}</span>
+          <span className="bb-status-engine">{openGeoOnly ? 'OpenGeometry' : ({ tiles: 'IFC Tiles', webifc: 'That Open', opengeo: 'OpenGeometry', brep: 'B-rep' } as Record<string, string>)[viewer3DType] ?? viewer3DType}</span>
+        </div>
       </div>
 
       {/* ── Board Scanner Modal ── */}
@@ -8493,12 +12186,53 @@ export function BubbleGraphPanel({
         <MaterialConfigEditor onClose={() => setShowMaterialEditor(false)} />
       )}
 
+      {/* ── Stil arhitectural: reguli parametrice aplicate grafului ── */}
+      {showStyleDialog && (
+        <StyleDialog
+          nodes={nodes}
+          edges={edges}
+          onApply={(n, e, summary) => {
+            setNodes(n);
+            setEdges(e);
+            setShowStyleDialog(false);
+            toast.success(summary);
+          }}
+          onClose={() => setShowStyleDialog(false)}
+        />
+      )}
+
+      {/* ── Librăria: materiale și procese, cu straturile lor ── */}
+      {showLibrary && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+          onPointerDown={() => setShowLibrary(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-border rounded-xl shadow-2xl w-[900px] max-w-[95vw] h-[80vh] flex flex-col overflow-hidden"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+              <span className="font-semibold text-sm">Librărie — materiale și procese</span>
+              <button
+                type="button"
+                className="ml-auto text-muted-foreground hover:text-foreground"
+                onClick={() => setShowLibrary(false)}
+              >
+                ×
+              </button>
+            </div>
+            <LibraryPanel nodes={nodes} edges={edges} />
+          </div>
+        </div>
+      )}
+
       {/* ── Version History ── */}
       {showHistoryPanel && (
         <HistoryPanel
           onSaveBeforeCommit={performSave}
           onRestore={handleRestoreFromHistory}
           onClose={() => setShowHistoryPanel(false)}
+          projectName={projectName}
         />
       )}
 

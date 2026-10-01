@@ -39,7 +39,7 @@ function typeMeta(type: string) {
 
 const CANONICAL_ORDER = [
   'storey', 'ax', 'column', 'beam', 'wall', 'slab',
-  'foundation', 'window', 'door', 'room', 'shell', 'covering',
+  'foundation', 'window', 'door', 'room', 'shell', 'cell', 'covering',
 ];
 
 function sortTypes(types: string[]): string[] {

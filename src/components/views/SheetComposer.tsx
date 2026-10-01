@@ -17,17 +17,11 @@ import React, {
 import { cn } from '@/lib/utils';
 import type { BubbleGraphNode, BubbleGraphEdge, ViewTab, StoreyDiscipline } from '@/store';
 import { useBubbleGraphStore } from '@/store';
-import {
-  getAxRealPos, calcWallGeometry, calcWallJoins, parseColumnDims,
-  getNodeLocalTransform, calcShellPolygon, parseContourOffsets,
-  insetPolygon, getStoreyBand,
-} from '@/lib/bimGeometry';
 import { parseAxes } from '@/lib/utils';
-import {
-  resolveVisuals, getSectionFillColor, getSectionLineColor,
-  getViewLineColor, type MaterialConfig,
-} from '@/lib/materialConfig';
+import type { MaterialConfig } from '@/lib/materialConfig';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
+import { viewportContent } from '@/lib/sheetSvg';
+import { downloadText, safeFilename } from '@/lib/download';
 import { FloorPlan2DViewer } from './FloorPlan2DViewer';
 import { Section2DViewer } from './Section2DViewer';
 import { Elevation2DViewer } from './Elevation2DViewer';
@@ -137,306 +131,6 @@ function uid(): string {
   return `vp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-// ─── SVG Floor Plan Content Generator ────────────────────────────────────────
-
-function buildFloorPlanPaths(
-  nodes: BubbleGraphNode[],
-  edges: BubbleGraphEdge[],
-  storeyId: string,
-  scale: number,
-  matConfig: MaterialConfig | null,
-): string {
-  const storeyNode = nodes.find((n) => n.id === storeyId);
-  if (!storeyNode) return '';
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const wallJoins = calcWallJoins(nodes, edges);
-  const parts: string[] = [];
-  const SW = 0.35 * scale;   // wall stroke-width (mm model-space)
-  const SC = 0.25 * scale;   // column stroke-width
-
-  // ── Grid axes ──────────────────────────────────────────────────────────────
-  const axesX = parseAxes(storeyNode.properties.axesX).sort((a, b) => a - b);
-  const axesY = parseAxes(storeyNode.properties.axesY).sort((a, b) => a - b);
-
-  if (axesX.length > 0 && axesY.length > 0) {
-    const pad = 2000;
-    const minX = axesX[0] - pad;         const maxX = axesX[axesX.length - 1] + pad;
-    const minY = axesY[0] - pad;         const maxY = axesY[axesY.length - 1] + pad;
-
-    for (const x of axesX) {
-      parts.push(`<line x1="${x}" y1="${-minY}" x2="${x}" y2="${-maxY}" stroke="#b8c0cc" stroke-width="${0.12 * scale}" stroke-dasharray="${4 * scale} ${2 * scale}"/>`);
-    }
-    for (const y of axesY) {
-      parts.push(`<line x1="${minX}" y1="${-y}" x2="${maxX}" y2="${-y}" stroke="#b8c0cc" stroke-width="${0.12 * scale}" stroke-dasharray="${4 * scale} ${2 * scale}"/>`);
-    }
-
-    // Axis circle labels (bottom + top for X, left + right for Y)
-    const cr = 1.4 * scale;
-    const fs = 1.8 * scale;
-    const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-    for (let i = 0; i < axesX.length; i++) {
-      const x = axesX[i];
-      const lbl = String(i + 1);
-      for (const cy of [minY + cr * 1.2, maxY - cr * 1.2]) {
-        parts.push(`<circle cx="${x}" cy="${-cy}" r="${cr}" fill="white" stroke="#777" stroke-width="${0.12 * scale}"/>`);
-        parts.push(`<text x="${x}" y="${-cy}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-family="sans-serif" fill="#555">${lbl}</text>`);
-      }
-    }
-    for (let i = 0; i < axesY.length; i++) {
-      const y = axesY[i];
-      const lbl = LETTERS[i] ?? String(i + 1);
-      for (const cx of [minX + cr * 1.2, maxX - cr * 1.2]) {
-        parts.push(`<circle cx="${cx}" cy="${-y}" r="${cr}" fill="white" stroke="#777" stroke-width="${0.12 * scale}"/>`);
-        parts.push(`<text x="${cx}" y="${-y}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-family="sans-serif" fill="#555">${lbl}</text>`);
-      }
-    }
-  }
-
-  // ── Shell / covering rings ─────────────────────────────────────────────────
-  const toD = (pts: { x: number; y: number }[]) =>
-    pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${-p.y}`).join(' ') + ' Z';
-
-  for (const n of nodes.filter((n) => (n.type === 'shell' || n.type === 'covering') && n.parentId === storeyId)) {
-    const poly = calcShellPolygon(n, nodeMap, edges);
-    if (!poly || poly.length < 3) continue;
-    const offsets = parseContourOffsets(n.properties.contour_offset);
-    const thickMm = Number(n.properties.thickness ?? 200);
-    const outer = insetPolygon(poly, offsets.map((o) => -o));
-    const inner = insetPolygon(poly, offsets.map((o) => -(o + thickMm)));
-    const vis = resolveVisuals(n.type as 'shell' | 'covering', String(n.properties.material ?? ''), matConfig);
-    const fill = getSectionFillColor(vis);
-    const stroke = getSectionLineColor(vis);
-    parts.push(`<path d="${toD(outer)} ${toD([...inner].reverse())}" fill="${fill}" stroke="${stroke}" stroke-width="${SW}" fill-rule="evenodd"/>`);
-  }
-
-  // ── Slabs ──────────────────────────────────────────────────────────────────
-  for (const n of nodes.filter((n) => n.type === 'slab' && n.parentId === storeyId)) {
-    const poly = calcShellPolygon(n, nodeMap, edges);
-    const vis = resolveVisuals('slab', String(n.properties.material ?? ''), matConfig);
-    if (poly && poly.length >= 3) {
-      const rawOff = parseContourOffsets(n.properties.contour_offset);
-      const inward = rawOff.map((o) => -o);
-      const fp = inward.some((o) => o !== 0) ? insetPolygon(poly, inward) : poly;
-      parts.push(`<path d="${toD(fp)}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW}" opacity="0.5"/>`);
-    }
-  }
-
-  // ── Walls ──────────────────────────────────────────────────────────────────
-  for (const wn of nodes.filter((n) => n.type === 'wall' && n.parentId === storeyId)) {
-    const geo = calcWallGeometry(wn, nodeMap, edges, wallJoins);
-    if (!geo) continue;
-    // sxM/exM in meters (Three.js X), szM/ezM in meters (Three.js -Z → BIM Y = -szM*1000)
-    const sxMm = geo.sxM * 1000;  const syMm = -geo.szM * 1000;
-    const exMm = geo.exM * 1000;  const eyMm = -geo.ezM * 1000;
-    const th = geo.wallThick * 1000; // mm
-    const dx = exMm - sxMm; const dy = eyMm - syMm;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1) continue;
-    const ux = dx / len; const uy = dy / len;
-    const nx = -uy;  const ny = ux;
-    const h = th / 2;
-    const c = [
-      [sxMm + nx * h, syMm + ny * h],
-      [exMm + nx * h, eyMm + ny * h],
-      [exMm - nx * h, eyMm - ny * h],
-      [sxMm - nx * h, syMm - ny * h],
-    ];
-    const d = c.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x} ${-y}`).join(' ') + ' Z';
-    const vis = resolveVisuals('wall', String(wn.properties.material ?? ''), matConfig);
-    parts.push(`<path d="${d}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW * 0.6}"/>`);
-  }
-
-  // ── Rooms (perimeter + name label) ────────────────────────────────────────
-  for (const n of nodes.filter((n) => n.type === 'room' && n.parentId === storeyId)) {
-    const poly = calcShellPolygon(n, nodeMap, edges);
-    if (!poly || poly.length < 3) continue;
-    const vis = resolveVisuals('room', String(n.properties.material ?? ''), matConfig);
-    const lineC = getViewLineColor(vis);
-    parts.push(`<path d="${toD(poly)}" fill="${lineC}" fill-opacity="0.07" stroke="${lineC}" stroke-width="${0.12 * scale}" stroke-dasharray="${2 * scale} ${2 * scale}"/>`);
-    const lbl = n.name || String(n.properties.name ?? '');
-    if (lbl) {
-      const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
-      const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
-      parts.push(`<text x="${cx}" y="${-cy}" text-anchor="middle" dominant-baseline="central" font-size="${2 * scale}" font-family="sans-serif" fill="#999">${lbl}</text>`);
-    }
-  }
-
-  // ── Columns at ax nodes ────────────────────────────────────────────────────
-  for (const n of nodes.filter((n) => n.type === 'ax' && n.parentId === storeyId)) {
-    if (String(n.properties.has_column ?? '').toLowerCase() !== 'true') continue;
-    const { x: bimX, y: bimY } = getAxRealPos(n, nodeMap);
-    const { w, d, circular } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
-    const wMm = w * 1000; const dMm = d * 1000;
-    const vis = resolveVisuals('column', String(n.properties.material ?? ''), matConfig);
-    const fill = getSectionFillColor(vis); const stroke = getSectionLineColor(vis);
-    if (circular) {
-      parts.push(`<circle cx="${bimX}" cy="${-bimY}" r="${wMm / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${SC}"/>`);
-    } else {
-      parts.push(`<rect x="${bimX - wMm / 2}" y="${-bimY - dMm / 2}" width="${wMm}" height="${dMm}" fill="${fill}" stroke="${stroke}" stroke-width="${SC}"/>`);
-    }
-  }
-
-  // ── Standalone column nodes ────────────────────────────────────────────────
-  for (const n of nodes.filter((n) => n.type === 'column' && n.parentId === storeyId)) {
-    const ltr = getNodeLocalTransform(n);
-    const bimX = n.x + ltr.tx; const bimY = n.y + ltr.ty;
-    const { w, d, circular } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
-    const wMm = w * 1000; const dMm = d * 1000;
-    const vis = resolveVisuals('column', String(n.properties.material ?? ''), matConfig);
-    const fill = getSectionFillColor(vis); const stroke = getSectionLineColor(vis);
-    if (circular) {
-      parts.push(`<circle cx="${bimX}" cy="${-bimY}" r="${wMm / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${SC}"/>`);
-    } else {
-      parts.push(`<rect x="${bimX - wMm / 2}" y="${-bimY - dMm / 2}" width="${wMm}" height="${dMm}" fill="${fill}" stroke="${stroke}" stroke-width="${SC}"/>`);
-    }
-  }
-
-  return parts.join('\n');
-}
-
-// ─── SVG Section/Elevation Content Generator ─────────────────────────────────
-
-/** Simplified section SVG: X = BIM East, Y = BIM Z (elevation). SVG Y = -bimZ. */
-function buildSectionPaths(
-  nodes: BubbleGraphNode[],
-  edges: BubbleGraphEdge[],
-  cutY: number,
-  scale: number,
-  matConfig: MaterialConfig | null,
-): string {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const wallJoins = calcWallJoins(nodes, edges);
-  const parts: string[] = [];
-  const SW = 0.35 * scale;
-  const storeys = nodes.filter((n) => n.type === 'storey');
-  const TOLERANCE = 3000; // 3m cut tolerance
-
-  // Storey floor / ceiling lines
-  for (const s of storeys) {
-    const bot = Number(s.properties.bottomElevation ?? 0);
-    const top = Number(s.properties.topElevation ?? 3000);
-    const axesX = parseAxes(s.properties.axesX).sort((a, b) => a - b);
-    const minX = (axesX[0] ?? 0) - 1000;
-    const maxX = (axesX[axesX.length - 1] ?? 10000) + 1000;
-    parts.push(`<line x1="${minX}" y1="${-bot}" x2="${maxX}" y2="${-bot}" stroke="#333" stroke-width="${SW * 1.4}"/>`);
-    parts.push(`<line x1="${minX}" y1="${-top}" x2="${maxX}" y2="${-top}" stroke="#aaa" stroke-width="${SW * 0.5}" stroke-dasharray="${2 * scale} ${1 * scale}"/>`);
-    // Storey label
-    const lbl = s.name || String(s.properties.name ?? '');
-    if (lbl) {
-      parts.push(`<text x="${minX - 1 * scale}" y="${-(bot + top) / 2}" text-anchor="end" dominant-baseline="central" font-size="${1.8 * scale}" font-family="sans-serif" fill="#aaa">${lbl}</text>`);
-    }
-
-    // Columns at Y near cutY
-    for (const n of nodes.filter((n) => n.type === 'ax' && n.parentId === s.id)) {
-      if (String(n.properties.has_column ?? '').toLowerCase() !== 'true') continue;
-      const { x: bimX, y: bimY } = getAxRealPos(n, nodeMap);
-      if (Math.abs(bimY - cutY) > TOLERANCE) continue;
-      const { w, circular } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
-      const wMm = w * 1000;
-      const vis = resolveVisuals('column', String(n.properties.material ?? ''), matConfig);
-      const fill = getSectionFillColor(vis); const stroke = getSectionLineColor(vis);
-      parts.push(`<rect x="${bimX - wMm / 2}" y="${-top}" width="${wMm}" height="${top - bot}" fill="${fill}" stroke="${stroke}" stroke-width="${SW}"/>`);
-    }
-    for (const n of nodes.filter((n) => n.type === 'column' && n.parentId === s.id)) {
-      if (Math.abs(n.y - cutY) > TOLERANCE) continue;
-      const { w } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
-      const wMm = w * 1000;
-      const vis = resolveVisuals('column', String(n.properties.material ?? ''), matConfig);
-      parts.push(`<rect x="${n.x - wMm / 2}" y="${-top}" width="${wMm}" height="${top - bot}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW}"/>`);
-    }
-  }
-
-  // Walls that cross the cut plane
-  for (const wn of nodes.filter((n) => n.type === 'wall')) {
-    const geo = calcWallGeometry(wn, nodeMap, edges, wallJoins);
-    if (!geo) continue;
-    const syMm = -geo.szM * 1000; const eyMm = -geo.ezM * 1000;
-    if (Math.abs((syMm + eyMm) / 2 - cutY) > TOLERANCE) continue;
-    const sxMm = geo.sxM * 1000; const exMm = geo.exM * 1000;
-    const { bot } = getStoreyBand(wn, nodeMap);
-    const wallH = Number(wn.properties.height ?? 3000);
-    const vis = resolveVisuals('wall', String(wn.properties.material ?? ''), matConfig);
-    const len = Math.sqrt((exMm - sxMm) ** 2 + (eyMm - syMm) ** 2);
-    const cx = (sxMm + exMm) / 2;
-    parts.push(`<rect x="${cx - len / 2}" y="${-(bot + wallH)}" width="${len}" height="${wallH}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW}" opacity="0.7"/>`);
-  }
-
-  return parts.join('\n');
-}
-
-/** Simplified elevation SVG: view from direction D looking toward origin.
- *  X axis = whichever BIM axis is horizontal from the viewer's perspective.
- *  Y axis = BIM Z (elevation). SVG Y = -bimZ. */
-function buildElevationPaths(
-  nodes: BubbleGraphNode[],
-  edges: BubbleGraphEdge[],
-  direction: 'N' | 'S' | 'E' | 'W',
-  scale: number,
-  matConfig: MaterialConfig | null,
-): string {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const wallJoins = calcWallJoins(nodes, edges);
-  const parts: string[] = [];
-  const SW = 0.35 * scale;
-  const storeys = nodes.filter((n) => n.type === 'storey');
-
-  // For N/S elevation: horizontal axis = BIM X
-  // For E/W elevation: horizontal axis = BIM Y
-  const getHoriz = (bimX: number, bimY: number) => (direction === 'N' || direction === 'S') ? bimX : bimY;
-
-  for (const s of storeys) {
-    const bot = Number(s.properties.bottomElevation ?? 0);
-    const top = Number(s.properties.topElevation ?? 3000);
-    const axesX = parseAxes(s.properties.axesX).sort((a, b) => a - b);
-    const axesY = parseAxes(s.properties.axesY).sort((a, b) => a - b);
-    const allH = (direction === 'N' || direction === 'S')
-      ? axesX.map((x) => getHoriz(x, 0))
-      : axesY.map((y) => getHoriz(0, y));
-    const minH = (allH[0] ?? 0) - 1000;
-    const maxH = (allH[allH.length - 1] ?? 10000) + 1000;
-
-    // Floor slab line
-    parts.push(`<line x1="${minH}" y1="${-bot}" x2="${maxH}" y2="${-bot}" stroke="#333" stroke-width="${SW * 1.4}"/>`);
-    // Ceiling line
-    parts.push(`<line x1="${minH}" y1="${-top}" x2="${maxH}" y2="${-top}" stroke="#bbb" stroke-width="${SW * 0.5}" stroke-dasharray="${2 * scale} ${1 * scale}"/>`);
-
-    const lbl = s.name || String(s.properties.name ?? '');
-    if (lbl) {
-      parts.push(`<text x="${minH - 1 * scale}" y="${-(bot + top) / 2}" text-anchor="end" dominant-baseline="central" font-size="${1.8 * scale}" font-family="sans-serif" fill="#aaa">${lbl}</text>`);
-    }
-
-    // Columns
-    for (const n of nodes.filter((n) => n.type === 'ax' && n.parentId === s.id)) {
-      if (String(n.properties.has_column ?? '').toLowerCase() !== 'true') continue;
-      const { x: bimX, y: bimY } = getAxRealPos(n, nodeMap);
-      const horiz = getHoriz(bimX, bimY);
-      const { w } = parseColumnDims(String(n.properties.column_type ?? 'C25x25'));
-      const wMm = w * 1000;
-      const vis = resolveVisuals('column', String(n.properties.material ?? ''), matConfig);
-      parts.push(`<rect x="${horiz - wMm / 2}" y="${-top}" width="${wMm}" height="${top - bot}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW}"/>`);
-    }
-  }
-
-  // Walls facing the view direction
-  for (const wn of nodes.filter((n) => n.type === 'wall')) {
-    const geo = calcWallGeometry(wn, nodeMap, edges, wallJoins);
-    if (!geo) continue;
-    const sxMm = geo.sxM * 1000; const syMm = -geo.szM * 1000;
-    const exMm = geo.exM * 1000; const eyMm = -geo.ezM * 1000;
-    const sH = getHoriz(sxMm, syMm); const eH = getHoriz(exMm, eyMm);
-    const len = Math.abs(eH - sH);
-    if (len < 50) continue;
-    const { bot } = getStoreyBand(wn, nodeMap);
-    const wallH = Number(wn.properties.height ?? 3000);
-    const vis = resolveVisuals('wall', String(wn.properties.material ?? ''), matConfig);
-    const minH = Math.min(sH, eH);
-    parts.push(`<rect x="${minH}" y="${-(bot + wallH)}" width="${len}" height="${wallH}" fill="${getSectionFillColor(vis)}" stroke="${getSectionLineColor(vis)}" stroke-width="${SW}" opacity="0.75"/>`);
-  }
-
-  return parts.join('\n');
-}
-
 // ─── Viewport Content (renders actual viewer component) ───────────────────────
 
 interface ViewportContentProps {
@@ -466,7 +160,7 @@ function ViewportContent({ vp, nodes, edges, pxW, pxH, isSelected }: ViewportCon
           storeyId={vp.storeyId}
           discipline={(vp.discipline ?? 'architectural') as StoreyDiscipline}
           className="w-full h-full"
-          embedded
+          embedded={!isSelected}
         />
       )}
 
@@ -482,7 +176,7 @@ function ViewportContent({ vp, nodes, edges, pxW, pxH, isSelected }: ViewportCon
           endElevation={vp.endElevation}
           sectionNodeId={vp.sectionNodeId}
           className="w-full h-full"
-          embedded
+          embedded={!isSelected}
         />
       )}
 
@@ -496,7 +190,7 @@ function ViewportContent({ vp, nodes, edges, pxW, pxH, isSelected }: ViewportCon
           startElevation={vp.startElevation}
           endElevation={vp.endElevation}
           className="w-full h-full"
-          embedded
+          embedded={!isSelected}
         />
       )}
 
@@ -788,15 +482,24 @@ function AddViewportPanel({ nodes, edges, viewTabs, paperW, paperH, onAdd, onClo
 
 // ─── Sheet Canvas SVG export ──────────────────────────────────────────────────
 
-function exportSheetSvg(
-  sheet: SheetDef,
-  nodes: BubbleGraphNode[],
-  edges: BubbleGraphEdge[],
-  matConfig: MaterialConfig | null,
-): void {
+/** XML-escape a title-block or label string. */
+const esc = (v: string) => String(v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+/**
+ * Write the sheet out as SVG, taking each viewport's drawing from the viewer
+ * that is rendering it on screen.
+ *
+ * The frame is in paper millimetres and the viewer draws in model
+ * millimetres, so each viewport is a nested `<svg>` whose viewBox is the
+ * viewer's own: the nesting does the scaling, and the drawing lands at
+ * exactly the size the frame allows — the same fit the screen shows.
+ */
+function buildSheetSvg(sheet: SheetDef, host: HTMLElement | null): string {
   const W = sheet.paperW; const H = sheet.paperH;
   const parts: string[] = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">`);
   parts.push(`<rect width="${W}" height="${H}" fill="white" stroke="#333" stroke-width="0.5"/>`);
 
   // Margins
@@ -804,51 +507,84 @@ function exportSheetSvg(
   parts.push(`<rect x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="none" stroke="#999" stroke-width="0.25"/>`);
 
   // Viewports
-  for (const vp of sheet.viewports) {
+  sheet.viewports.forEach((vp, i) => {
     parts.push(`<g transform="translate(${vp.x}, ${vp.y})">`);
     if (vp.showBorder) {
       parts.push(`<rect width="${vp.frameW}" height="${vp.frameH}" fill="white" stroke="#444" stroke-width="0.35"/>`);
     }
-    const viewW = vp.frameW * vp.scale; const viewH = vp.frameH * vp.scale;
-    const vbX = vp.cropCX - viewW / 2; const vbY = -(vp.cropCY + viewH / 2);
 
-    let paths = '';
-    if (vp.type === 'floorplan' && vp.storeyId)
-      paths = buildFloorPlanPaths(nodes, edges, vp.storeyId, vp.scale, matConfig);
-    else if (vp.type === 'section')
-      paths = buildSectionPaths(nodes, edges, vp.cutY ?? 0, vp.scale, matConfig);
-    else if (vp.type === 'elevation')
-      paths = buildElevationPaths(nodes, edges, vp.viewDirection ?? 'N', vp.scale, matConfig);
-
-    parts.push(`<svg x="0" y="0" width="${vp.frameW}" height="${vp.frameH}" viewBox="${vbX} ${vbY} ${viewW} ${viewH}" overflow="hidden">`);
-    parts.push(paths);
-    parts.push(`</svg>`);
+    const svg = host?.querySelector<SVGSVGElement>(`[data-viewport-id="${vp.id}"] svg`) ?? null;
+    if (svg) {
+      const vb = svg.viewBox.baseVal;
+      parts.push(
+        `<svg x="0" y="0" width="${vp.frameW}" height="${vp.frameH}"`
+        + ` viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}"`
+        + ` preserveAspectRatio="xMidYMid meet" overflow="hidden">`,
+      );
+      parts.push(viewportContent(svg, `v${i}-`));
+      parts.push(`</svg>`);
+    }
 
     if (vp.showLabel) {
-      parts.push(`<text x="${vp.frameW / 2}" y="${vp.frameH + 5}" text-anchor="middle" font-size="3.5" font-family="sans-serif" fill="#333">${vp.label}</text>`);
+      parts.push(`<text x="${vp.frameW / 2}" y="${vp.frameH + 5}" text-anchor="middle" font-size="3.5" font-family="sans-serif" fill="#333">${esc(vp.label)}</text>`);
     }
     if (vp.showScaleText) {
       parts.push(`<text x="${vp.frameW / 2}" y="${vp.frameH + 9}" text-anchor="middle" font-size="3" font-family="sans-serif" fill="#666">1 : ${vp.scale}</text>`);
     }
     parts.push(`</g>`);
-  }
+  });
 
   // Title block
   if (sheet.titleBlock.show) {
     const tb = sheet.titleBlock;
     const tbX = ml; const tbY = H - mb + 1; const tbW = W - ml - mr;
     parts.push(`<rect x="${tbX}" y="${tbY}" width="${tbW}" height="${mb - 2}" fill="#f5f5f5" stroke="#555" stroke-width="0.3"/>`);
-    parts.push(`<text x="${tbX + 4}" y="${tbY + 5}" font-size="5" font-family="sans-serif" font-weight="bold" fill="#222">${tb.projectName}</text>`);
-    parts.push(`<text x="${tbX + 4}" y="${tbY + 10}" font-size="3.5" font-family="sans-serif" fill="#444">Sheet: ${tb.sheetNumber}   Date: ${tb.drawDate}   By: ${tb.drawnBy}   Scale: ${tb.scale}</text>`);
+    parts.push(`<text x="${tbX + 4}" y="${tbY + 5}" font-size="5" font-family="sans-serif" font-weight="bold" fill="#222">${esc(tb.projectName)}</text>`);
+    parts.push(`<text x="${tbX + 4}" y="${tbY + 10}" font-size="3.5" font-family="sans-serif" fill="#444">Sheet: ${esc(tb.sheetNumber)}   Date: ${esc(tb.drawDate)}   By: ${esc(tb.drawnBy)}   Scale: ${esc(tb.scale)}</text>`);
   }
 
   parts.push(`</svg>`);
+  return parts.join('\n');
+}
 
-  const blob = new Blob([parts.join('\n')], { type: 'image/svg+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'sheet.svg'; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+function exportSheetSvg(sheet: SheetDef, host: HTMLElement | null): void {
+  downloadText(safeFilename(sheet.titleBlock.sheetNumber || 'plansa', 'svg'),
+    buildSheetSvg(sheet, host), 'image/svg+xml');
+}
+
+/**
+ * Print the sheet — which is also how it becomes a PDF, through the browser's
+ * own "Save as PDF".
+ *
+ * The sheet is written into a hidden iframe rather than a new window: a popup
+ * is blocked often enough that an export would silently do nothing, and an
+ * iframe never is. `@page` carries the real paper size, so the PDF comes out
+ * at true scale rather than fitted to whatever A4 the printer defaults to.
+ */
+function printSheet(sheet: SheetDef, host: HTMLElement | null): void {
+  const svg = buildSheetSvg(sheet, host);
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(frame);
+  const doc = frame.contentDocument;
+  if (!doc) { frame.remove(); return; }
+  doc.open();
+  doc.write(
+    '<!doctype html><html><head><meta charset="utf-8"><title>'
+    + `${sheet.titleBlock.sheetNumber || 'Planșă'}</title><style>`
+    + `@page { size: ${sheet.paperW}mm ${sheet.paperH}mm; margin: 0 }`
+    + 'html,body{margin:0;padding:0;background:#fff}svg{display:block}'
+    + `</style></head><body>${svg}</body></html>`,
+  );
+  doc.close();
+  // document.write can finish after load has already fired, so the print is
+  // asked for on the next frame rather than from an onload that never comes.
+  requestAnimationFrame(() => {
+    frame.contentWindow?.focus();
+    frame.contentWindow?.print();
+    setTimeout(() => frame.remove(), 60_000);
+  });
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
@@ -1168,10 +904,17 @@ export function SheetComposer({ nodes, edges, tab, className }: SheetComposerPro
             + Add Viewport
           </button>
           <button
-            onClick={() => exportSheetSvg(sheet, nodes, edges, matConfig)}
+            onClick={() => exportSheetSvg(sheet, containerRef.current)}
             className="w-full bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-[11px] py-1 rounded"
           >
             ↓ Export SVG
+          </button>
+          <button
+            onClick={() => printSheet(sheet, containerRef.current)}
+            title="Tipărește la dimensiunea reală a colii — sau salvează ca PDF din dialogul de tipărire"
+            className="w-full bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-[11px] py-1 rounded"
+          >
+            🖨 Print / PDF
           </button>
         </div>
       </aside>
@@ -1276,8 +1019,11 @@ export function SheetComposer({ nodes, edges, tab, className }: SheetComposerPro
                 }}
                 onClick={(e) => { e.stopPropagation(); setSelectedVpId(vp.id); }}
               >
-                {/* Viewport content */}
+                {/* Viewport content. Tagged so the SVG export can take the
+                    drawing from the viewer that rendered it, rather than
+                    redrawing it from a second, poorer generator. */}
                 <div
+                  data-viewport-id={vp.id}
                   style={{
                     width: pxW,
                     height: pxH,

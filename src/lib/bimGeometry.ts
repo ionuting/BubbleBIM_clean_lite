@@ -106,6 +106,16 @@ export const NODE_COLOR: Record<string, [number, number, number]> = {
   shell:      [0.66, 0.33, 0.98],
   covering:   [0.96, 0.26, 0.36],
   roof:       [0.76, 0.25, 0.05],
+  dome:       [0.20, 0.33, 0.41],
+  dome_panel: [0.49, 0.83, 0.99],
+  dome_entrance: [0.05, 0.45, 0.56],
+  site:       [0.36, 0.55, 0.30],
+  sketch:     [0.85, 0.47, 0.12],
+  scatter:    [0.30, 0.49, 0.06],
+  facade:     [0.01, 0.41, 0.63],
+  terrain_pad: [0.63, 0.38, 0.03],
+  facade_panel: [0.55, 0.80, 0.95],
+  facade_cassette: [0.75, 0.78, 0.82],
   roof_ridge: [0.60, 0.20, 0.07],
   roof_eave:  [0.70, 0.35, 0.12],
   roof_hip:   [0.60, 0.20, 0.07],
@@ -1274,42 +1284,69 @@ function normaliseJoinType(v: string): WallJoinType {
  *     (stem trimmed to chord face)
  *   - 3+ walls, complex → `butt` for all (each trimmed to nearest cross-wall face)
  */
+/** Is there another wall at this junction running the same way (within ~20°)? */
+function hasColinearPartner(wallIdx: number, descs: WallDesc[]): boolean {
+  const d = descs[wallIdx];
+  return descs.some((o, j) => j !== wallIdx && Math.abs(o.ux * d.ux + o.uy * d.uy) >= 0.94);
+}
+
+/**
+ * Does a column stand at this node — either a `column` node, or an `ax` that
+ * carries one?
+ *
+ * The same two cases `getEndpointAutoOffset` measures, which is the point:
+ * where this is true, a `square_off` end is already inset by the column's own
+ * half-size, so the wall lands exactly on its face.
+ */
+export function nodeCarriesColumn(n: BubbleGraphNode | undefined): boolean {
+  if (!n) return false;
+  if (n.type === 'column') return true;
+  return n.type === 'ax' && String(n.properties.has_column ?? '').toLowerCase() === 'true';
+}
+
 function autoJoinType(
   wallIdx: number,
   descs: WallDesc[],
+  junctionHasColumn: boolean,
 ): WallJoinType {
   if (descs.length < 2) return 'square_off';
 
+  // A column at the junction IS the junction: the walls die into its faces and
+  // it fills the corner between them. Mitring them to each other instead cuts
+  // the corner inside the column — two walls crossing where a column already
+  // stands, overlapping it and each other. An explicit `wall_join_*` still
+  // wins, so a mitre can be asked for by hand where the column is only a
+  // stiffener and the masonry really does run past it.
+  if (junctionHasColumn) return 'square_off';
+
   const dA = descs[wallIdx];
+  const colinear = hasColinearPartner(wallIdx, descs);
+  // Walls more than ~20° off this one — the ones it could stop against.
+  const crossings = descs.filter((d, j) =>
+    j !== wallIdx && Math.abs(d.ux * dA.ux + d.uy * dA.uy) < 0.94);
 
-  // Check if wall A has a co-linear partner (angle < 20°)
-  const hasColinear = descs.some((d, j) => {
-    if (j === wallIdx) return false;
-    return Math.abs(d.ux * dA.ux + d.uy * dA.uy) >= 0.94;
-  });
-
-  // Check if any walls are approximately perpendicular (angle 60°–120°)
-  const hasCross = descs.some((d, j) => {
-    if (j === wallIdx) return false;
-    const dot = Math.abs(d.ux * dA.ux + d.uy * dA.uy);
-    return dot < 0.94; // more than ~20° apart
-  });
+  if (crossings.length === 0) return 'square_off';
 
   // L-corner: exactly 2 walls, roughly perpendicular, no co-linear partner
-  if (descs.length === 2 && !hasColinear && hasCross) {
+  if (descs.length === 2 && !colinear) {
     return 'miter';
   }
 
-  // T-junction or cross: wall A is the stem if it has no co-linear partner
-  // and the other wall(s) do have a co-linear partner (chord).
-  if (hasCross) {
-    // If this wall is a stem (stops at junction) → butt
-    // If this wall is the chord (passes through) → butt (both faces contribute)
-    return 'butt';
+  if (colinear) {
+    // A wall with a co-linear partner here RUNS THROUGH the junction: the two
+    // are one continuous wall, interrupted only by the node that splits them.
+    // It used to butt anyway, which trimmed both halves back to the stem's
+    // faces and opened a hole the width of the stem in a wall that is not
+    // supposed to stop — the stem is what stops. The one exception is a full
+    // cross, where a thicker through-wall wins and this one butts into it;
+    // equal thicknesses have no reason to prefer either, so both run through.
+    const heavier = crossings.some((d) =>
+      d.hw > dA.hw + 1e-6 && hasColinearPartner(descs.indexOf(d), descs));
+    return heavier ? 'butt' : 'square_off';
   }
 
-  // Co-linear only (wall continues through) → square_off at junction
-  return 'square_off';
+  // No co-linear partner: this is the stem, and it stops at the other's face.
+  return 'butt';
 }
 
 interface WallDesc {
@@ -1415,6 +1452,7 @@ export function calcWallJoins(
 
     const junctionNode = nodeMap.get(nodeId);
     if (!junctionNode) continue;
+    const junctionHasColumn = nodeCarriesColumn(junctionNode);
 
     // Use center position only for distance-based endpoint detection
     const jCenter = getNodeBimPos(junctionNode, nodeMap);
@@ -1442,7 +1480,9 @@ export function calcWallJoins(
       const dA = descs[i];
       const endpoint = dA.endIdx === 0 ? 'start' : 'end';
       const userJoin = getWallJoinProp(dA.wn, endpoint);
-      const resolvedJoin = userJoin === 'auto' ? autoJoinType(i, descs) : userJoin;
+      const resolvedJoin = userJoin === 'auto'
+        ? autoJoinType(i, descs, junctionHasColumn)
+        : userJoin;
 
       const res = results.get(dA.wn.id);
       if (!res) continue;
@@ -1471,60 +1511,48 @@ export function calcWallJoins(
 
       if (resolvedJoin === 'miter') {
         // ── MITER JOIN ──
-        // For L-corners: find where the face lines of wall A and wall B intersect.
-        // Each wall has two face lines (left and right of centre-line).
-        // We compute all 4 combinations and pick the two that form the correct
-        // mitered corner for wall A's endpoint.
         const dB = crossWalls[0];
-        const axB = wallAxisEndpoints(dB.wn, nodeMap, edges);
-        if (!axB) continue;
-        const canonNBx = -axB.uy, canonNBy = axB.ux;
 
-        // Wall A face lines: through (dA.jPt ± nA*hw) in direction (canonical dir of A)
-        // Wall B face lines: through (dB.jPt ± nB*hw) in direction (canonical dir of B)
+        // The mitre line is the ANGLE BISECTOR of the two walls as seen from
+        // the junction — what a mitre means, and what this function's own
+        // documentation promises.
+        //
+        // It used to be picked instead from the four crossings of the two
+        // walls' face lines, keeping the one nearest the junction on each
+        // side. Those four points are all the SAME distance away whenever two
+        // walls of one thickness meet at a right angle — the ordinary case —
+        // so the tie fell to iteration order and returned the two corners on
+        // one face line: a square cut, from both walls, leaving an uncovered
+        // notch the size of the corner in the plan, the sections and the 3D.
+        //
+        // `dA`/`dB` point AWAY from the junction, so their sum is the interior
+        // bisector direction. Where the walls are collinear there is no angle
+        // to bisect and no corner to cut, which `crossWalls` has already
+        // excluded; the guard is for the degenerate arithmetic, not the case.
+        const bisX = dA.ux + dB.ux, bisY = dA.uy + dB.uy;
+        const bisLen = Math.hypot(bisX, bisY);
+        if (bisLen < 1e-9) continue;
+        const bdx = bisX / bisLen, bdy = bisY / bisLen;
+
+        // Where that line crosses wall A's own two face lines.
         const adx = axA.ux, ady = axA.uy;
-        const bdx = axB.ux, bdy = axB.uy;
-
-        // Compute 4 intersections: A+/B+, A+/B−, A−/B+, A−/B−
-        const pts: Array<{ pt: { x: number; y: number }; sA: number; sB: number }> = [];
-        for (const sA of [1, -1]) {
-          for (const sB of [1, -1]) {
-            const pt = lineIntersect2D(
-              dA.jPt.x + nAx * dA.hw * sA, dA.jPt.y + nAy * dA.hw * sA, adx, ady,
-              dB.jPt.x + canonNBx * dB.hw * sB, dB.jPt.y + canonNBy * dB.hw * sB, bdx, bdy,
-            );
-            if (pt) pts.push({ pt, sA, sB });
-          }
-        }
-
-        // Pick the two intersections that are on OPPOSITE sides of wall A's centre-line.
-        // For each side, pick the one closest to the junction along wall A's direction.
-        const outerCandidates = pts.filter((p) => p.sA > 0);
-        const innerCandidates = pts.filter((p) => p.sA < 0);
-
-        const closestToJunction = (candidates: typeof pts) => {
-          let best: (typeof pts)[0] | null = null;
-          let bestDist = Infinity;
-          for (const c of candidates) {
-            const d = Math.hypot(c.pt.x - dA.jPt.x, c.pt.y - dA.jPt.y);
-            if (d < bestDist) { bestDist = d; best = c; }
-          }
-          return best;
-        };
-
-        const outerHit = closestToJunction(outerCandidates);
-        const innerHit = closestToJunction(innerCandidates);
+        const faceHit = (sA: number) => lineIntersect2D(
+          dA.jPt.x + nAx * dA.hw * sA, dA.jPt.y + nAy * dA.hw * sA, adx, ady,
+          dA.jPt.x, dA.jPt.y, bdx, bdy,
+        );
+        const outerHit = faceHit(1);
+        const innerHit = faceHit(-1);
 
         const trimCentre = dA.jPt; // miter centre stays at wall's junction endpoint
 
         if (dA.endIdx === 0) {
           res.startPt = trimCentre;
-          if (outerHit) res.outerStartPt = outerHit.pt;
-          if (innerHit) res.innerStartPt = innerHit.pt;
+          if (outerHit) res.outerStartPt = outerHit;
+          if (innerHit) res.innerStartPt = innerHit;
         } else {
           res.endPt = trimCentre;
-          if (outerHit) res.outerEndPt = outerHit.pt;
-          if (innerHit) res.innerEndPt = innerHit.pt;
+          if (outerHit) res.outerEndPt = outerHit;
+          if (innerHit) res.innerEndPt = innerHit;
         }
 
       } else if (resolvedJoin === 'butt') {

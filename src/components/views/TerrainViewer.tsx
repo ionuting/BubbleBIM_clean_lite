@@ -28,6 +28,11 @@ import {
 } from '@babylonjs/core';
 import '@babylonjs/loaders/glTF';
 import { cn } from '@/lib/utils';
+import { useBubbleGraphStore } from '@/store';
+import {
+  DEFAULT_TERRAIN_MODEL, gridCount, modelHeights, normaliseTerrainModel,
+  sampleHeight as sampleHeightLib, type TerrainModel,
+} from '@/lib/terrain';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,85 +49,15 @@ export type TerrainTool =
   | 'plant'
   | 'object';
 
-export type GroundMaterial = 'grass' | 'dirt' | 'gravel' | 'sand';
-
-export type PlantType = 'tree' | 'bush' | 'grass';
-
-export interface ExcavationZone {
-  id: string;
-  polygon: [number, number][];
-  depth: number;
-  slope: number;
-  type: 'trench' | 'pit' | 'embankment';
-}
-
-export interface RockInstance {
-  id: string;
-  x: number; z: number;
-  scale: number;
-  rotY: number;
-}
-
-export interface PlantInstance {
-  id: string;
-  x: number; z: number;
-  type: PlantType;
-  scale: number;
-}
-
-export interface PlacedObject {
-  id: string;
-  gltfFile: string;  // nature key (e.g. 'BirchTree_1.gltf') or '__import_<uuid>__' for custom imports
-  label?: string;    // display name for custom imports
-  x: number; z: number;
-  rotY: number;
-  scale: number;
-}
-
-export interface TerrainState {
-  sizeM: number;
-  subdivisions: number;
-  maxHeightM: number;
-  seed: number;
-  excavations: ExcavationZone[];
-  rocks: RockInstance[];
-  plants: PlantInstance[];
-  objects: PlacedObject[];
-  groundMaterial?: GroundMaterial;
-}
+export type {
+  ExcavationZone, GroundMaterial, PlacedObject, PlantInstance, PlantType, RockInstance,
+} from '@/lib/terrain';
+export type TerrainState = TerrainModel;
+import type { ExcavationZone, GroundMaterial, PlacedObject, PlantInstance, PlantType, RockInstance } from '@/lib/terrain';
 
 export interface TerrainViewerProps {
   className?: string;
   tabId?: string;
-}
-
-// ─── Noise helpers ────────────────────────────────────────────────────────────
-
-function hash2(ix: number, iy: number, seed: number): number {
-  const n = Math.sin(ix * 127.1 + iy * 311.7 + seed * 74.3) * 43758.5453;
-  return n - Math.floor(n);
-}
-
-function smoothstep(t: number) { return t * t * (3 - 2 * t); }
-
-function valueNoise(x: number, y: number, seed: number): number {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const fx = x - ix, fy = y - iy;
-  const sx = smoothstep(fx), sy = smoothstep(fy);
-  const a = hash2(ix, iy, seed);
-  const b = hash2(ix + 1, iy, seed);
-  const c = hash2(ix, iy + 1, seed);
-  const d = hash2(ix + 1, iy + 1, seed);
-  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-}
-
-function fbm(x: number, y: number, seed: number, octaves = 5): number {
-  let val = 0, amp = 0.5, freq = 1, max = 0;
-  for (let i = 0; i < octaves; i++) {
-    val += valueNoise(x * freq, y * freq, seed + i * 17) * amp;
-    max += amp; amp *= 0.5; freq *= 2;
-  }
-  return val / max;
 }
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
@@ -137,19 +72,6 @@ function pointInPolygon(px: number, pz: number, poly: [number, number][]): boole
   return inside;
 }
 
-function distToPolygonEdge(px: number, pz: number, poly: [number, number][]): number {
-  let minDist = Infinity;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [ax, az] = poly[j]; const [bx, bz] = poly[i];
-    const dx = bx - ax, dz = bz - az;
-    const len2 = dx * dx + dz * dz;
-    if (len2 === 0) { minDist = Math.min(minDist, Math.hypot(px - ax, pz - az)); continue; }
-    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2));
-    const nx = ax + t * dx, nz = az + t * dz;
-    minDist = Math.min(minDist, Math.hypot(px - nx, pz - nz));
-  }
-  return minDist;
-}
 
 /**
  * Build terrain height grid — two-pass algorithm.
@@ -159,73 +81,6 @@ function distToPolygonEdge(px: number, pz: number, poly: [number, number][]): nu
  *   floorY = avg(base heights at polygon boundary) − depth   (fixed Y, not terrain-relative)
  *   Slope rim: linear transition from original terrain down to floorY over rimWidth metres.
  */
-function buildHeightGrid(
-  sizeM: number, subdivisions: number, maxHeightM: number, seed: number,
-  excavations: ExcavationZone[],
-): Float32Array {
-  const count = subdivisions + 1;
-  const baseH = new Float32Array(count * count);
-
-  for (let row = 0; row < count; row++) {
-    for (let col = 0; col < count; col++) {
-      const nx = col / subdivisions, nz = row / subdivisions;
-      baseH[row * count + col] = fbm(nx * 4, nz * 4, seed) * maxHeightM;
-    }
-  }
-
-  if (!excavations.length) return baseH;
-
-  // Pre-compute flat floor Y and rim width for each excavation zone
-  const zoneParams = excavations.map(zone => {
-    if (zone.type === 'embankment') return { floorY: 0, rimWidth: 0 };
-    let sum = 0;
-    for (const [px, pz] of zone.polygon) {
-      const c = Math.max(0, Math.min(count - 1, Math.round(((px / sizeM) + 0.5) * subdivisions)));
-      const r = Math.max(0, Math.min(count - 1, Math.round(((pz / sizeM) + 0.5) * subdivisions)));
-      sum += baseH[r * count + c];
-    }
-    const entryH  = sum / zone.polygon.length;
-    const floorY  = entryH - zone.depth;
-    const rimSlope = zone.slope > 0 ? Math.tan((zone.slope * Math.PI) / 180) : 0;
-    const rimWidth = rimSlope > 0 ? zone.depth / rimSlope : 0;
-    return { floorY, rimWidth };
-  });
-
-  const heights = new Float32Array(baseH);
-  for (let row = 0; row < count; row++) {
-    for (let col = 0; col < count; col++) {
-      const wx = (col / subdivisions - 0.5) * sizeM;
-      const wz = (row / subdivisions - 0.5) * sizeM;
-      let h = baseH[row * count + col];
-
-      for (let zi = 0; zi < excavations.length; zi++) {
-        const zone = excavations[zi];
-        if (!pointInPolygon(wx, wz, zone.polygon)) continue;
-
-        if (zone.type === 'embankment') {
-          h = Math.max(h, h + zone.depth);
-        } else {
-          const { floorY, rimWidth } = zoneParams[zi];
-          if (rimWidth <= 0) {
-            h = Math.min(h, floorY);
-          } else {
-            const dist = distToPolygonEdge(wx, wz, zone.polygon);
-            if (dist >= rimWidth) {
-              h = Math.min(h, floorY);
-            } else {
-              // Slope rim: interpolate original terrain → flat floor
-              const t = dist / rimWidth;
-              h = Math.min(h, baseH[row * count + col] * (1 - t) + floorY * t);
-            }
-          }
-        }
-      }
-      heights[row * count + col] = h;
-    }
-  }
-  return heights;
-}
-
 /** Construct Babylon VertexData for a heightfield ground mesh. */
 function buildTerrainVertexData(
   sizeM: number, subdivisions: number, heights: Float32Array,
@@ -618,11 +473,7 @@ function drawGroundCanvas(
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const DEFAULT_TERRAIN: TerrainState = {
-  sizeM: 100, subdivisions: 128, maxHeightM: 6, seed: 42,
-  excavations: [], rocks: [], plants: [], objects: [],
-  groundMaterial: 'grass',
-};
+const DEFAULT_TERRAIN: TerrainState = { ...DEFAULT_TERRAIN_MODEL };
 
 const SNAP_SIZES = [0.25, 0.5, 1, 2, 5];
 
@@ -657,7 +508,21 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
 
   const [hoverCoords, setHoverCoords] = useState<{ x: number; z: number; snapped: boolean } | null>(null);
 
-  const [terrain, setTerrain]   = useState<TerrainState>(DEFAULT_TERRAIN);
+  // The terrain is PROJECT data: it lives in the store, saves with the graph,
+  // and is read by the 3D viewers, the sections and the quantities. This tab
+  // edits it. `setTerrain` keeps the functional-update form the tools use.
+  const storeTerrain = useBubbleGraphStore((st) => st.terrain);
+  const setStoreTerrain = useBubbleGraphStore((st) => st.setTerrain);
+  const terrain: TerrainState = storeTerrain ?? DEFAULT_TERRAIN;
+  const terrainRef = useRef<TerrainState>(terrain);
+  terrainRef.current = terrain;
+  const setTerrainRef = useRef<(upd: TerrainState | ((t: TerrainState) => TerrainState)) => void>(() => {});
+  const setTerrain = useCallback((upd: TerrainState | ((t: TerrainState) => TerrainState)) => {
+    const next = typeof upd === 'function' ? upd(terrainRef.current) : upd;
+    terrainRef.current = next;
+    setStoreTerrain(next);
+  }, [setStoreTerrain]);
+  setTerrainRef.current = setTerrain;
   const [activeTool, setActiveTool] = useState<TerrainTool>('select');
   const [bgLight, setBgLight]   = useState(false);
 
@@ -693,6 +558,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
   const [pendingMaxH, setPendingMaxH]             = useState(terrain.maxHeightM);
   const [pendingSubs, setPendingSubs]             = useState(terrain.subdivisions);
   const [pendingGroundMat, setPendingGroundMat]   = useState<GroundMaterial>('grass');
+  const [pendingFlat, setPendingFlat]             = useState(true);
 
   const [selectedNatureGltf, setSelectedNatureGltf] = useState<string | null>(null);
   const [objectScale, setObjectScale]               = useState(1.0);
@@ -722,6 +588,11 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
 
   // ── Sync observer refs with state ─────────────────────────────────────────
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
+  useEffect(() => {
+    setPendingSeed(terrain.seed); setPendingMaxH(terrain.maxHeightM); setPendingSubs(terrain.subdivisions);
+    setPendingGroundMat(terrain.groundMaterial ?? 'grass'); setPendingFlat(terrain.flat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeTerrain]);
   useEffect(() => { snapEnabledRef.current = snapEnabled; }, [snapEnabled]);
   useEffect(() => { snapSizeRef.current = snapSize; }, [snapSize]);
   useEffect(() => { selectedNatureGltfRef.current = selectedNatureGltf; }, [selectedNatureGltf]);
@@ -732,11 +603,11 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
     terrainSizeMRef.current        = t.sizeM;
     terrainSubdivisionsRef.current = t.subdivisions;
     if (terrainMeshRef.current) { terrainMeshRef.current.dispose(); terrainMeshRef.current = null; }
-    const count = t.subdivisions + 1;
+    const count = gridCount(t);
     const baked = bakedHeightsRef.current;
-    const heights = (baked && baked.length === count * count)
-      ? baked
-      : buildHeightGrid(t.sizeM, t.subdivisions, t.maxHeightM, t.seed, t.excavations);
+    // A drag in progress edits the live grid; between drags the model is the
+    // truth, its own baked heights included.
+    const heights = (baked && baked.length === count * count) ? baked : modelHeights(t);
     heightsRef.current = heights;
     const vd = buildTerrainVertexData(t.sizeM, t.subdivisions, heights);
     const mesh = new Mesh('terrain', scene);
@@ -1012,7 +883,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
     rotGizmo.onDragEndObservable.add(onDragEnd);
     scaleGizmo.onDragEndObservable.add(onDragEnd);
 
-    rebuildTerrain(DEFAULT_TERRAIN, scene);
+    rebuildTerrain(terrainRef.current, scene);
 
     // ── Hover cursor disc (shared across tools) ────────────────────────────
     const hoverDisc = MeshBuilder.CreateDisc('hover_cursor', { radius: 0.6, tessellation: 32 }, scene);
@@ -1097,6 +968,8 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
         if (vertexDragRef.current) {
           if (heightsRef.current) {
             bakedHeightsRef.current = new Float32Array(heightsRef.current);
+            const committed = Array.from(heightsRef.current);
+            setTerrainRef.current((t) => ({ ...t, bakedHeights: committed }));
           }
           vertexDragRef.current = null;
         }
@@ -1214,7 +1087,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
     syncPolygonMarkers(polygonPoints, scene);
     syncSelectionHighlight(selectedExcavId, terrain.excavations, scene);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain.sizeM, terrain.subdivisions, terrain.maxHeightM, terrain.seed, terrain.excavations]);
+  }, [terrain.sizeM, terrain.subdivisions, terrain.maxHeightM, terrain.seed, terrain.flat, terrain.excavations, terrain.bakedHeights]);
 
   // ── Effect A2: Ground material texture-only rebuild ────────────────────────
   useEffect(() => {
@@ -1395,12 +1268,12 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
 
   function deleteSelectedExcavation() {
     if (!selectedExcavId) return;
-    setTerrain(t => ({ ...t, excavations: t.excavations.filter(z => z.id !== selectedExcavId) }));
+    setTerrain(t => ({ ...t, excavations: t.excavations.filter(z => z.id !== selectedExcavId), bakedHeights: undefined }));
     setSelectedExcavId(null);
   }
 
   function clearAll() {
-    setTerrain(t => ({ ...t, excavations: [], rocks: [], plants: [], objects: [] }));
+    setTerrain(t => ({ ...t, excavations: [], rocks: [], plants: [], objects: [], bakedHeights: undefined }));
     setSelectedExcavId(null); setPolygonPoints([]); setSelectedObjectId(null);
     selectedObjectIdRef.current = null;
   }
@@ -1408,9 +1281,10 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
   function applySettings() {
     setTerrain(t => ({
       ...t,
-      seed: pendingSeed, maxHeightM: pendingMaxH,
+      seed: pendingSeed, maxHeightM: pendingMaxH, flat: pendingFlat,
       subdivisions: Math.max(32, Math.min(256, pendingSubs)),
       groundMaterial: pendingGroundMat,
+      bakedHeights: undefined,
     }));
     setShowSettings(false);
   }
@@ -1459,7 +1333,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
       if (!file) return;
       const text = await file.text();
       try {
-        const data = JSON.parse(text) as TerrainState;
+        const data = normaliseTerrainModel(JSON.parse(text) as Partial<TerrainState>);
         setTerrain(data);
         setPendingSeed(data.seed); setPendingMaxH(data.maxHeightM); setPendingSubs(data.subdivisions);
       } catch { /* noop */ }
@@ -1605,7 +1479,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
         depth: excavationDepth, slope: excavationSlope,
         type: activeTool === 'embankment' ? 'embankment' : excavationType,
       };
-      setTerrain(t => ({ ...t, excavations: [...t.excavations, zone] }));
+      setTerrain(t => ({ ...t, excavations: [...t.excavations, zone], bakedHeights: undefined }));
       setPolygonPoints([]); polygonInProgressRef.current = [];
     } else if (activeTool === 'trench') {
       if (polygonPoints.length < 2) return;
@@ -1616,7 +1490,7 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
           depth: trenchDepth, slope: trenchAngle,
           type: 'trench',
         };
-        setTerrain(t => ({ ...t, excavations: [...t.excavations, zone] }));
+        setTerrain(t => ({ ...t, excavations: [...t.excavations, zone], bakedHeights: undefined }));
       }
       setPolygonPoints([]); polygonInProgressRef.current = [];
     } else if (activeTool === 'vegscatter') {
@@ -1790,11 +1664,20 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
             ))}
           </div>
 
+          {/* Flat is the default: a site starts as a plane and takes relief
+              only when asked, so a new project's ground is not a hillside. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+            <span style={{ fontSize: 10, color: 'hsl(var(--muted-foreground))', width: 110 }}>Relief</span>
+            <input type="checkbox" checked={!pendingFlat} onChange={(e) => setPendingFlat(!e.target.checked)} />
+            <span style={{ fontSize: 10 }}>{pendingFlat ? 'plat (cota 0)' : 'procedural, din seed'}</span>
+          </label>
           {([
             { label: 'Seed', val: pendingSeed, set: setPendingSeed, min: 0, max: 9999, step: 1 },
             { label: 'Max height (m)', val: pendingMaxH, set: setPendingMaxH, min: 0.5, max: 30, step: 0.5 },
             { label: 'Subdivisions', val: pendingSubs, set: setPendingSubs, min: 32, max: 256, step: 16 },
-          ] as { label: string; val: number; set: (v: number) => void; min: number; max: number; step: number }[]).map(({ label, val, set, min, max, step }) => (
+          ] as { label: string; val: number; set: (v: number) => void; min: number; max: number; step: number }[])
+            .filter((row) => !pendingFlat || row.label === 'Subdivisions')
+            .map(({ label, val, set, min, max, step }) => (
             <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 10, color: 'hsl(var(--muted-foreground))', width: 110 }}>{label}</span>
               <input type="number" min={min} max={max} step={step} value={val}
@@ -2015,13 +1898,13 @@ export function TerrainViewer({ className, tabId: _tabId }: TerrainViewerProps) 
             <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 10, lineHeight: 1.5 }}>
               ⚠ Adding excavations or changing terrain settings will reset vertex edits.
             </div>
-            {bakedHeightsRef.current && (
+            {terrain.bakedHeights && (
               <div style={{ marginTop: 10, fontSize: 10, color: '#4ade80' }}>
-                ✓ {bakedHeightsRef.current.length} vertex heights saved
+                ✓ {terrain.bakedHeights.length} vertex heights saved with the project
               </div>
             )}
             <button
-              onClick={() => { bakedHeightsRef.current = null; const s = sceneRef.current; if (s) rebuildTerrain(terrain, s); }}
+              onClick={() => { bakedHeightsRef.current = null; setTerrain(t => ({ ...t, bakedHeights: undefined })); }}
               style={{ ...btnStyle, marginTop: 12, color: '#ef4444', width: '100%' }}
             >
               Reset vertex edits
@@ -2280,12 +2163,7 @@ function sampleTerrainHeight(
   heights: Float32Array | null,
 ): number {
   if (!heights) return 0;
-  const count = subdivisions + 1;
-  const col = Math.round(((wx / sizeM) + 0.5) * subdivisions);
-  const row = Math.round(((wz / sizeM) + 0.5) * subdivisions);
-  const ci  = Math.max(0, Math.min(count - 1, col));
-  const ri  = Math.max(0, Math.min(count - 1, row));
-  return heights[ri * count + ci] ?? 0;
+  return sampleHeightLib(heights, { sizeM, subdivisions }, wx, wz);
 }
 
 // ─── Shared inline styles ─────────────────────────────────────────────────────

@@ -127,6 +127,46 @@ export const BUILTIN_ELEMENT_DEFAULTS: Record<string, MaterialVisuals> = {
   sweep:      { color_3d: '#14B8A6', opacity_3d: 1.0, color_2d: '#0F766E', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
                 section_line_color: '#0F766E', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#5EEAD4', section_fill_opacity: 0.8,
                 view_line_color: '#14B8A6', view_line_weight: 0.3, view_line_style: 'dashed' },
+  // The dome's ribs; the glass in its cells resolves as `dome_panel`.
+  dome:       { color_3d: '#334155', opacity_3d: 1.0, color_2d: '#0E7490', opacity_2d: 1.0, line_weight: 0.35, hatch: 'solid',
+                section_line_color: '#0E7490', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#94A3B8', section_fill_opacity: 0.9,
+                view_line_color: '#0891B2', view_line_weight: 0.25, view_line_style: 'dashed' },
+  site:       { color_3d: '#6B8E4E', opacity_3d: 1.0, color_2d: '#4D6B3A', opacity_2d: 1.0, line_weight: 0.5, hatch: 'none',
+                section_line_color: '#3F5A2E', section_line_weight: 0.7, section_line_style: 'solid', section_fill_color: '#C8B48A', section_fill_opacity: 0.6,
+                view_line_color: '#6B8E4E', view_line_weight: 0.35, view_line_style: 'solid' },
+  // A drawn sketch: a working element, so it reads as a draft orange rather
+  // than borrowing a structural colour it has not earned.
+  sketch:     { color_3d: '#D97706', opacity_3d: 1.0, color_2d: '#B45309', opacity_2d: 1.0, line_weight: 0.4, hatch: 'diagonal',
+                section_line_color: '#B45309', section_line_weight: 0.6, section_line_style: 'solid', section_fill_color: '#FCD34D', section_fill_opacity: 0.75,
+                view_line_color: '#D97706', view_line_weight: 0.3, view_line_style: 'dashed' },
+  // Scatter: foliage by default; trunks and stones resolve as their own keys.
+  scatter:      { color_3d: '#4D7C0F', opacity_3d: 1.0, color_2d: '#3F6212', opacity_2d: 1.0, line_weight: 0.25, hatch: 'none',
+                  section_line_color: '#3F6212', section_line_weight: 0.3, section_line_style: 'solid', section_fill_color: '#A3E635', section_fill_opacity: 0.5,
+                  view_line_color: '#4D7C0F', view_line_weight: 0.25, view_line_style: 'solid' },
+  scatter_wood: { color_3d: '#7C4A1E', opacity_3d: 1.0, color_2d: '#5B3A16', opacity_2d: 1.0, line_weight: 0.25, hatch: 'none',
+                  section_line_color: '#5B3A16', section_line_weight: 0.3, section_line_style: 'solid', section_fill_color: '#A16207', section_fill_opacity: 0.8,
+                  view_line_color: '#7C4A1E', view_line_weight: 0.25, view_line_style: 'solid' },
+  scatter_rock: { color_3d: '#8A8F98', opacity_3d: 1.0, color_2d: '#4B5563', opacity_2d: 1.0, line_weight: 0.3, hatch: 'none',
+                  section_line_color: '#374151', section_line_weight: 0.35, section_line_style: 'solid', section_fill_color: '#9CA3AF', section_fill_opacity: 0.7,
+                  view_line_color: '#6B7280', view_line_weight: 0.25, view_line_style: 'solid' },
+  // Facade: mullions resolve as `facade`, glass as `facade_panel`, opaque
+  // panels and cassettes as `facade_cassette`.
+  facade:          { color_3d: '#334155', opacity_3d: 1.0, color_2d: '#0369A1', opacity_2d: 1.0, line_weight: 0.4, hatch: 'solid',
+                     section_line_color: '#0369A1', section_line_weight: 0.5, section_line_style: 'solid', section_fill_color: '#64748B', section_fill_opacity: 0.9,
+                     view_line_color: '#0369A1', view_line_weight: 0.25, view_line_style: 'solid' },
+  facade_panel:    { color_3d: '#8CCBF2', opacity_3d: 0.45, color_2d: '#BAE6FD', opacity_2d: 0.5, line_weight: 0.2, hatch: 'none',
+                     section_line_color: '#38BDF8', section_line_weight: 0.3, section_line_style: 'solid', section_fill_color: '#E0F2FE', section_fill_opacity: 0.6,
+                     view_line_color: '#7DD3FC', view_line_weight: 0.2, view_line_style: 'solid' },
+  facade_cassette: { color_3d: '#BFC5CC', opacity_3d: 1.0, color_2d: '#6B7280', opacity_2d: 1.0, line_weight: 0.3, hatch: 'none',
+                     section_line_color: '#4B5563', section_line_weight: 0.4, section_line_style: 'solid', section_fill_color: '#D1D5DB', section_fill_opacity: 0.9,
+                     view_line_color: '#6B7280', view_line_weight: 0.25, view_line_style: 'solid' },
+  // A pad has no body of its own — it is drawn as a boundary on the ground.
+  terrain_pad: { color_3d: '#A16207', opacity_3d: 1.0, color_2d: '#A16207', opacity_2d: 1.0, line_weight: 0.4, hatch: 'none',
+                 section_line_color: '#854D0E', section_line_weight: 0.5, section_line_style: 'dashed', section_fill_color: '#FDE68A', section_fill_opacity: 0.3,
+                 view_line_color: '#A16207', view_line_weight: 0.35, view_line_style: 'dashed' },
+  dome_panel: { color_3d: '#7DD3FC', opacity_3d: 0.45, color_2d: '#BAE6FD', opacity_2d: 0.5, line_weight: 0.2, hatch: 'none',
+                section_line_color: '#38BDF8', section_line_weight: 0.3, section_line_style: 'solid', section_fill_color: '#E0F2FE', section_fill_opacity: 0.5,
+                view_line_color: '#BAE6FD', view_line_weight: 0.2, view_line_style: 'solid' },
   wall:       { color_3d: '#F59E0B', opacity_3d: 1.0, color_2d: '#334155', opacity_2d: 1.0, line_weight: 0.5, hatch: 'solid',
                 section_line_color: '#1E293B', section_line_weight: 0.7, section_line_style: 'solid', section_fill_color: '#334155', section_fill_opacity: 0.5,
                 view_line_color: '#64748B', view_line_weight: 0.35, view_line_style: 'dashed' },
@@ -260,6 +300,26 @@ export const BUILTIN_MATERIALS: Record<string, NamedMaterial> = {
     label: 'AAC block (BCA)',
     color_3d: '#D8D8D8', opacity_3d: 1, color_2d: '#E8E8E8', opacity_2d: 1, line_weight: 0.4, hatch: 'grid',
   },
+  wood_shingle: {
+    label: 'Wood shingle (șindrilă)',
+    color_3d: '#7D6A55', opacity_3d: 1, color_2d: '#B8A58C', opacity_2d: 1, line_weight: 0.3, hatch: 'wave',
+  },
+  lime_plaster: {
+    label: 'Lime render (tencuială de var)',
+    color_3d: '#F4F1E8', opacity_3d: 1, color_2d: '#F7F5EE', opacity_2d: 1, line_weight: 0.25, hatch: 'solid',
+  },
+  slate: {
+    label: 'Slate (ardezie)',
+    color_3d: '#4B5159', opacity_3d: 1, color_2d: '#8A9099', opacity_2d: 1, line_weight: 0.3, hatch: 'crosshatch',
+  },
+  roof_membrane: {
+    label: 'Roof membrane (membrană)',
+    color_3d: '#3C3D3F', opacity_3d: 1, color_2d: '#8C8D8F', opacity_2d: 1, line_weight: 0.25, hatch: 'solid',
+  },
+  wood_cladding: {
+    label: 'Timber cladding (placaj lemn)',
+    color_3d: '#8A6343', opacity_3d: 1, color_2d: '#C9A983', opacity_2d: 1, line_weight: 0.3, hatch: 'diagonal',
+  },
 };
 
 /** Offline / Clean default config (English labels). */
@@ -323,6 +383,17 @@ const MATERIAL_ALIASES: Record<string, string> = {
   'tabla': 'metal_sheet',
   'tabla faltuita': 'metal_sheet',
   'sindrila bituminoasa': 'bitumen_shingle',
+  'sindrila': 'wood_shingle',
+  'sindrila de lemn': 'wood_shingle',
+  'tencuiala de var': 'lime_plaster',
+  'var': 'lime_plaster',
+  'ardezie': 'slate',
+  'membrana': 'roof_membrane',
+  'membrana bituminoasa': 'roof_membrane',
+  'placaj lemn': 'wood_cladding',
+  'placaj de lemn': 'wood_cladding',
+  'caramida aparenta': 'brick',
+  'beton aparent': 'concrete',
   'beton': 'concrete',
   'beton armat': 'concrete_reinforced',
   'caramida': 'brick',

@@ -43,6 +43,17 @@ export type SweepProfileResolver = (
 let _dxfIds: string[] = [];
 let _loadStarted = false;
 
+/**
+ * Forget the listing so the next `ensureProfileLibraryLoaded` fetches it again.
+ * Call after saving or deleting a profile: without it the picker keeps offering
+ * yesterday's list, and a profile just drawn is invisible until a reload.
+ */
+export function reloadProfileLibrary(): void {
+  _loadStarted = false;
+  _dxfIds = [];
+  _dxfCache.clear();
+}
+
 /** Kick off the DXF listing once; safe to call from every consumer's mount. */
 export async function ensureProfileLibraryLoaded(): Promise<void> {
   if (_loadStarted) return;

@@ -2,8 +2,18 @@ import type { SvgSymNode, SvgSymEdge } from '@/lib/svgSymbolStore';
 import { assembleDef, mkSp, mkSl, mkSh, mkSa } from './templateCompiler';
 import type { SymbolTemplate } from './types';
 
-/** Wall centre Y in door symbol space (outer face y=0, inner face y=T). */
-const CY = 'T / 2';
+/**
+ * Where the leaf is hung, in door symbol space: outer face y=0, inner face
+ * y=T. A leaf is hung on the INNER face and swings into the room — so the
+ * hinge, the closed position and the arc's centre all sit on y=T, and the
+ * open leaf reaches y=T+W. Everything about the swing is expressed from this
+ * one line, so a leaf and its arc can never end up on opposite sides of the
+ * wall, which is how they were once drawn.
+ *
+ * Which face is "inner" is the plan's decision, made when it places the
+ * symbol; `flip_across` on the opening turns it round.
+ */
+const CY = 'T';
 
 function wallMask(): { nodes: SvgSymNode[]; edges: SvgSymEdge[] } {
   const p0 = mkSp('0', '0');
@@ -53,8 +63,10 @@ function swingLeft(typeKey: string, name: string) {
   nodes.push(...hdr.nodes);
   edges.push(...hdr.edges);
 
+  // The arc runs from the leaf's open tip, straight below the hinge on
+  // screen (270°), round to its closed position on the inner face (0°).
   const hinge = mkSp('0', CY);
-  const tip = mkSp('0', `${CY} - W`);
+  const tip = mkSp('0', `${CY} + W`);
   const closed = mkSp('W', CY);
   const panel = mkSl(hinge, tip, '#111111', 2);
   panel.node.label = 'Panel';
@@ -82,7 +94,7 @@ function swingRight(typeKey: string, name: string) {
   edges.push(...hdr.edges);
 
   const hinge = mkSp('W', CY);
-  const tip = mkSp('W', `${CY} - W`);
+  const tip = mkSp('W', `${CY} + W`);
   const closed = mkSp('0', CY);
   const panel = mkSl(hinge, tip, '#111111', 2);
   panel.node.label = 'Panel';
@@ -110,13 +122,13 @@ function swingDouble(typeKey: string, name: string) {
   edges.push(...hdr.edges);
 
   const hL = mkSp('0', CY);
-  const tL = mkSp('0', `${CY} - W/2`);
+  const tL = mkSp('0', `${CY} + W/2`);
   const pL = mkSl(hL, tL, '#111111', 2);
   pL.node.label = 'Panel';
   const arcL = mkSa('0', CY, 'W/2', 270, 0, '#555555', 1, false);
 
   const hR = mkSp('W', CY);
-  const tR = mkSp('W', `${CY} - W/2`);
+  const tR = mkSp('W', `${CY} + W/2`);
   const pR = mkSl(hR, tR, '#111111', 2);
   pR.node.label = 'Panel';
   const arcR = mkSa('W', CY, 'W/2', 270, 180, '#555555', 1, true);
@@ -143,6 +155,8 @@ function sliding(typeKey: string, name: string) {
   nodes.push(...hdr.nodes);
   edges.push(...hdr.edges);
 
+  // A slider runs inside the wall: its leaf is a dashed line near the inner
+  // face and the arrow sits on the wall's axis.
   const y = 'T * 0.65';
   const p0 = mkSp('0', y);
   const p1 = mkSp('W', y);
@@ -151,8 +165,8 @@ function sliding(typeKey: string, name: string) {
   nodes.push(p0, p1, panel.node);
   edges.push(...panel.edges);
 
-  const a0 = mkSp('W * 0.2', CY);
-  const a1 = mkSp('W * 0.8', CY);
+  const a0 = mkSp('W * 0.2', 'T / 2');
+  const a1 = mkSp('W * 0.8', 'T / 2');
   const arrow = mkSl(a0, a1, '#555555', 1.5, true);
   arrow.node.label = 'Glass';
   nodes.push(a0, a1, arrow.node);

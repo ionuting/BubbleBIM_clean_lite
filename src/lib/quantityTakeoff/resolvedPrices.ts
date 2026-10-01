@@ -34,29 +34,42 @@
 import { useMemo } from 'react';
 import { getCompiledUnitPrices } from '@/lib/norms/catalogCompiled';
 import { usePrices } from '@/store/priceStore';
+import { useUserLibrary } from '@/store/userLibraryStore';
 
-let cache: { project: Record<string, number>; out: Record<string, number> } | null = null;
+let cache: {
+  project: Record<string, number>;
+  user: Record<string, number> | undefined;
+  out: Record<string, number>;
+} | null = null;
+
+const EMPTY: Record<string, number> = {};
 
 /**
- * Prețul în vigoare: **catalog → proiect**.
+ * Prețul în vigoare: **catalog → utilizator → proiect**.
  *
+ * Stratul utilizatorului e ce ai corectat o dată și te urmează în orice proiect
+ * (vezi `userLibraryStore`); cel de proiect îl bate, fiindcă e mai specific.
  * Stabil pe identitatea intrărilor — hrănește o dependență de efect.
-
  */
-export function resolvePrices(overrides: Record<string, number>): Record<string, number> {
-  if (cache && cache.project === overrides) return cache.out;
+export function resolvePrices(
+  overrides: Record<string, number>,
+  userPrices?: Record<string, number>,
+): Record<string, number> {
+  if (cache && cache.project === overrides && cache.user === userPrices) return cache.out;
   const out: Record<string, number> = { ...getCompiledUnitPrices() };
   // An override of 0 means "not priced by me" and must not blank the catalogue:
   // clearing a price is `resetPrice`, which removes the key entirely.
+  for (const [id, p] of Object.entries(userPrices ?? EMPTY)) if (p > 0) out[id] = p;
   for (const [id, p] of Object.entries(overrides)) if (p > 0) out[id] = p;
-  cache = { project: overrides, out };
+  cache = { project: overrides, user: userPrices, out };
   return out;
 }
 
 /** The whole price map in force, for anything that computes a cost. */
 export function useResolvedPrices(): Record<string, number> {
   const overrides = usePrices((s) => s.prices);
-  return useMemo(() => resolvePrices(overrides), [overrides]);
+  const userPrices = useUserLibrary((s) => s.prices);
+  return useMemo(() => resolvePrices(overrides, userPrices), [overrides, userPrices]);
 }
 
 /** One article's price in force — for an editable single-price field. */

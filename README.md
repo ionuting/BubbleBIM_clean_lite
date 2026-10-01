@@ -5,8 +5,10 @@ walls/rooms/openings), then generate 2D drawings, a structural FEM model, IFC ex
 sheets from that single source of truth.
 
 This repository is the **Clean** profile — a curated build of the BubbleBIM app shell with one
-OpenGeometry 3D viewer, the SVG drawing stack, sheets, and cloud (multi-user) persistence.
-Redundant engines and duplicate 2D paths are stubbed out of the bundle.
+OpenGeometry 3D viewer, OpenGeometry 2D drawings (the classic SVG engine one click away), sheets,
+and cloud (multi-user) persistence. The shell is the same in every BubbleBIM edition: a project
+browser with the graph as its root, a HUD with versions, a context bar, a resizable inspector and a
+command palette (Ctrl K). Modules this edition does not ship are stubbed out of the bundle.
 
 **Stack:** React 18 + TypeScript + Vite + Tailwind CSS · FastAPI + SQLite
 
@@ -42,12 +44,17 @@ pnpm preview:clean
 
 | Area | Implementation |
 |---|---|
-| Graph editor | `BubbleGraphPanel` — storeys, axes, nodes, edges (tab: **Model**) |
+| Graph editor | `BubbleGraphPanel` — storeys, axes, nodes, edges (tab: **Graph**, the model's root) |
+| Project browser | Revit-style tree: graph → views (plans, 3D, elevations, sections, site), sheets, families |
+| 2D views | Views of the project with unique, editable names and their own annotations (`src/lib/views`) — duplicate with or without detailing |
 | 3D | **OpenGeometry** only |
-| Floor plans | SVG `FloorPlan2DViewer` (annotations, rebar, roof plan, custom symbols) |
-| Sections / elevations | SVG `Section2DViewer` / `Elevation2DViewer` via `src/lib/drawingEngine.ts` |
+| Floor plans | OpenGeometry plans (`OGFloorPlanViewer`) by default; classic SVG `FloorPlan2DViewer` per view |
+| Sections / elevations | OpenGeometry or SVG `Section2DViewer` / `Elevation2DViewer` via `src/lib/drawingEngine.ts` |
+| Graphic styles | Per view: colour, technical (black & white), poché, presentation (`src/lib/drawing/graphicStyle.ts`) |
+| Architectural styles | Parametric style rules applied to the graph — roofs, porches, terraces, ornament (`src/lib/style`) |
 | **Structural (FEM)** | Linear-elastic frame + shell model on `@awatif/components` — see below |
-| IFC export | Real IFC4 STEP via `@ifc-lite/create` |
+| IFC export | Real IFC4 STEP built in the browser (`src/lib/ifc/buildIfcModel.ts`) — no backend needed |
+| HTML export | A single self-contained HTML file: 3D, drawings and the project (`src/lib/standaloneExport.ts`) — no backend needed |
 | Sheets | `SheetComposer` |
 | World + Terrain | Cesium `WorldViewer` / Babylon `TerrainViewer` |
 | Versioning | Undo/redo + a git-like per-project commit history |

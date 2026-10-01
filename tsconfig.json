@@ -29,6 +29,11 @@
     "moduleResolution": "bundler",
     "types": ["vite/client"],
     "paths": {
+      "@/components/quantities/DashboardPanel": ["./src/stubs/DashboardPanel.stub.tsx"],
+      "@/components/library/LibraryPanel": ["./src/stubs/LibraryPanel.stub.tsx"],
+      "@/components/scenarios/ScenarioBar": ["./src/stubs/ScenarioBar.stub.tsx"],
+      "@/components/scenarios/CompareFloatingPanel": ["./src/stubs/CompareFloatingPanel.stub.tsx"],
+      "@/hooks/useScenarioResults": ["./src/stubs/useScenarioResults.stub.ts"],
       "@/*": ["./src/*"],
       "@ifc-lite/create": ["./packages/create/src"],
       "@ifc-lite/drawing-2d": ["./packages/drawing-2d/src"],

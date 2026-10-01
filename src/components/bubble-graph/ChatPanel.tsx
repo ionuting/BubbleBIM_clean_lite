@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { sendChatMessage, getChatStatus, uploadIFCFile, parseIFCStorey, commitIFCGraph } from '@/lib/api';
-import type { IFCParseResponse } from '@/lib/api';
+import type { IFCParseResponse, ChatToolCall } from '@/lib/api';
 import { useBubbleGraphStore } from '@/store';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -11,6 +11,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   cypher?: string;
+  /** Tool calls the graph agent made while answering — see backend/graph_tools.py. */
+  toolCalls?: ChatToolCall[];
   timestamp: Date;
   isError?: boolean;
 }
@@ -127,6 +129,21 @@ function MessageBubble({ msg }: { msg: Message }) {
             <pre className="mt-1 bg-black/40 rounded p-2 text-green-300 font-mono overflow-x-auto whitespace-pre-wrap">
               {msg.cypher}
             </pre>
+          </details>
+        )}
+        {msg.toolCalls && msg.toolCalls.length > 0 && !isUser && (
+          <details className="mt-2 text-xs">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+              🔧 {msg.toolCalls.length === 1 ? 'Tool folosit' : `${msg.toolCalls.length} tool-uri folosite`}
+            </summary>
+            <div className="mt-1 space-y-1.5">
+              {msg.toolCalls.map((tc, i) => (
+                <div key={i} className="bg-black/40 rounded p-2 font-mono overflow-x-auto">
+                  <div className="text-blue-300">{tc.name}({JSON.stringify(tc.args)})</div>
+                  <div className="text-green-300 whitespace-pre-wrap">→ {JSON.stringify(tc.result)}</div>
+                </div>
+              ))}
+            </div>
           </details>
         )}
         <div className={cn('text-[10px] mt-1', isUser ? 'text-primary-foreground/60 text-right' : 'text-muted-foreground')}>
@@ -317,6 +334,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         role: 'assistant',
         content: res.reply,
         cypher: res.cypher || undefined,
+        toolCalls: res.toolCalls || undefined,
         timestamp: new Date(),
         isError: res.action === 'error',
       };

@@ -14,6 +14,7 @@
  */
 import { polygonArea } from '@/lib/geom/plan2d';
 import type { Pt2, Pt3, SweepCorners, SweepDiagnostic, SweepPath, SweepSolid } from './types';
+import { triangulateFace } from '@/lib/geom/faceWithHoles';
 
 /** Included-angle limit: a turn sharper than this (>150°) cannot miter sanely. */
 const MITER_COS_HALF_MIN = Math.cos((75 * Math.PI) / 180);
@@ -62,47 +63,141 @@ export function triangulateSimple(poly: Pt2[]): [number, number, number][] {
   return tris;
 }
 
+// ─── The frame the profile stands in ─────────────────────────────────────────
+
+const cross3 = (a: Pt3, b: Pt3): Pt3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const dot3 = (a: Pt3, b: Pt3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+const unit3 = (v: Pt3): Pt3 | null => {
+  const l = Math.hypot(v.x, v.y, v.z);
+  return l > 1e-9 ? { x: v.x / l, y: v.y / l, z: v.z / l } : null;
+};
+
+const WORLD_UP: Pt3 = { x: 0, y: 0, z: 1 };
+
+/**
+ * Where the profile's own axes point at a station: `s` takes its x, `u` its y.
+ *
+ * The frame is fixed-up, not rotation-minimising: `s` is always horizontal, so
+ * a cornice running up a gable stays upright instead of rolling with the
+ * slope. That is what a moulding does, and it is also what makes the frame
+ * reproduce both special cases it replaces —
+ *
+ *   a horizontal run  →  s = left of travel, u = +Z   (the old plan normal)
+ *   a vertical run    →  s = +X, u = +Y               (the profile in plan)
+ *
+ * — so a raking path is not a third kind of geometry, only the general one.
+ */
+export interface SweepFrame { s: Pt3; u: Pt3 }
+
+export function frameOf(t: Pt3): SweepFrame {
+  const s = unit3(cross3(WORLD_UP, t));
+  // Straight up or down: there is no horizontal left to take, and the profile
+  // lies flat in the plan the way a one-anchor sweep has always placed it.
+  if (!s) return { s: { x: 1, y: 0, z: 0 }, u: { x: 0, y: 1, z: 0 } };
+  return { s, u: cross3(t, s) };
+}
+
+/**
+ * The miter of two unit directions: their bisector, lengthened by 1/cos(θ/2)
+ * so the profile still measures its own width across the joint.
+ *
+ * Returns null for a reversal, which no miter can express.
+ */
+function miterOf(a: Pt3, b: Pt3): { v: Pt3; cosHalf: number } | null {
+  const m = unit3({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+  if (!m) return null;
+  const cosHalf = dot3(m, a);
+  if (cosHalf < 1e-6) return null;
+  return { v: { x: m.x / cosHalf, y: m.y / cosHalf, z: m.z / cosHalf }, cosHalf };
+}
+
 // ─── Ring construction ───────────────────────────────────────────────────────
 
-const left = (d: Pt2): Pt2 => ({ x: -d.y, y: d.x });
-
-function ringAt(P: Pt3, lateral: Pt2, placed: Pt2[]): Pt3[] {
+function ringAt(P: Pt3, f: SweepFrame, placed: Pt2[]): Pt3[] {
   return placed.map((p) => ({
-    x: P.x + lateral.x * p.x,
-    y: P.y + lateral.y * p.x,
-    z: P.z + p.y,
+    x: P.x + f.s.x * p.x + f.u.x * p.y,
+    y: P.y + f.s.y * p.x + f.u.y * p.y,
+    z: P.z + f.s.z * p.x + f.u.z * p.y,
   }));
 }
 
 interface JointInfo {
-  /** Lateral direction for the ring at this vertex (unit s, or scaled miter). */
-  lateral: Pt2 | null; // null = must split (butt) here
+  /** The frame for the ring at this vertex, mitered. Null = must split here. */
+  frame: SweepFrame | null;
   sharp: boolean;
 }
+
+/**
+ * The frame for a segment when the profile's up is NOT world up.
+ *
+ * `frameOf` keeps a moulding upright against gravity; a rib on a curved shell
+ * has to stand on the SURFACE, so its up is the surface normal at the station.
+ * Same construction, different up: `s` is left of travel within the surface,
+ * `u` is the normal with its along-tangent part removed. Falls back to the
+ * fixed-up frame when the normal and the tangent are parallel.
+ */
+export function frameOnSurface(t: Pt3, normal: Pt3): SweepFrame {
+  const s = unit3(cross3(normal, t));
+  if (!s) return frameOf(t);
+  return { s, u: cross3(t, s) };
+}
+
+/** How a caller can choose the frame per segment: tangent and the segment's midpoint. */
+export type SweepFrameFor = (tangent: Pt3, at: Pt3) => SweepFrame;
 
 export function computeSweepSolids(
   path: SweepPath,
   placed: Pt2[],
   corners: SweepCorners,
+  frameFor?: SweepFrameFor,
+  /**
+   * Holes through the profile, in the same placed coordinates as `placed`
+   * (CCW) and wound clockwise. Each is swept along the very same stations, so
+   * its rings line up one for one with the outer ring's and the caps can be
+   * triangulated once for all of them.
+   */
+  holes: Pt2[][] = [],
+): { solids: SweepSolid[]; diagnostics: SweepDiagnostic[] } {
+  const out = sweepOuter(path, placed, corners, frameFor);
+  if (holes.length === 0) return out;
+  // The joints depend on the path alone, so every hole produces the same
+  // solids in the same order with the same ring counts as the outer profile.
+  const holeSolids = holes.map((h) => sweepOuter(path, h, corners, frameFor).solids);
+  const capTris = triangulateFace(placed, holes);
+  out.solids.forEach((solid, k) => {
+    solid.holes = holeSolids.map((hs) => hs[k].rings);
+    solid.capTris = capTris;
+  });
+  return out;
+}
+
+function sweepOuter(
+  path: SweepPath,
+  placed: Pt2[],
+  corners: SweepCorners,
+  frameFor?: SweepFrameFor,
 ): { solids: SweepSolid[]; diagnostics: SweepDiagnostic[] } {
   const diagnostics: SweepDiagnostic[] = [];
   const pts = path.points;
 
-  if (path.kind === 'vertical') {
-    // Profile plane is the plan itself: x → world X, y → world Y, sweep along Z.
-    const [a, b] = pts;
-    const ring = (z: number): Pt3[] => placed.map((p) => ({ x: a.x + p.x, y: a.y + p.y, z }));
-    return { solids: [{ rings: [ring(a.z), ring(b.z)], loop: false }], diagnostics };
-  }
-
+  // One code path for all three kinds. A vertical run is a two-point path whose
+  // tangent is +Z, and `frameOf` lays its profile in the plan; a raking run is
+  // a path whose tangent simply has a z.
   const n = pts.length;
-  const segDirs: Pt2[] = [];
+  const segDirs: Pt3[] = [];
+  const segMids: Pt3[] = [];
   const segCount = path.closed ? n : n - 1;
   for (let i = 0; i < segCount; i++) {
     const A = pts[i], B = pts[(i + 1) % n];
-    const len = Math.hypot(B.x - A.x, B.y - A.y);
-    segDirs.push(len > 0 ? { x: (B.x - A.x) / len, y: (B.y - A.y) / len } : { x: 1, y: 0 });
+    const d = unit3({ x: B.x - A.x, y: B.y - A.y, z: B.z - A.z });
+    segDirs.push(d ?? { x: 1, y: 0, z: 0 });
+    segMids.push({ x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (A.z + B.z) / 2 });
   }
+  const frames = segDirs.map((d, i) => (frameFor ? frameFor(d, segMids[i]) : frameOf(d)));
 
   // Joint per vertex: ends take the adjacent segment's normal; interiors miter
   // unless the corner is a reversal, too sharp, or butt mode is on.
@@ -111,45 +206,40 @@ export function computeSweepSolids(
     const hasPrev = path.closed || i > 0;
     const hasNext = path.closed || i < n - 1;
     if (!hasPrev || !hasNext) {
-      const d = segDirs[hasNext ? i : i - 1];
-      joints.push({ lateral: left(d), sharp: false });
+      joints.push({ frame: frames[hasNext ? i : i - 1], sharp: false });
       continue;
     }
-    const sPrev = left(segDirs[(i - 1 + segCount) % segCount]);
-    const sNext = left(segDirs[i % segCount]);
-    if (corners === 'butt') { joints.push({ lateral: null, sharp: false }); continue; }
-    const mx = sPrev.x + sNext.x, my = sPrev.y + sNext.y;
-    const mlen = Math.hypot(mx, my);
-    if (mlen < 1e-9) {
-      diagnostics.push({
-        code: 'CORNER_TOO_SHARP',
-        severity: 'warning',
-        message: `Punctul ${i + 1} întoarce traseul complet — colțul e tăiat drept, nu în unghi.`,
-      });
-      joints.push({ lateral: null, sharp: true });
-      continue;
-    }
-    const mhx = mx / mlen, mhy = my / mlen;
-    const cosHalf = mhx * sPrev.x + mhy * sPrev.y;
-    if (cosHalf < MITER_COS_HALF_MIN) {
+    if (corners === 'butt') { joints.push({ frame: null, sharp: false }); continue; }
+    const iPrev = (i - 1 + segCount) % segCount, iNext = i % segCount;
+    const fPrev = frames[iPrev], fNext = frames[iNext];
+    // Each profile axis is mitered on its own. A run that only turns in plan
+    // leaves `u` untouched (both are +Z, so the miter is the identity); one
+    // that only changes slope leaves `s` untouched. A run that does both gets
+    // each axis carried across its own joint.
+    const ms = miterOf(fPrev.s, fNext.s);
+    const mu = miterOf(fPrev.u, fNext.u);
+    const cosHalf = Math.min(ms?.cosHalf ?? 0, mu?.cosHalf ?? 0);
+    if (!ms || !mu || cosHalf < MITER_COS_HALF_MIN) {
       const turnDeg = Math.round((Math.acos(Math.max(-1, Math.min(1,
-        sPrev.x * sNext.x + sPrev.y * sNext.y))) * 180) / Math.PI);
+        dot3(segDirs[iPrev], segDirs[iNext])))) * 180) / Math.PI);
       diagnostics.push({
         code: 'CORNER_TOO_SHARP',
         severity: 'warning',
-        message: `Colț de ${turnDeg}° la punctul ${i + 1} — prea ascuțit pentru îmbinare în unghi; tăiat drept.`,
+        message: !ms || !mu
+          ? `Punctul ${i + 1} întoarce traseul complet — colțul e tăiat drept, nu în unghi.`
+          : `Colț de ${turnDeg}° la punctul ${i + 1} — prea ascuțit pentru îmbinare în unghi; tăiat drept.`,
       });
-      joints.push({ lateral: null, sharp: true });
+      joints.push({ frame: null, sharp: true });
       continue;
     }
-    joints.push({ lateral: { x: mhx / cosHalf, y: mhy / cosHalf }, sharp: false });
+    joints.push({ frame: { s: ms.v, u: mu.v }, sharp: false });
   }
 
   const solids: SweepSolid[] = [];
 
-  const fullLoop = path.closed && joints.every((j) => j.lateral !== null);
+  const fullLoop = path.closed && joints.every((j) => j.frame !== null);
   if (fullLoop) {
-    const rings = pts.map((P, i) => ringAt(P, joints[i].lateral!, placed));
+    const rings = pts.map((P, i) => ringAt(P, joints[i].frame!, placed));
     return { solids: [{ rings, loop: true }], diagnostics };
   }
 
@@ -158,7 +248,7 @@ export function computeSweepSolids(
   const segsInOrder: number[] = [];
   if (path.closed) {
     // Start at a split vertex so runs never straddle the seam.
-    const start = joints.findIndex((j) => j.lateral === null);
+    const start = joints.findIndex((j) => j.frame === null);
     for (let k = 0; k < segCount; k++) segsInOrder.push((start + k) % segCount);
   } else {
     for (let k = 0; k < segCount; k++) segsInOrder.push(k);
@@ -167,14 +257,11 @@ export function computeSweepSolids(
   let run: Pt3[][] | null = null;
   for (const si of segsInOrder) {
     const vA = si, vB = (si + 1) % n;
-    const s = left(segDirs[si]);
-    if (!run) {
-      const latA = joints[vA].lateral ?? s;
-      run = [ringAt(pts[vA], latA, placed)];
-    }
-    const latB = joints[vB].lateral;
-    const isEnd = latB === null || (!path.closed && vB === n - 1);
-    run.push(ringAt(pts[vB], latB ?? s, placed));
+    const f = frames[si];
+    if (!run) run = [ringAt(pts[vA], joints[vA].frame ?? f, placed)];
+    const fB = joints[vB].frame;
+    const isEnd = fB === null || (!path.closed && vB === n - 1);
+    run.push(ringAt(pts[vB], fB ?? f, placed));
     if (isEnd) {
       if (run.length >= 2) solids.push({ rings: run, loop: false });
       run = null;
@@ -199,22 +286,33 @@ export function solidTriangles(
   const { rings, loop } = solid;
   const R = rings.length;
   if (R < 2) return [];
-  const N = rings[0].length;
   const tris: [Pt3, Pt3, Pt3][] = [];
 
+  // Walls: the outer ring's, then each hole's. A hole ring is wound the other
+  // way round, so the same stitching turns its walls to face into the hole.
   const bands = loop ? R : R - 1;
-  for (let i = 0; i < bands; i++) {
-    const a = rings[i], b = rings[(i + 1) % R];
-    for (let j = 0; j < N; j++) {
-      const j1 = (j + 1) % N;
-      tris.push([a[j], a[j1], b[j1]]);
-      tris.push([a[j], b[j1], b[j]]);
+  const walls = (ringAt: (i: number) => Pt3[]) => {
+    for (let i = 0; i < bands; i++) {
+      const a = ringAt(i), b = ringAt((i + 1) % R);
+      const N = a.length;
+      for (let j = 0; j < N; j++) {
+        const j1 = (j + 1) % N;
+        tris.push([a[j], a[j1], b[j1]]);
+        tris.push([a[j], b[j1], b[j]]);
+      }
     }
-  }
+  };
+  walls((i) => rings[i]);
+  for (const hole of solid.holes ?? []) walls((i) => hole[i]);
 
   if (!loop) {
-    const first = rings[0], last = rings[R - 1];
-    for (const [ia, ib, ic] of placedTris) {
+    // With holes the solid carries its own cap triangulation over the outer
+    // ring followed by the hole rings; without, the caller's profile one.
+    const station = (i: number): Pt3[] =>
+      solid.capTris ? [rings[i], ...(solid.holes ?? []).map((h) => h[i])].flat() : rings[i];
+    const caps = solid.capTris ?? placedTris;
+    const first = station(0), last = station(R - 1);
+    for (const [ia, ib, ic] of caps) {
       tris.push([first[ia], first[ic], first[ib]]); // start cap faces −t
       tris.push([last[ia], last[ib], last[ic]]);    // end cap faces +t
     }
@@ -372,14 +470,16 @@ export function sweepSegments(path: SweepPath): SweepSegment[] {
   const segCount = path.closed ? pts.length : pts.length - 1;
   for (let i = 0; i < segCount; i++) {
     const A = pts[i], B = pts[(i + 1) % pts.length];
-    const len = Math.hypot(B.x - A.x, B.y - A.y);
+    // The true 3-D length: a raking run is longer than its shadow in plan, and
+    // an exporter that used the plan length would leave a gap at the top.
+    const len = Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z);
     if (len < 1e-6) continue;
-    const t = { x: (B.x - A.x) / len, y: (B.y - A.y) / len };
-    const s = left(t);
+    const t: Pt3 = { x: (B.x - A.x) / len, y: (B.y - A.y) / len, z: (B.z - A.z) / len };
+    const { s } = frameOf(t);
     out.push({
       start: A,
-      axis: { x: z0(t.x), y: z0(t.y), z: 0 },
-      refDir: { x: z0(s.x), y: z0(s.y), z: 0 },  // Y = axis × refDir = +Z (up)
+      axis: { x: z0(t.x), y: z0(t.y), z: z0(t.z) },
+      refDir: { x: z0(s.x), y: z0(s.y), z: z0(s.z) },  // Y = axis × refDir = the frame's up
       lengthMm: len,
     });
   }

@@ -75,6 +75,35 @@ export function uProfile(wMm: number, hMm: number, tMm: number): Pt2[] | null {
   ];
 }
 
+/**
+ * An arched panel: a w×h board whose underside is a segmental arch rising
+ * `rise` from its two bottom corners — the infill between two posts of an
+ * arcaded porch. Swept across the porch (a short path through the post line),
+ * it stands in the facade plane. A rise of w/2 is a semicircle.
+ */
+export function archProfile(wMm: number, hMm: number, riseMm: number, segments = 16): Pt2[] | null {
+  if (!(wMm > 0) || !(hMm > 0) || !(riseMm > 0)) return null;
+  const f = Math.min(riseMm, wMm / 2, hMm - 20);
+  if (!(f > 0)) return rectProfile(wMm, hMm);
+  const R = (wMm * wMm / 4 + f * f) / (2 * f);
+  const t0 = Math.asin(Math.min(1, wMm / 2 / R));
+  const n = Math.max(4, Math.floor(segments));
+  const arc: Pt2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = -t0 + (2 * t0 * i) / n;
+    arc.push({ x: R * Math.sin(t), y: f - R + R * Math.cos(t) });
+  }
+  arc[0] = { x: -wMm / 2, y: 0 };
+  arc[n] = { x: wMm / 2, y: 0 };
+  return [...arc, { x: wMm / 2, y: hMm }, { x: -wMm / 2, y: hMm }];
+}
+
+/** A triangle w wide and h high, apex up — a pediment, a gable's face. */
+export function gableProfile(wMm: number, hMm: number): Pt2[] | null {
+  if (!(wMm > 0) || !(hMm > 0)) return null;
+  return [{ x: -wMm / 2, y: 0 }, { x: wMm / 2, y: 0 }, { x: 0, y: hMm }];
+}
+
 export interface ProfileParamDescriptor {
   key: string;
   label: string;
@@ -131,6 +160,16 @@ export const PARAMETRIC_PROFILES: ParametricProfileDef[] = [
       get(p, 'p_tw_mm', 300), get(p, 'p_w_mm', 600),
       get(p, 'p_tf_mm', 150), get(p, 'p_h_mm', 400),
     ),
+  },
+  {
+    id: 'arch', label: 'Panou cu arcadă',
+    params: [P('p_w_mm', 'Deschidere', 1800), P('p_h_mm', 'Înălțime', 500), P('p_r_mm', 'Săgeata arcului', 400)],
+    build: (p) => archProfile(get(p, 'p_w_mm', 1800), get(p, 'p_h_mm', 500), get(p, 'p_r_mm', 400)),
+  },
+  {
+    id: 'gable', label: 'Fronton (triunghi)',
+    params: [P('p_w_mm', 'Bază', 3000), P('p_h_mm', 'Înălțime', 1000)],
+    build: (p) => gableProfile(get(p, 'p_w_mm', 3000), get(p, 'p_h_mm', 1000)),
   },
   {
     id: 'u', label: 'Profil U (jgheab)',
@@ -293,20 +332,31 @@ const pick = (min: number, max: number, a: 'min' | 'mid' | 'max'): number =>
  * rotation does not — ending with ensureCcw is what keeps the mesh outward.
  */
 export function applyProfilePlacement(polygon: Pt2[], intent: SweepIntent): Pt2[] {
-  let pts = intent.mirror ? polygon.map((p) => ({ x: -p.x, y: p.y })) : polygon.slice();
+  return ensureCcw(polygon.map(profilePlacementOf(polygon, intent)));
+}
 
-  if (intent.rotationDeg !== 0) {
-    const a = (intent.rotationDeg * Math.PI) / 180;
-    const c = Math.cos(a), s = Math.sin(a);
-    pts = pts.map((p) => ({ x: p.x * c - p.y * s, y: p.x * s + p.y * c }));
-  }
-
-  const b = profileBounds(pts);
+/**
+ * The placement as a point map — mirror, rotation, then the anchor shift —
+ * with the anchor measured on `polygon`, the profile's OUTER ring.
+ *
+ * A profile with holes needs this: each hole has to move exactly as the outer
+ * ring does, and re-measuring the anchor on a hole's own bounds would slide it
+ * somewhere else. Winding is the caller's to fix afterwards (a mirror flips it).
+ */
+export function profilePlacementOf(polygon: Pt2[], intent: SweepIntent): (p: Pt2) => Pt2 {
+  const a = (intent.rotationDeg * Math.PI) / 180;
+  const c = Math.cos(a), s = Math.sin(a);
+  const turn = (p: Pt2): Pt2 => {
+    const m = intent.mirror ? { x: -p.x, y: p.y } : p;
+    return intent.rotationDeg !== 0 ? { x: m.x * c - m.y * s, y: m.x * s + m.y * c } : { x: m.x, y: m.y };
+  };
+  const b = profileBounds(polygon.map(turn));
   const ax = pick(b.minX, b.maxX, intent.anchorX);
   const ay = pick(b.minY, b.maxY, intent.anchorY);
-  pts = pts.map((p) => ({ x: p.x - ax + intent.offsetXMm, y: p.y - ay }));
-
-  return ensureCcw(pts);
+  return (p) => {
+    const q = turn(p);
+    return { x: q.x - ax + intent.offsetXMm, y: q.y - ay };
+  };
 }
 
 // ─── Thumbnail ───────────────────────────────────────────────────────────────

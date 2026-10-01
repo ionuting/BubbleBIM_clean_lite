@@ -46,6 +46,12 @@ export interface FormulaContext {
   sill:          number; // mm — current sill_height
 }
 
+/**
+ * What a formula may name: the topology context above, or any other set of
+ * numbers the caller binds — a node's derived `q_*` quantities, say.
+ */
+export type FormulaVars = Partial<FormulaContext> | Readonly<Record<string, number>>;
+
 /** All context keys as array — used for whitelist regex generation. */
 const CTX_KEYS: (keyof FormulaContext)[] = [
   'wall_length','wall_height','wall_thickness',
@@ -56,8 +62,25 @@ const CTX_KEYS: (keyof FormulaContext)[] = [
 
 // ─── Safe expression evaluator ────────────────────────────────────────────────
 
-// Allowed tokens: digits, operators, parens, dot, whitespace, math names, context variable names
-const BASE_SAFE = /^[\d\s+\-*/.(),PIEsqrtabsroundflorceilminmaxtancosin_]+$/;
+/**
+ * Characters an expression may contain at all: numbers, arithmetic, and the
+ * shape of an identifier.
+ *
+ * This used to be a single character class spelled out of the letters in the
+ * math function names — `PIEsqrtabsroundfloorceil…`. Two things were wrong
+ * with it. It let through any word those letters happen to spell, `constructor`
+ * among them, so it was not the guard it looked like; and it rejected every
+ * name outside that alphabet, which quietly included `W` and `T` — the width
+ * and thickness every symbol template is written in terms of. A rejected
+ * expression returns NaN, and `evalSymExpr` reads NaN as 0, so the whole
+ * symbol library drew itself at the origin and said nothing.
+ *
+ * Identifiers are now checked by NAME instead, against the keys actually
+ * bound below. That is both stricter than the old class and correct for the
+ * names it was supposed to allow.
+ */
+const SAFE_CHARS = /^[\dA-Za-z\s+\-*/.(),_$]+$/;
+const IDENTIFIER = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
 const MATH_ENV: Record<string, number | ((...a: number[]) => number)> = {
   PI:    Math.PI,
@@ -83,7 +106,7 @@ const MATH_ENV: Record<string, number | ((...a: number[]) => number)> = {
  *   safeEval('wall_length * 0.15', { wall_length: 6000 }) // → 900
  *   safeEval('max(900, room_area * 50)', { room_area: 18.5 }) // → 925
  */
-export function safeEval(expr: string, ctx?: Partial<FormulaContext>): number {
+export function safeEval(expr: string, ctx?: FormulaVars): number {
   const s = expr.trim();
   if (!s) return NaN;
 
@@ -91,8 +114,7 @@ export function safeEval(expr: string, ctx?: Partial<FormulaContext>): number {
   const plain = Number(s);
   if (!isNaN(plain)) return plain;
 
-  // Whitelist check — allow context variable names (alphanumeric + underscore)
-  if (!BASE_SAFE.test(s.replace(/\s/g, ''))) return NaN;
+  if (!SAFE_CHARS.test(s)) return NaN;
 
   try {
     const envKeys   = Object.keys(MATH_ENV);
@@ -100,6 +122,14 @@ export function safeEval(expr: string, ctx?: Partial<FormulaContext>): number {
     const ctxEntries = ctx ? Object.entries(ctx).filter(([, v]) => typeof v === 'number') : [];
     const ctxKeys   = ctxEntries.map(([k]) => k);
     const ctxVals   = ctxEntries.map(([, v]) => v);
+
+    // Every name in the expression has to be one we are about to bind.
+    // Anything else would resolve against the global scope inside `Function`.
+    const bound = new Set([...envKeys, ...ctxKeys]);
+    for (const name of s.match(IDENTIFIER) ?? []) {
+      if (!bound.has(name)) return NaN;
+    }
+
     const allKeys   = [...envKeys, ...ctxKeys].join(',');
     const allVals   = [...envVals, ...ctxVals];
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
@@ -117,7 +147,7 @@ export function safeEval(expr: string, ctx?: Partial<FormulaContext>): number {
  */
 export function evalProp(
   raw: string | number | null | undefined,
-  ctx?: Partial<FormulaContext>,
+  ctx?: FormulaVars,
   fallback = NaN,
 ): number {
   if (raw == null || raw === '') return fallback;

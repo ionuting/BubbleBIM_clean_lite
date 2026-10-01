@@ -20,31 +20,24 @@ import { cn } from '@/lib/utils';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { useBubbleGraphStore } from '@/store';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
-import { computeSectionView, type DrawingResult, type DrawingShape, type SectionCut } from '@/lib/drawingEngine';
+import { computeSectionView, type DrawingResult, type SectionCut } from '@/lib/drawingEngine';
+import { useOgProjection } from '@/hooks/useOgProjection';
+import { drawingStyle, fitScale } from '@/lib/drawingStyle';
+import { autoDimensions, dimensionReach } from '@/lib/drawingDimensions';
+import { drawingToDxf } from '@/lib/dxfExport';
+import { downloadText, safeFilename } from '@/lib/download';
 import { resolveSectionCut, type DepthMode } from '@/lib/sectionFromPlan';
 import { SvgHatchDefs } from './SvgHatches';
+import { buildDrawingSvg, sheetBounds } from './drawingSvg';
+import { AnnotationToolbar, DrawingAnnotationLayer } from './DrawingAnnotations';
+import type { SvgAnnotationTool } from './SvgAnnotationLayer';
+import { clientToSvgUserPoint } from '@/lib/svgCoordinates';
 import { useFitToContent } from '@/hooks/useFitToContent';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PAD = 60;     // padding in drawing-space mm
-const TILE = 6;     // hatch tile size in drawing-space mm
-
-// Stroke widths per line-weight category (drawing-space mm)
-const LW: Record<DrawingShape['lineWeight'], number> = {
-  'heavy-cut':  0.6,
-  'medium-cut': 0.4,
-  'projected':  0.25,
-  'annotation': 0.2,
-  'hidden':     0.15,
-};
-const DASH: Record<DrawingShape['lineWeight'], string | undefined> = {
-  'heavy-cut':  undefined,
-  'medium-cut': undefined,
-  'projected':  undefined,
-  'annotation': undefined,
-  'hidden':     '3 2',
-};
+/** Hatch tile, in paper millimetres — the pattern is a paper size like a pen. */
+const HATCH_TILE_MM = 2.5;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +51,10 @@ export interface Section2DViewerProps {
   sectionNodeId?: string;
   className?: string;
   embedded?: boolean;
+  /** How the drawing looks — lib/drawing/graphicStyle (color, technical, poche, presentation). */
+  graphicStyle?: string;
+  /** The view's own annotation key (lib/views/drawingViews); absent → the key this drawing used before views. */
+  annotationKey?: string;
 }
 
 /** "N", "SE", … for the overlay: which way the viewer looks. */
@@ -79,6 +76,8 @@ export function Section2DViewer({
   sectionNodeId,
   className,
   embedded = false,
+  annotationKey,
+  graphicStyle,
 }: Section2DViewerProps) {
   // Live params from the section node; props only when there is no node.
   const sectionNode = sectionNodeId ? nodes.find((n) => n.id === sectionNodeId) : undefined;
@@ -111,36 +110,44 @@ export function Section2DViewer({
 
   // Frame the drawing when the view opens (or switches to another section).
   useFitToContent({
-    svgRef, containerRef, setZoom, setPan, enabled: !embedded,
+    svgRef, containerRef, setZoom, setPan,
     viewKey: sectionNodeId ?? `${cutYProp}:${cutDepth}`,
   });
 
-  // ── Elevation range ────────────────────────────────────────────────────
-  const storeys = useMemo(() => nodes.filter((n) => n.type === 'storey'), [nodes]);
-  const elevMin = startElev ?? (storeys.length
-    ? Math.min(0, ...storeys.map((s) => Number(s.properties.bottomElevation ?? 0)))
-    : 0);
-  const elevMax = endElev ?? (storeys.length
-    ? Math.max(3000, ...storeys.map((s) => Number(s.properties.topElevation ?? 3000)))
-    : 3000);
-
   // ── Geometry from engine ───────────────────────────────────────────────
+  // No explicit vertical range means no clipping: a section that stopped at
+  // the top storey would cut the roof off the drawing.
   const cut: SectionCut = useMemo(() => spec
-    ? { line: spec.line, lookSide: spec.lookSide, cutDepth, clipToLine: spec.clipToMarker, elevMin, elevMax }
-    : { cutY: cutYProp, cutDepth, elevMin, elevMax },
-  [spec, cutDepth, cutYProp, elevMin, elevMax]);
+    ? { line: spec.line, lookSide: spec.lookSide, cutDepth, clipToLine: spec.clipToMarker, elevMin: startElev, elevMax: endElev }
+    : { cutY: cutYProp, cutDepth, elevMin: startElev, elevMax: endElev },
+  [spec, cutDepth, cutYProp, startElev, endElev]);
+  // Beyond the cut: the kernel's exact outlines with our own hidden-line
+  // removal on top, once they arrive. The cut itself is always the engine's.
+  const [ogOutlines, setOgOutlines] = useState(true);
+  const ogLines = useOgProjection(ogOutlines, nodes, edges, matConfig, cut);
   const drawing: DrawingResult = useMemo(
-    () => computeSectionView(nodes, edges, matConfig, cut),
-    [nodes, edges, matConfig, cut],
+    () => computeSectionView(nodes, edges, matConfig, cut, ogLines ? { outlines: ogLines } : undefined),
+    [nodes, edges, matConfig, cut, ogLines],
   );
 
-  // ── SVG bounds (drawing-space mm, padded) ──────────────────────────────
-  const uMin = drawing.uMin - PAD;
-  const uMax = drawing.uMax + PAD;
-  const vMin = drawing.vMin - PAD;
-  const vMax = drawing.vMax + PAD;
-  const drawW = Math.max(uMax - uMin, 1);
-  const drawH = Math.max(vMax - vMin, 1);
+  // ── Scale and sheet bounds ─────────────────────────────────────────────
+  // The drawing picks the standard scale it fits a sheet at; every pen width
+  // and text height then follows from that, in paper millimetres.
+  const style = useMemo(
+    () => drawingStyle(fitScale(drawing.uMax - drawing.uMin, drawing.vMax - drawing.vMin), graphicStyle),
+    [drawing.uMax, drawing.uMin, drawing.vMax, drawing.vMin, graphicStyle],
+  );
+  // The chains the drawing dimensions itself with, and the room they need.
+  const [showDims, setShowDims] = useState(true);
+  const dimensions = useMemo(
+    () => (showDims ? autoDimensions(drawing, style) : []),
+    [showDims, drawing, style],
+  );
+  const bounds = useMemo(
+    () => sheetBounds(drawing, style, dimensionReach(dimensions, drawing)),
+    [drawing, style, dimensions],
+  );
+  const { uMin, vMin, width: drawW, height: drawH } = bounds;
 
   // toX / toY: drawing-space mm → SVG px (1:1 in viewBox, Y-flipped). The
   // engine already hands back u with the viewer's right positive, so no mirror.
@@ -148,148 +155,23 @@ export function Section2DViewer({
   const toY = useCallback((v: number) => drawH - (v - vMin), [drawH, vMin]);
 
   // ── Build SVG elements ─────────────────────────────────────────────────
-  const svgShapes = useMemo(() => {
-    const els: React.ReactElement[] = [];
+  const svgShapes = useMemo(
+    () => buildDrawingSvg({ drawing, style, bounds, toX, toY, dimensions }),
+    [drawing, style, bounds, toX, toY, dimensions],
+  );
 
-    // Ground / earth fill below elevation 0
-    if (vMin < 0) {
-      const gx0 = toX(drawing.uMin - PAD * 0.5);
-      const gx1 = toX(drawing.uMax + PAD * 0.5);
-      const gy0 = toY(0);
-      const gy1 = toY(vMin);
-      els.push(
-        <rect key="earth-bg" x={Math.min(gx0, gx1)} y={gy0}
-          width={Math.abs(gx1 - gx0)} height={gy1 - gy0}
-          fill="#c4a882" opacity={0.18} />,
-        <line key="ground-line"
-          x1={Math.min(gx0, gx1)} y1={gy0}
-          x2={Math.max(gx0, gx1)} y2={gy0}
-          stroke="#8B5E3C" strokeWidth={LW['heavy-cut'] * 1.5} />,
-      );
-    }
-
-    // Axis grid lines
-    for (const ax of drawing.axes) {
-      const x = toX(ax.u);
-      const y0 = toY(vMax - PAD * 0.3);
-      const y1 = toY(vMin + PAD * 0.3);
-      els.push(
-        <line key={`ax-${ax.u}`} x1={x} y1={y0} x2={x} y2={y1}
-          stroke="#d946ef" strokeWidth={LW['annotation'] * 0.9}
-          strokeDasharray="5 3" opacity={0.4} />,
-      );
-      // Axis bubble at bottom
-      const cy = toY(vMin + PAD * 0.5);
-      const r = PAD * 0.2;
-      els.push(
-        <g key={`axlb-${ax.u}`}>
-          <circle cx={x} cy={cy} r={r}
-            fill="white" stroke="#d946ef" strokeWidth={LW['annotation']} opacity={0.7} />
-          <text x={x} y={cy} textAnchor="middle" dominantBaseline="central"
-            fontSize={r * 1.1} fontFamily="sans-serif" fill="#9d00c4" fontWeight="500">
-            {ax.label}
-          </text>
-        </g>,
-      );
-    }
-
-    // Storey level lines (thin dashed)
-    const drawnLevels = new Set<number>();
-    for (const lv of drawing.levels) {
-      if (drawnLevels.has(lv.vMm)) continue;
-      drawnLevels.add(lv.vMm);
-      const y = toY(lv.vMm);
-      const x0 = toX(drawing.uMin - PAD * 0.3);
-      const x1 = toX(drawing.uMax + PAD * 0.3);
-      els.push(
-        <line key={`lv-${lv.vMm}`} x1={Math.min(x0, x1)} y1={y} x2={Math.max(x0, x1)} y2={y}
-          stroke="#94a3b8" strokeWidth={LW['annotation']}
-          strokeDasharray="10 4" opacity={0.5} />,
-      );
-    }
-
-    // ── Main geometry shapes (sorted back→front by engine) ─────────────
-    // Grouped so useFitToContent frames the BUILDING rather than the
-    // full-range chrome (earth fill, axis grid, level lines), which spans
-    // the section's whole elevation range. Drawing order is unchanged.
-    const shapeEls: React.ReactElement[] = [];
-    for (let i = 0; i < drawing.shapes.length; i++) {
-      const sh = drawing.shapes[i];
-      if (sh.pts.length < 2) continue;
-
-      const xs = sh.pts.map((p) => toX(p.u));
-      const ys = sh.pts.map((p) => toY(p.v));
-      const points = xs.map((x, j) => `${x.toFixed(2)},${ys[j].toFixed(2)}`).join(' ');
-      const sw = LW[sh.lineWeight];
-      const isProj = sh.lineWeight === 'projected' || sh.lineWeight === 'hidden';
-
-      if (sh.closed && sh.pts.length >= 3) {
-        // 1. Solid fill background
-        if (sh.fillColor && sh.fillColor !== 'none') {
-          shapeEls.push(
-            <polygon key={`bg-${i}`} points={points}
-              fill={sh.fillColor} opacity={isProj ? 0.35 : 0.9} />,
-          );
-        }
-        // 2. Hatch overlay (pattern uses currentColor = strokeColor)
-        if (sh.hatch && sh.hatch !== 'none' && sh.hatch !== 'solid') {
-          shapeEls.push(
-            <polygon key={`ht-${i}`} points={points}
-              fill={`url(#hatch-${sh.hatch})`}
-              color={sh.strokeColor}
-              opacity={isProj ? 0.25 : 0.5} />,
-          );
-        }
-        // 3. Outline
-        shapeEls.push(
-          <polygon key={`ol-${i}`} points={points}
-            fill="none"
-            stroke={sh.strokeColor}
-            strokeWidth={sw}
-            strokeDasharray={DASH[sh.lineWeight]}
-            opacity={isProj ? 0.55 : 1} />,
-        );
-      } else {
-        // Open polyline
-        const d = `M ${xs[0].toFixed(2)},${ys[0].toFixed(2)} ` +
-          xs.slice(1).map((x, j) => `L ${x.toFixed(2)},${ys[j + 1].toFixed(2)}`).join(' ');
-        shapeEls.push(
-          <path key={`ln-${i}`} d={d}
-            fill="none"
-            stroke={sh.strokeColor}
-            strokeWidth={sw}
-            strokeDasharray={DASH[sh.lineWeight]} />,
-        );
-      }
-    }
-    els.push(<g key="geom" data-fit-target="">{shapeEls}</g>);
-
-    // ── Elevation dimension bar (right side) ───────────────────────────
-    {
-      const barX = toX(drawing.uMax + PAD * 0.55);
-      const seen = new Set<number>();
-      for (const lv of drawing.levels) {
-        if (seen.has(lv.vMm)) continue;
-        seen.add(lv.vMm);
-        const y = toY(lv.vMm);
-        const tk = PAD * 0.08;
-        els.push(
-          <line key={`tk-${lv.vMm}`}
-            x1={barX - tk} y1={y} x2={barX + tk} y2={y}
-            stroke="#64748b" strokeWidth={LW['annotation']} />,
-          <text key={`tv-${lv.vMm}`}
-            x={barX + tk * 1.5} y={y}
-            textAnchor="start" dominantBaseline="central"
-            fontSize={PAD * 0.2} fontFamily="monospace" fill="#475569">
-            {lv.label}
-          </text>,
-        );
-      }
-    }
-
-    return els;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing, toX, toY, uMin, uMax, vMin, vMax, drawW, drawH]);
+  // ── Annotations ────────────────────────────────────────────────────────
+  // Logical coordinates here are the drawing's own (u, v) in model mm, so an
+  // annotation stays where it was put when the section is redrawn at another
+  // extent — the bounds move, the drawing coordinates do not.
+  const [annTool, setAnnTool] = useState<SvgAnnotationTool | null>(null);
+  const annViewId = annotationKey ?? `section:${sectionNodeId ?? `y${cutYProp}`}`;
+  const toSvgPt = useCallback((u: number, v: number) => ({ x: toX(u), y: toY(v) }), [toX, toY]);
+  const fromSvgEvent = useCallback((e: { clientX: number; clientY: number }) => {
+    const p = clientToSvgUserPoint(svgRef.current, e.clientX, e.clientY);
+    if (!p) return { x: 0, y: 0 };
+    return { x: p.x + uMin, y: vMin + (drawH - p.y) };
+  }, [uMin, vMin, drawH]);
 
   // ── Pan / zoom events ──────────────────────────────────────────────────
   useEffect(() => {
@@ -314,8 +196,11 @@ export function Section2DViewer({
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging) return;
-    setPan((p) => ({ x: p.x + e.clientX - lastPos.current.x, y: p.y + e.clientY - lastPos.current.y }));
+    // The delta is taken NOW: the updater may run at the next render, by
+    // which time `lastPos` already holds this event and the move is zero.
+    const dx = e.clientX - lastPos.current.x, dy = e.clientY - lastPos.current.y;
     lastPos.current = { x: e.clientX, y: e.clientY };
+    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
   }, [dragging]);
 
   const onMouseUp = useCallback(() => setDragging(false), []);
@@ -342,14 +227,58 @@ export function Section2DViewer({
         }}
         preserveAspectRatio="xMidYMid meet"
       >
-        <SvgHatchDefs tileSize={TILE} />
+        <SvgHatchDefs tileSize={style.paper(HATCH_TILE_MM)} />
         {svgShapes}
+        <DrawingAnnotationLayer
+          viewId={annViewId}
+          style={style}
+          drawing={drawing}
+          activeTool={embedded ? null : annTool}
+          toSvg={toSvgPt}
+          fromSvgEvent={fromSvgEvent}
+        />
       </svg>
 
       {!embedded && (
         <>
-          <div className="absolute bottom-3 left-3 text-[10px] text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded border border-border/40">
-            {Math.round(zoom * 100)}%
+          <AnnotationToolbar
+            viewId={annViewId} activeTool={annTool} onToolChange={setAnnTool}
+            leading={<>
+              <button
+                title="Cote automate — axe și niveluri"
+                onClick={() => setShowDims((v) => !v)}
+                className={cn(
+                  'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none',
+                  showDims ? 'bg-slate-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >⟺</button>
+              <button
+                title={ogOutlines
+                  ? (ogLines ? 'Dincolo de tăietură: contur exact + linii ascunse — ce stă în spatele altui element nu se mai vede prin el' : 'Se calculează conturul exact și liniile ascunse…')
+                  : 'Dincolo de tăietură: contur încadrător, fără eliminarea liniilor ascunse'}
+                onClick={() => setOgOutlines((v) => !v)}
+                className={cn(
+                  'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+                  ogOutlines ? (ogLines ? 'bg-emerald-700 text-white' : 'bg-emerald-700/50 text-white') : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >OG</button>
+            </>}
+            trailing={
+              <button
+                title="Export DXF — geometrie, axe, niveluri și cote, pe straturi"
+                onClick={() => downloadText(
+                  safeFilename(sectionNode?.name ?? 'sectiune', 'dxf'),
+                  drawingToDxf(drawing, style, { dimensions }),
+                  'image/vnd.dxf',
+                )}
+                className="w-6 h-6 flex items-center justify-center text-[10px] rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+              >DXF</button>
+            }
+          />
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded border border-border/40">
+            <span title="Scara la care e desenată — grosimile de linie o urmează">{style.label}</span>
+            <span className="opacity-40">·</span>
+            <span>{Math.round(zoom * 100)}%</span>
           </div>
           <div className="absolute top-2 left-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-background/70 px-2 py-1 rounded border border-border/40">
             <span className="pointer-events-none">

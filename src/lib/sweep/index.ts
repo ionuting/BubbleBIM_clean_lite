@@ -21,12 +21,15 @@ import {
 } from './rings';
 import { resolveSweepProfile, type SweepProfileResolver } from './profileLibrary';
 import { parseSweepIntent, type SweepResult } from './types';
+import { roleOrientationDiagnostic, sweepRole } from './roles';
 
 export * from './types';
 export * from './profiles';
 export * from './path';
 export * from './rings';
 export * from './profileLibrary';
+export * from './roles';
+export * from './detailTypes';
 export { sweepBufferGeometry } from './mesh';
 
 export function computeSweep(
@@ -56,6 +59,12 @@ export function computeSweep(
     const { path, diagnostics: pathDiags } = resolveSweepPath(node, nodeMap, edges, intent);
     result.path = path;
     result.diagnostics.push(...pathDiags);
+
+    // A declared role knows which way it ought to run; the geometry does not.
+    if (path) {
+      const roleDiag = roleOrientationDiagnostic(sweepRole(node), path.kind);
+      if (roleDiag) result.diagnostics.push(roleDiag);
+    }
 
     const { profile, diagnostics: profDiags } = resolveProfile(intent.profileId, intent.params);
     result.profile = profile;

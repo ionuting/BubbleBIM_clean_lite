@@ -13,30 +13,29 @@ import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils';
 import type { BubbleGraphNode, BubbleGraphEdge } from '@/store';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
-import { computeElevationView, type DrawingResult, type DrawingShape, type ElevationDir } from '@/lib/drawingEngine';
+import { computeElevationView, elevationCut, type DrawingResult, type ElevationDir } from '@/lib/drawingEngine';
+import { useOgProjection } from '@/hooks/useOgProjection';
+import { TEXT, drawingStyle, fitScale } from '@/lib/drawingStyle';
+import { autoDimensions, dimensionReach } from '@/lib/drawingDimensions';
+import { drawingToDxf } from '@/lib/dxfExport';
+import { downloadText, safeFilename } from '@/lib/download';
 import { SvgHatchDefs } from './SvgHatches';
+import { buildDrawingSvg, sheetBounds } from './drawingSvg';
+import { AnnotationToolbar, DrawingAnnotationLayer } from './DrawingAnnotations';
+import type { SvgAnnotationTool } from './SvgAnnotationLayer';
+import { clientToSvgUserPoint } from '@/lib/svgCoordinates';
 import { useFitToContent } from '@/hooks/useFitToContent';
 
 export type { ElevationDir };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PAD  = 60;
-const TILE = 6;
+/** Hatch tile, in paper millimetres — the pattern is a paper size like a pen. */
+const HATCH_TILE_MM = 2.5;
 
-const LW: Record<DrawingShape['lineWeight'], number> = {
-  'heavy-cut':  0.6,
-  'medium-cut': 0.4,
-  'projected':  0.25,
-  'annotation': 0.2,
-  'hidden':     0.15,
-};
-const DASH: Record<DrawingShape['lineWeight'], string | undefined> = {
-  'heavy-cut':  undefined,
-  'medium-cut': undefined,
-  'projected':  undefined,
-  'annotation': undefined,
-  'hidden':     '3 2',
+const DIR_LABEL: Record<ElevationDir, string> = {
+  N: 'Fațada nord', S: 'Fațada sud',
+  E: 'Fațada est',  W: 'Fațada vest',
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -49,6 +48,10 @@ export interface Elevation2DViewerProps {
   endElevation?: number;
   className?: string;
   embedded?: boolean;
+  /** How the drawing looks — lib/drawing/graphicStyle (color, technical, poche, presentation). */
+  graphicStyle?: string;
+  /** The view's own annotation key (lib/views/drawingViews); absent → the key this drawing used before views. */
+  annotationKey?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -61,6 +64,8 @@ export function Elevation2DViewer({
   endElevation,
   className,
   embedded = false,
+  annotationKey,
+  graphicStyle,
 }: Elevation2DViewerProps) {
   const { config: matConfig } = useMaterialConfig();
 
@@ -73,175 +78,70 @@ export function Elevation2DViewer({
 
   // Frame the facade when the view opens (or switches to another direction).
   useFitToContent({
-    svgRef, containerRef, setZoom, setPan, enabled: !embedded,
+    svgRef, containerRef, setZoom, setPan,
     viewKey: viewDirection,
   });
 
   // ── Geometry from engine ───────────────────────────────────────────────
+  // The kernel's exact outlines with our own hidden-line removal on top,
+  // once they have arrived; until then the engine's own facade, as before.
+  const [ogOutlines, setOgOutlines] = useState(true);
+  const cut = useMemo(
+    () => elevationCut(nodes, viewDirection, startElevation, endElevation),
+    [nodes, viewDirection, startElevation, endElevation],
+  );
+  const ogLines = useOgProjection(ogOutlines, nodes, edges, matConfig, cut);
   const drawing: DrawingResult = useMemo(() => computeElevationView(
     nodes, edges, matConfig, viewDirection, startElevation, endElevation,
-  ), [nodes, edges, matConfig, viewDirection, startElevation, endElevation]);
+    ogLines ? { outlines: ogLines } : undefined,
+  ), [nodes, edges, matConfig, viewDirection, startElevation, endElevation, ogLines]);
 
-  // ── SVG bounds ─────────────────────────────────────────────────────────
-  const uMin  = drawing.uMin  - PAD;
-  const uMax  = drawing.uMax  + PAD;
-  const vMin  = drawing.vMin  - PAD;
-  const vMax  = drawing.vMax  + PAD;
-  const drawW = Math.max(uMax - uMin, 1);
-  const drawH = Math.max(vMax - vMin, 1);
+  // ── Scale and sheet bounds ─────────────────────────────────────────────
+  // The facade picks the standard scale it fits a sheet at; every pen width
+  // and text height then follows from that, in paper millimetres.
+  const style = useMemo(
+    () => drawingStyle(fitScale(drawing.uMax - drawing.uMin, drawing.vMax - drawing.vMin), graphicStyle),
+    [drawing.uMax, drawing.uMin, drawing.vMax, drawing.vMin, graphicStyle],
+  );
+  // A facade also dimensions its own openings — the row a bricklayer sets out
+  // from — nearest the drawing, under the axis grid.
+  const [showDims, setShowDims] = useState(true);
+  const dimensions = useMemo(
+    () => (showDims ? autoDimensions(drawing, style, { openings: true }) : []),
+    [showDims, drawing, style],
+  );
+  const bounds = useMemo(
+    () => sheetBounds(drawing, style, dimensionReach(dimensions, drawing)),
+    [drawing, style, dimensions],
+  );
+  const { uMin, uMax, vMin, vMax, width: drawW, height: drawH } = bounds;
 
   const toX = useCallback((u: number) => u - uMin, [uMin]);
   const toY = useCallback((v: number) => drawH - (v - vMin), [drawH, vMin]);
 
   // ── Build SVG elements ─────────────────────────────────────────────────
-  const svgShapes = useMemo(() => {
-    const els: React.ReactElement[] = [];
+  const svgShapes = useMemo(() => [
+    ...buildDrawingSvg({ drawing, style, bounds, toX, toY, dimensions }),
+    // Which facade this is, over the drawing.
+    <text key="dir-lbl"
+      x={toX((uMin + uMax) / 2)} y={toY(vMax - style.paper(4))}
+      textAnchor="middle" dominantBaseline="central"
+      fontSize={style.text(TEXT.large)} fontFamily="sans-serif" fontWeight="600" fill="#475569">
+      {DIR_LABEL[viewDirection]}
+    </text>,
+  ], [drawing, style, bounds, toX, toY, uMin, uMax, vMax, viewDirection, dimensions]);
 
-    // Ground line + earth hatch
-    const gx0 = toX(uMin);
-    const gx1 = toX(uMax);
-    const gy0 = toY(0);
-    els.push(
-      <line key="ground" x1={gx0} y1={gy0} x2={gx1} y2={gy0}
-        stroke="#8B5E3C" strokeWidth={LW['heavy-cut'] * 1.5} />,
-    );
-    if (vMin < 0) {
-      els.push(
-        <rect key="earth" x={gx0} y={gy0} width={gx1 - gx0} height={toY(vMin) - gy0}
-          fill="#c4a882" opacity={0.18} />,
-      );
-    }
-
-    // Axis grid lines
-    for (const ax of drawing.axes) {
-      const x = toX(ax.u);
-      const y0 = toY(vMax - PAD * 0.3);
-      const y1 = toY(vMin + PAD * 0.3);
-      els.push(
-        <line key={`ax-${ax.u}`} x1={x} y1={y0} x2={x} y2={y1}
-          stroke="#d946ef" strokeWidth={LW['annotation'] * 0.9}
-          strokeDasharray="5 3" opacity={0.4} />,
-      );
-      const cy = toY(vMin + PAD * 0.5);
-      const r  = PAD * 0.2;
-      els.push(
-        <g key={`axlb-${ax.u}`}>
-          <circle cx={x} cy={cy} r={r}
-            fill="white" stroke="#d946ef" strokeWidth={LW['annotation']} opacity={0.7} />
-          <text x={x} y={cy} textAnchor="middle" dominantBaseline="central"
-            fontSize={r * 1.1} fontFamily="sans-serif" fill="#9d00c4" fontWeight="500">
-            {ax.label}
-          </text>
-        </g>,
-      );
-    }
-
-    // Storey level lines
-    const drawnLevels = new Set<number>();
-    for (const lv of drawing.levels) {
-      if (drawnLevels.has(lv.vMm)) continue;
-      drawnLevels.add(lv.vMm);
-      const y  = toY(lv.vMm);
-      const x0 = toX(uMin + PAD * 0.3);
-      const x1 = toX(uMax - PAD * 0.3);
-      els.push(
-        <line key={`lv-${lv.vMm}`} x1={x0} y1={y} x2={x1} y2={y}
-          stroke="#94a3b8" strokeWidth={LW['annotation']}
-          strokeDasharray="10 4" opacity={0.45} />,
-      );
-    }
-
-    // ── Main geometry ──────────────────────────────────────────────────
-    // Collected into its own group (rather than straight into `els`) so
-    // useFitToContent can frame the BUILDING: the surrounding chrome — earth
-    // fill, axis grid, level lines — spans the view's full elevation range,
-    // which for the default facades is −5000…15000 mm regardless of how tall
-    // the building actually is. Drawing order is unchanged: the group sits
-    // exactly where these shapes were pushed.
-    const shapeEls: React.ReactElement[] = [];
-    for (let i = 0; i < drawing.shapes.length; i++) {
-      const sh = drawing.shapes[i];
-      if (sh.pts.length < 2) continue;
-
-      const xs = sh.pts.map((p) => toX(p.u));
-      const ys = sh.pts.map((p) => toY(p.v));
-      const points = xs.map((x, j) => `${x.toFixed(2)},${ys[j].toFixed(2)}`).join(' ');
-      const sw = LW[sh.lineWeight];
-      const isProj = sh.lineWeight === 'projected' || sh.lineWeight === 'hidden';
-
-      if (sh.closed && sh.pts.length >= 3) {
-        if (sh.fillColor && sh.fillColor !== 'none') {
-          shapeEls.push(
-            <polygon key={`bg-${i}`} points={points}
-              fill={sh.fillColor} opacity={isProj ? 0.4 : 0.85} />,
-          );
-        }
-        if (sh.hatch && sh.hatch !== 'none' && sh.hatch !== 'solid') {
-          shapeEls.push(
-            <polygon key={`ht-${i}`} points={points}
-              fill={`url(#hatch-${sh.hatch})`}
-              color={sh.strokeColor}
-              opacity={isProj ? 0.2 : 0.45} />,
-          );
-        }
-        shapeEls.push(
-          <polygon key={`ol-${i}`} points={points}
-            fill="none"
-            stroke={sh.strokeColor}
-            strokeWidth={sw}
-            strokeDasharray={DASH[sh.lineWeight]}
-            opacity={isProj ? 0.55 : 1} />,
-        );
-      } else {
-        const d = `M ${xs[0].toFixed(2)},${ys[0].toFixed(2)} ` +
-          xs.slice(1).map((x, j) => `L ${x.toFixed(2)},${ys[j + 1].toFixed(2)}`).join(' ');
-        shapeEls.push(
-          <path key={`ln-${i}`} d={d}
-            fill="none" stroke={sh.strokeColor}
-            strokeWidth={sw} strokeDasharray={DASH[sh.lineWeight]} />,
-        );
-      }
-    }
-    els.push(<g key="geom" data-fit-target="">{shapeEls}</g>);
-
-    // ── Elevation dimension bar (right) ────────────────────────────────
-    const barX = toX(drawing.uMax + PAD * 0.55);
-    const seen = new Set<number>();
-    for (const lv of drawing.levels) {
-      if (seen.has(lv.vMm)) continue;
-      seen.add(lv.vMm);
-      const y  = toY(lv.vMm);
-      const tk = PAD * 0.08;
-      els.push(
-        <line key={`tk-${lv.vMm}`}
-          x1={barX - tk} y1={y} x2={barX + tk} y2={y}
-          stroke="#64748b" strokeWidth={LW['annotation']} />,
-        <text key={`tv-${lv.vMm}`}
-          x={barX + tk * 1.5} y={y}
-          textAnchor="start" dominantBaseline="central"
-          fontSize={PAD * 0.2} fontFamily="monospace" fill="#475569">
-          {lv.label}
-        </text>,
-      );
-    }
-
-    // View direction label
-    const dirLabel: Record<ElevationDir, string> = {
-      N: 'North Elevation', S: 'South Elevation',
-      E: 'East Elevation',  W: 'West Elevation',
-    };
-    els.push(
-      <text key="dir-lbl"
-        x={toX((uMin + uMax) / 2)} y={toY(vMax - PAD * 0.3)}
-        textAnchor="middle" dominantBaseline="central"
-        fontSize={PAD * 0.28} fontFamily="sans-serif" fontWeight="600" fill="#475569">
-        {dirLabel[viewDirection]}
-      </text>,
-    );
-
-    return els;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing, viewDirection, toX, toY, uMin, uMax, vMin, vMax, drawH]);
+  // ── Annotations ────────────────────────────────────────────────────────
+  // Logical coordinates here are the drawing's own (u, v) in model mm, so an
+  // annotation stays on the facade when the drawing is reframed.
+  const [annTool, setAnnTool] = useState<SvgAnnotationTool | null>(null);
+  const annViewId = annotationKey ?? `elevation:${viewDirection}`;
+  const toSvgPt = useCallback((u: number, v: number) => ({ x: toX(u), y: toY(v) }), [toX, toY]);
+  const fromSvgEvent = useCallback((e: { clientX: number; clientY: number }) => {
+    const p = clientToSvgUserPoint(svgRef.current, e.clientX, e.clientY);
+    if (!p) return { x: 0, y: 0 };
+    return { x: p.x + uMin, y: vMin + (drawH - p.y) };
+  }, [uMin, vMin, drawH]);
 
   // ── Wheel zoom ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -266,8 +166,11 @@ export function Elevation2DViewer({
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging) return;
-    setPan((p) => ({ x: p.x + e.clientX - lastPos.current.x, y: p.y + e.clientY - lastPos.current.y }));
+    // The delta is taken NOW: the updater may run at the next render, by
+    // which time `lastPos` already holds this event and the move is zero.
+    const dx = e.clientX - lastPos.current.x, dy = e.clientY - lastPos.current.y;
     lastPos.current = { x: e.clientX, y: e.clientY };
+    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
   }, [dragging]);
 
   const onMouseUp = useCallback(() => setDragging(false), []);
@@ -294,14 +197,58 @@ export function Elevation2DViewer({
         }}
         preserveAspectRatio="xMidYMid meet"
       >
-        <SvgHatchDefs tileSize={TILE} />
+        <SvgHatchDefs tileSize={style.paper(HATCH_TILE_MM)} />
         {svgShapes}
+        <DrawingAnnotationLayer
+          viewId={annViewId}
+          style={style}
+          drawing={drawing}
+          activeTool={embedded ? null : annTool}
+          toSvg={toSvgPt}
+          fromSvgEvent={fromSvgEvent}
+        />
       </svg>
 
       {!embedded && (
         <>
-          <div className="absolute bottom-3 left-3 text-[10px] text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded border border-border/40">
-            {Math.round(zoom * 100)}%
+          <AnnotationToolbar
+            viewId={annViewId} activeTool={annTool} onToolChange={setAnnTool}
+            leading={<>
+              <button
+                title="Cote automate — goluri, axe și niveluri"
+                onClick={() => setShowDims((v) => !v)}
+                className={cn(
+                  'w-6 h-6 flex items-center justify-center text-xs rounded transition-colors select-none',
+                  showDims ? 'bg-slate-600 text-white' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >⟺</button>
+              <button
+                title={ogOutlines
+                  ? (ogLines ? 'Contur exact + linii ascunse: silueta reală a fiecărui element (cu goluri), iar ce stă în spatele altui element nu se mai vede prin el' : 'Se calculează conturul exact și liniile ascunse…')
+                  : 'Contur încadrător, fără eliminarea liniilor ascunse'}
+                onClick={() => setOgOutlines((v) => !v)}
+                className={cn(
+                  'h-6 px-1.5 flex items-center justify-center text-[10px] rounded transition-colors select-none',
+                  ogOutlines ? (ogLines ? 'bg-emerald-700 text-white' : 'bg-emerald-700/50 text-white') : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >OG</button>
+            </>}
+            trailing={
+              <button
+                title="Export DXF — geometrie, axe, niveluri și cote, pe straturi"
+                onClick={() => downloadText(
+                  safeFilename(DIR_LABEL[viewDirection], 'dxf'),
+                  drawingToDxf(drawing, style, { dimensions }),
+                  'image/vnd.dxf',
+                )}
+                className="w-6 h-6 flex items-center justify-center text-[10px] rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+              >DXF</button>
+            }
+          />
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded border border-border/40">
+            <span title="Scara la care e desenată — grosimile de linie o urmează">{style.label}</span>
+            <span className="opacity-40">·</span>
+            <span>{Math.round(zoom * 100)}%</span>
           </div>
           <div className="absolute bottom-3 right-3 text-[10px] text-muted-foreground pointer-events-none">
             Shift+drag — pan · Scroll — zoom

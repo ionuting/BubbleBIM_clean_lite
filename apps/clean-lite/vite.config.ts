@@ -4,13 +4,14 @@
  * Included:
  *  - Graph editor (storeys, nodes, edges)
  *  - OpenGeometry 3D (single 3D engine)
- *  - Floor plans, sections, elevations (SVG)
+ *  - Floor plans, sections, elevations — OpenGeometry drawings by default,
+ *    the classic SVG engine one click away (lib/views/drawingViews)
  *  - World (Cesium), Terrain (Babylon), Sheets
  *  - English locale (element library + material catalogue)
  *
  * Excluded (stubs / hidden UI):
  *  - Ara3D, WebIfc / That Open, IFC Tiles, IFC Plan
- *  - OG 2D duplicate views, Composer, engine switcher
+ *  - Composer, 3D engine switcher
  *  - Armare 2D (rebar) — RebarPanel / RebarLayer / @armare/nucleu
  *  - Quantities / takeoff / schedules / cost panel
  *
@@ -44,8 +45,6 @@ export default defineConfig({
         replacement: path.resolve(root, 'src/stubs/IFCTilesViewer.stub.tsx') },
       { find: /^@\/components\/views\/BabylonViewer$/,
         replacement: path.resolve(root, 'src/stubs/BabylonViewer.stub.tsx') },
-      { find: /^@\/components\/views\/OGFloorPlanViewer$/,
-        replacement: path.resolve(root, 'src/stubs/OGFloorPlanViewer.stub.tsx') },
       { find: /^@\/components\/views\/IFCPlanView$/,
         replacement: path.resolve(root, 'src/stubs/IFCPlanView.stub.tsx') },
       { find: /^@\/components\/views\/ComposerCanvas$/,
@@ -82,6 +81,17 @@ export default defineConfig({
         replacement: path.resolve(root, 'src/stubs/CostFloatingPanel.stub.tsx') },
       { find: /^@\/lib\/quantityTakeoff$/,
         replacement: path.resolve(root, 'src/stubs/quantityTakeoff.stub.ts') },
+      // Cost scenarios ride on the takeoff engine — same exclusion.
+      { find: /^@\/components\/scenarios\/ScenarioBar$/,
+        replacement: path.resolve(root, 'src/stubs/ScenarioBar.stub.tsx') },
+      { find: /^@\/components\/scenarios\/CompareFloatingPanel$/,
+        replacement: path.resolve(root, 'src/stubs/CompareFloatingPanel.stub.tsx') },
+      { find: /^@\/components\/quantities\/DashboardPanel$/,
+        replacement: path.resolve(root, 'src/stubs/DashboardPanel.stub.tsx') },
+      { find: /^@\/hooks\/useScenarioResults$/,
+        replacement: path.resolve(root, 'src/stubs/useScenarioResults.stub.ts') },
+      { find: /^@\/components\/library\/LibraryPanel$/,
+        replacement: path.resolve(root, 'src/stubs/LibraryPanel.stub.tsx') },
 
       // Shared source
       { find: '@', replacement: path.resolve(root, 'src') },

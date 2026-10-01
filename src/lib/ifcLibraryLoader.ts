@@ -292,3 +292,58 @@ export function collectIfcLibraryPaths(nodes: { type: string; properties: Record
   }
   return [...paths];
 }
+
+// ─── For the IFC export ──────────────────────────────────────────────────────
+
+/**
+ * Every library path the model's openings point at: window and door nodes,
+ * and the windows and doors listed inline on walls (`windows` / `doors` JSON).
+ */
+export function collectAllIfcLibraryPaths(nodes: { type: string; properties: Record<string, unknown> }[]): string[] {
+  const paths = new Set(collectIfcLibraryPaths(nodes));
+  const inline = (raw: unknown): Array<Record<string, unknown>> => {
+    try { const v = JSON.parse(String(raw ?? '[]')); return Array.isArray(v) ? v : []; } catch { return []; }
+  };
+  for (const n of nodes) {
+    if (n.type !== 'wall') continue;
+    for (const w of inline(n.properties.windows)) {
+      const p = resolveIfcPath('window', String(w.window_type ?? ''));
+      if (p) paths.add(p);
+    }
+    for (const d of inline(n.properties.doors)) {
+      const p = resolveIfcPath('door', String(d.door_type ?? ''));
+      if (p) paths.add(p);
+    }
+  }
+  return [...paths];
+}
+
+/**
+ * A library element as the export writes it (`LibraryPart` in buildIfcModel):
+ * each mesh's triangles, centred the way the viewers place it — X across its
+ * width from the centre, Y up from its bottom, Z through the wall from the
+ * middle — with its colour.
+ */
+export async function libraryPartsForExport(
+  libraryPath: string,
+): Promise<Array<{ tris: Array<[[number, number, number], [number, number, number], [number, number, number]]>; rgb: { r: number; g: number; b: number }; opacity: number }>> {
+  const parts = await loadIfcParts(libraryPath);
+  if (!parts.length) return [];
+  const { group } = buildIfcGroup(parts);
+  const out: Awaited<ReturnType<typeof libraryPartsForExport>> = [];
+  group.children.forEach((child, i) => {
+    const mesh = child as THREE.Mesh;
+    const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const idx = mesh.geometry.getIndex();
+    const at = (k: number): [number, number, number] => [pos.getX(k), pos.getY(k), pos.getZ(k)];
+    const tris: Array<[[number, number, number], [number, number, number], [number, number, number]]> = [];
+    const n = idx ? idx.count : pos.count;
+    for (let t = 0; t + 2 < n; t += 3) {
+      const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
+      tris.push([at(a), at(b), at(c)]);
+    }
+    const colour = parts[i].color;
+    out.push({ tris, rgb: { r: colour.r, g: colour.g, b: colour.b }, opacity: parts[i].opacity });
+  });
+  return out;
+}

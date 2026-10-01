@@ -14,7 +14,7 @@
  * Coordinate system: BIM X->Three.X, BIM Y->Three.Z, BIM Z->Three.Y (mm*0.001)
  */
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import * as THREE from 'three';
 import { AxisInteraxOverlay } from './AxisInteraxOverlay';
 import { AnnotationsToolbar, type AnnotationTool } from './AnnotationsToolbar';
@@ -23,6 +23,7 @@ import * as OBF from '@thatopen/components-front';
 import { cn, parseAxes } from '@/lib/utils';
 import { VisibilityFilter } from '@/components/views/VisibilityFilter';
 import type { BubbleGraphNode, BubbleGraphEdge, BuildingAxes } from '@/store';
+import { useBubbleGraphStore } from '@/store';
 import {
   MM,
   parseColumnDims, parseBeamDims, getNodeSlabThickness,
@@ -32,7 +33,7 @@ import {
   calcSpanEffectiveEnds, resolveStoreyId,
   type WallSegDesc,
 } from '@/lib/bimGeometry';
-import { getMat, wallSolidMesh, wallHorizontalProfileMesh, wallHorizontalProfileLayerMesh, wallSolidLayerMesh, makeBoxOpeningCutter, makeIfcOpeningCutter, applyOpeningVoids, buildOpeningMeshes3, applyIfcGlazingOverrides, applyNodeLocalTransformThree } from '@/lib/bimGeometryThree';
+import { getMat, wallSolidMesh, wallHorizontalProfileMesh, wallHorizontalProfileLayerMesh, wallSolidLayerMesh, makeBoxOpeningCutter, makeIfcOpeningCutter, applyOpeningVoids, buildOpeningMeshes3, applyIfcGlazingOverrides, applyNodeLocalTransformThree, roofFaceGeometry, roofSurfaceNode } from '@/lib/bimGeometryThree';
 import { getNodeLocalTransform } from '@/lib/bimGeometry';
 import {
   loadIfcParts, buildIfcGroup, positionIfcGroup,
@@ -40,11 +41,37 @@ import {
   type IFCGroupInfo,
 } from '@/lib/ifcLibraryLoader';
 import { type MaterialConfig, resolveVisuals, applyNodeColorOverrides, hexToRgb01, resolveWindowGlazing } from '@/lib/materialConfig';
+import { computeSweep, sweepBufferGeometry } from '@/lib/sweep';
+import { computeSketch } from '@/lib/sketch';
+import { computeScatter, type ScatterInstance } from '@/lib/scatter';
+import { scatterGeometries } from '@/lib/scatter/mesh';
+import { terrainItemInstances } from '@/lib/scatter/terrainItems';
+import { computeFacade } from '@/lib/facade';
+import { facadeGeometries } from '@/lib/facade/mesh';
+import { computeDome, domePanelGeometry } from '@/lib/dome';
+import { computeSite, findSiteNode, terrainBufferGeometry } from '@/lib/terrain';
+import { currentTerrainModel } from '@/lib/terrain/current';
 import { resolveCoveringLayers, roomHasCovering } from '@/lib/roomCovering';
 import { resolveWallLayers, syntheticWallNodeForLayer } from '@/lib/wallLayers';
+import { renderBandsOf } from '@/lib/zones/heightZones';
 import { useMaterialConfig } from '@/lib/useMaterialConfig';
-import { buildBimFragmentsModel, getBubbleIdByLocalId, getLocalIdByBubbleId, FRAG_ELEMENT_TYPES, BIM_MODEL_ID } from '@/lib/fragModelBuilder';
+import { getBubbleIdByLocalId, getLocalIdsByBubbleId, BIM_MODEL_ID } from '@/lib/fragModelBuilder';
+import { useModelIfc } from '@/lib/ifc/useModelIfc';
+import { IFC_EXPORTED_NODE_TYPES, nodeIdOfTag } from '@/lib/ifc/ifcCoverage';
+import { exportFragmentsModel, formatBytes, fragFileName } from '@/lib/fragmentsExport';
 import { expandArrayNodes } from '@/lib/formulaUtils';
+import { computeRoofFaces } from '@/lib/roof/solver';
+import type { RoofFace3D } from '@/lib/roof/types';
+import type { FragmentsModel } from '@thatopen/fragments';
+import { readItemGuid, readItemProperties, type IfcElementProperties } from '@/lib/ifc/ifcFragments';
+import { getHostBridge } from '@/lib/ifc/hostBridge';
+import { useExtrusions } from '@/lib/ifc/extrude/useExtrusions';
+import { contourLineGeometry, extrudedSolidEdges, extrudedSolidGeometry } from '@/lib/ifc/extrude/extrudeGeometry';
+import type { Pt2 } from '@/lib/ifc/extrude/extrudedSolid';
+import { ExtrudePanel } from '@/components/ifc/ExtrudePanel';
+import { IfcPropertiesPanel } from '@/components/ifc/IfcPropertiesPanel';
+import { registerLoadedIfc, unregisterLoadedIfc } from '@/lib/loadedIfcRegistry';
+import { productsByColour, readIndexedColours } from '@/lib/ifc/indexedColours';
 
 const SCENE_ROOT = '__bg_scene_root__';
 
@@ -468,6 +495,40 @@ export function buildSceneGeometry(
     addMesh(getGroup(n), new THREE.BoxGeometry(1.2, 0.5, 1.2), getMat(matCache, 'foundation', 1, resolveVisuals('foundation', String(n.properties.material ?? ''), matConfig)), pose(n.x * MM, (bot - 250) * MM, -n.y * MM), n, undefined, nodeMap);
   }
 
+  // ── Roof surfaces ─────────────────────────────────────────────────────────
+  // The solver already knows the shape; this scene only has to draw the faces
+  // it returns. Everything downstream of buildSceneGeometry inherits them —
+  // the ortho plan/section/elevation viewers and, via glTF, the Cesium world.
+  //
+  // Faces are flat, so they need their own material cache: getMat() only turns
+  // on DoubleSide for translucent materials, and forcing it on a shared entry
+  // would silently flip the side of every slab or wall that happens to share
+  // the colour. A cache private to roofs makes that impossible.
+  const roofMatCache = new Map<string, THREE.MeshStandardMaterial>();
+  for (const rn of nodes.filter((n) => n.type === 'roof')) {
+    let faces: RoofFace3D[];
+    try {
+      faces = computeRoofFaces(rn, nodes, edges).faces;
+    } catch (err) {
+      console.warn('[WebIfcViewer] roof solve failed:', rn.id, err);
+      continue;
+    }
+    const surfaceNode = roofSurfaceNode(rn);
+    const vis = applyNodeColorOverrides(
+      resolveVisuals('roof', String(surfaceNode.properties.material ?? ''), matConfig),
+      surfaceNode.properties,
+    );
+    const mat = getMat(roofMatCache, 'roof', 1, vis);
+    mat.side = THREE.DoubleSide;
+    const grp = getGroup(rn);
+    for (const face of faces) {
+      const geo = roofFaceGeometry(face);
+      if (!geo) continue;
+      // Vertices are already absolute BIM coordinates — no placement matrix.
+      addMesh(grp, geo, mat, new THREE.Matrix4(), rn, undefined, nodeMap);
+    }
+  }
+
   for (const n of nodes.filter((n) => n.type === 'room')) {
     const { bot } = getStoreyBand(n, nodeMap);
     const roomH = Number(n.properties.height ?? 2650); // mm
@@ -580,13 +641,20 @@ export function buildSceneGeometry(
     const poly = calcShellPolygon(n, nodeMap, edges);
     if (!poly) continue;
     const offsets = parseContourOffsets(n.properties.contour_offset);
-    const mat = getMat(matCache, 'shell', 1, resolveVisuals('shell', String(n.properties.material ?? ''), matConfig));
-    const rawMesh = buildRingMesh(poly, offsets, thickMm, shellH, bot * MM, mat);
-    if (rawMesh) {
+    // Benzile anvelopei: soclul și câmpul sunt lucrări diferite, deci se
+    // desenează diferit. Fără benzi, un singur inel, ca până acum.
+    const bands = renderBandsOf(n, shellH)
+      ?? [{ fromM: 0, heightM: shellH, material: undefined, label: '' }];
+    for (const band of bands) {
+      const mat = getMat(matCache, 'shell', 1, resolveVisuals(
+        'shell', band.material ?? String(n.properties.material ?? ''), matConfig));
+      const bandBot = bot * MM + band.fromM;
+      const rawMesh = buildRingMesh(poly, offsets, thickMm, band.heightM, bandBot, mat);
+      if (!rawMesh) continue;
       rawMesh.userData.nodeType = 'shell'; rawMesh.userData.nodeId = n.id; rawMesh.userData.storeyId = resolveStoreyId(n, nodeMap);
       const m = allOpeningCutters.length ? applyOpeningVoids(rawMesh, allOpeningCutters) : rawMesh;
       m.userData.nodeType = 'shell'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
-      attachRingData(m, poly, offsets, thickMm, shellH, bot * MM);
+      attachRingData(m, poly, offsets, thickMm, band.heightM, bandBot);
       getGroup(n).add(m);
     }
   }
@@ -636,6 +704,100 @@ export function buildSceneGeometry(
     }
   }
 
+  // ── Sweeps, domes, site ────────────────────────────────────────────────────
+  // This builder feeds the globe and the georeferenced exports; anything it
+  // does not know stays off the map. Same pure computes as the other viewers.
+  for (const n of nodes.filter((n) => n.type === 'sweep')) {
+    const res = computeSweep(n, nodeMap, edges);
+    if (!res.placed || res.solids.length === 0) continue;
+    const geo = sweepBufferGeometry(res.solids, res.placed);
+    if (!geo) continue;
+    const vis = applyNodeColorOverrides(resolveVisuals('sweep', String(n.properties.material ?? ''), matConfig), n.properties);
+    const m = new THREE.Mesh(geo, getMat(matCache, 'sweep', 1, vis));
+    m.userData.nodeType = 'sweep'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+    getGroup(n).add(m);
+  }
+  for (const n of nodes.filter((n) => n.type === 'sketch')) {
+    const res = computeSketch(n, nodeMap, edges);
+    if (!res.placed || res.solids.length === 0) continue;
+    const geo = sweepBufferGeometry(res.solids, res.placed);
+    if (!geo) continue;
+    const vis = applyNodeColorOverrides(resolveVisuals('sketch', String(n.properties.material ?? ''), matConfig), n.properties);
+    const m = new THREE.Mesh(geo, getMat(matCache, 'sketch', 1, vis));
+    m.userData.nodeType = 'sketch'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+    getGroup(n).add(m);
+  }
+  {
+    const siteNode = findSiteNode(nodes);
+    const site = siteNode ? computeSite(siteNode, nodeMap, edges, currentTerrainModel()) : null;
+    const heightAt = site?.frame ? site.heightAtBim : null;
+    const emit = (inst: ScatterInstance[], n: BubbleGraphNode, type: string) => {
+      const g = scatterGeometries(inst);
+      for (const [geo, key] of [[g.foliage, 'scatter'], [g.wood, 'scatter_wood'], [g.stone, 'scatter_rock']] as const) {
+        if (!geo) continue;
+        const vis = applyNodeColorOverrides(resolveVisuals(key, String(n.properties.material ?? ''), matConfig), n.properties);
+        const m = new THREE.Mesh(geo, getMat(matCache, key, 1, vis));
+        m.userData.nodeType = type; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+        getGroup(n).add(m);
+      }
+    };
+    for (const n of nodes.filter((n) => n.type === 'scatter')) emit(computeScatter(n, nodeMap, edges, heightAt).instances, n, 'scatter');
+    if (site && siteNode && site.intent.showIn3d) emit(terrainItemInstances(site), siteNode, 'site');
+  }
+
+  for (const n of nodes.filter((n) => n.type === 'facade')) {
+    const res = computeFacade(n, nodeMap, edges);
+    if (res.cells.length === 0) continue;
+    const g = facadeGeometries(res);
+    for (const [geo, key, alpha, mat] of [
+      [g.mullions, 'facade', 1, res.intent.material],
+      [g.glass, 'facade_panel', 0.45, res.intent.glassMaterial],
+      [g.opaque, 'facade_cassette', 1, res.intent.panelMaterial],
+    ] as const) {
+      if (!geo) continue;
+      const vis = applyNodeColorOverrides(resolveVisuals(key, mat, matConfig), n.properties);
+      const m = new THREE.Mesh(geo, getMat(matCache, key, alpha, vis));
+      m.userData.nodeType = 'facade'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+      getGroup(n).add(m);
+    }
+  }
+  for (const n of nodes.filter((n) => n.type === 'dome')) {
+    const res = computeDome(n, nodeMap, edges);
+    if (res.placed && res.memberSolids.length) {
+      const geo = sweepBufferGeometry(res.memberSolids, res.placed);
+      if (geo) {
+        const vis = applyNodeColorOverrides(resolveVisuals('dome', String(n.properties.material ?? ''), matConfig), n.properties);
+        const m = new THREE.Mesh(geo, getMat(matCache, 'dome', 1, vis));
+        m.userData.nodeType = 'dome'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+        getGroup(n).add(m);
+      }
+    }
+    const glass = domePanelGeometry(res.panels, res.intent.glassThicknessMm);
+    if (glass) {
+      const vis = resolveVisuals('dome_panel', res.intent.glassMaterial, matConfig);
+      const m = new THREE.Mesh(glass, getMat(matCache, 'dome_panel', 0.45, vis));
+      m.userData.nodeType = 'dome_panel'; m.userData.nodeId = n.id; m.userData.storeyId = resolveStoreyId(n, nodeMap);
+      getGroup(n).add(m);
+    }
+  }
+  {
+    const siteNode = findSiteNode(nodes);
+    if (siteNode) {
+      const site = computeSite(siteNode, nodeMap, edges, currentTerrainModel());
+      if (site.intent.showIn3d && site.frame) {
+        const geo = terrainBufferGeometry(site);
+        if (geo) {
+          const vis = applyNodeColorOverrides(resolveVisuals('site', String(siteNode.properties.material ?? ''), matConfig), siteNode.properties);
+          const m = new THREE.Mesh(geo, getMat(matCache, 'site', 1, vis));
+          (m.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+          m.userData.nodeType = 'site'; m.userData.nodeId = siteNode.id; m.userData.storeyId = resolveStoreyId(siteNode, nodeMap);
+          const sg = new THREE.Group(); sg.name = 'IfcSite'; sg.userData.nodeId = siteNode.id;
+          sg.add(m); projectGrp.add(sg);
+        }
+      }
+    }
+  }
+
   scene.add(root);
   return root;
 }
@@ -668,6 +830,56 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
   const drawingRef      = useRef<any>(null);
   const [isReady, setIsReady]     = useState(false);
   const [loadingIfc, setLoadingIfc] = useState(false);
+  // An element picked in an IMPORTED IFC (any fragments model that is not our
+  // own graph). Our own elements go through onSelectNode to the inspector;
+  // foreign ones have no node to select, so their properties are shown here.
+  const [ifcPick, setIfcPick] = useState<{ loading: boolean; element: IfcElementProperties | null } | null>(null);
+  // ── Drawn extrusions ───────────────────────────────────────────────────────
+  // The contour plane here is elevation zero: this viewer has no terrain, and
+  // the graph's own storeys are measured from the same datum.
+  const [extrudeOpen, setExtrudeOpen] = useState(false);
+  const extrusions = useExtrusions({
+    elevation: () => 0,
+    onProblem: (m) => setExtrudeProblem(m),
+  });
+  const [extrudeProblem, setExtrudeProblem] = useState<string | null>(null);
+  // Every IFC file loaded into this viewer, so more than one can be open and
+  // each can be hidden or closed on its own.
+  const [ifcModels, setIfcModels] = useState<{ id: string; name: string; visible: boolean }[]>([]);
+  const ifcModelsRef = useRef<{ id: string; name: string; visible: boolean }[]>([]);
+  useEffect(() => { ifcModelsRef.current = ifcModels; }, [ifcModels]);
+  // The toolbar's HTML export carries what is open and shown here. The model
+  // is looked up when the export runs, so a model closed since is not.
+  const instanceId = useId();
+  /** The IFC each model came from — the export reads what fragments drops. */
+  const ifcFilesRef = useRef(new Map<string, File>());
+  useEffect(() => {
+    const keys: string[] = [];
+    for (const m of ifcModels) {
+      if (!m.visible) continue;
+      const key = `toc${instanceId}${m.id}`;
+      registerLoadedIfc({
+        key, name: m.name,
+        getModel: () => componentsRef.current?.get(OBC.FragmentsManager).list.get(m.id),
+        file: ifcFilesRef.current.get(m.id),
+      });
+      keys.push(key);
+    }
+    return () => { for (const k of keys) unregisterLoadedIfc(k); };
+  }, [ifcModels, instanceId]);
+  const extrudeGroupRef = useRef<THREE.Group | null>(null);
+  /** Where the cursor last was on the contour plane, for the rubber band. */
+  const [contourCursor, setContourCursor] = useState<Pt2 | null>(null);
+  const contourCursorRef = useRef<Pt2 | null>(null);
+  const finishDrawRef = useRef(extrusions.finishDraw);
+  const addPointRef = useRef(extrusions.addPoint);
+  const cancelDrawRef = useRef(extrusions.cancelDraw);
+  useEffect(() => {
+    finishDrawRef.current = extrusions.finishDraw;
+    addPointRef.current = extrusions.addPoint;
+    cancelDrawRef.current = extrusions.cancelDraw;
+  }, [extrusions.finishDraw, extrusions.addPoint, extrusions.cancelDraw]);
+
   const [clipperActive, setClipperActive] = useState(false);
   const [activeViewMode, setActiveViewMode] = useState<'3d' | 'plan' | 'elevation'>('3d');
   const [activeTool, setActiveTool] = useState<AnnotationTool | null>(null);
@@ -678,6 +890,27 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
   // ── Visibility filter (local to this viewer instance) ─────────────────────
   const [hiddenTypes, setHiddenTypes]         = useState<Set<string>>(new Set());
   const [hiddenStoreyIds, setHiddenStoreyIds] = useState<Set<string>>(new Set());
+
+  // ── The model as the exported IFC ──────────────────────────────────────────
+  // The graph is shown through the same file a user downloads: built by the
+  // exporter, converted by That Open's own IfcLoader into the BIM fragments
+  // model. Whatever the export holds — every method's geometry, styles,
+  // dormers, roof framing — this view holds, with no second implementation to
+  // fall behind it. The scene's own geometry keeps only what the export does
+  // not write (storey planes, terrain, scatter, library objects), and returns
+  // in full if the IFC cannot be loaded.
+  const { model: modelIfc, error: modelIfcError } = useModelIfc(nodes, edges, 'BubbleGraph');
+  /** 'pending' until the first model is in; 'failed' falls back to the scene's own elements. */
+  const bimIfcStateRef = useRef<'pending' | 'ready' | 'failed'>('pending');
+  const [bimModelVersion, setBimModelVersion] = useState(0);
+  const [bimLoading, setBimLoading] = useState(false);
+  /** One IfcLoader run at a time: the model and dropped files share its worker. */
+  const loadLockRef = useRef<Promise<unknown>>(Promise.resolve());
+  const withLoadLock = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const next = loadLockRef.current.then(fn, fn);
+    loadLockRef.current = next.catch(() => {});
+    return next;
+  }, []);
   const nodesMapRef = useRef<Map<string, BubbleGraphNode>>(new Map());
   useEffect(() => {
     nodesMapRef.current = new Map(nodes.map((n) => [n.id, n]));
@@ -706,6 +939,8 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
   }, [nodes]);
 
   const { config: matConfig } = useMaterialConfig();
+  // The ground is edited in the Terrain tab; this scene must follow it.
+  const terrainModel = useBubbleGraphStore((st) => st.terrain);
 
   // IFC category lookup for fragments visibility toggling
   const FRAG_IFC_CATS: Record<string, string> = {
@@ -781,19 +1016,26 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
     if (highlighter && components) {
       const frags = components.get(OBC.FragmentsManager);
       if (selectedNodeId) {
-        getLocalIdByBubbleId(frags.core, selectedNodeId).then((lid) => {
-          if (lid !== null) {
-            highlighter.highlightByID('select', { [BIM_MODEL_ID]: new Set([lid]) }, true, false)
+        getLocalIdsByBubbleId(frags.core, selectedNodeId).then((lids) => {
+          if (lids.length) {
+            highlighter.highlightByID('select', { [BIM_MODEL_ID]: new Set(lids) }, true, false)
               .catch(() => { /* model not ready yet */ });
           } else {
             highlighter.clear('select').catch(() => {});
           }
         }).catch(() => {});
       } else {
-        highlighter.clear('select').catch(() => {});
+        // Deselecting a graph node must not wipe a highlight that belongs to
+        // an imported IFC: picking a foreign element goes through here too
+        // (it calls onSelectNode(null)), and clearing would undo the pick
+        // the user just made.
+        const sel = highlighter.selection['select'] ?? {};
+        if (BIM_MODEL_ID in sel) {
+          highlighter.clear('select', { [BIM_MODEL_ID]: sel[BIM_MODEL_ID] }).catch(() => {});
+        }
       }
     }
-  }, [selectedNodeId]);
+  }, [selectedNodeId, bimModelVersion]);
 
   // ── OBC world init (runs once) ─────────────────────────────────────────────
   useEffect(() => {
@@ -819,6 +1061,26 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
     cam.threePersp.near = 0.01;
     cam.threePersp.updateProjectionMatrix();
     cam.controls.restThreshold = 0.05;
+
+    // ── Navigation ─────────────────────────────────────────────────────────
+    // The defaults dolly towards the orbit target, which in a building model
+    // means the zoom crawls once you are inside and overshoots from outside.
+    // Zooming at the cursor is what every BIM viewer does and what makes a
+    // model navigable without constantly re-centring.
+    cam.controls.dollyToCursor = true;
+    // Panning is proportional to distance, so the same drag moves the same
+    // number of pixels of model whether you are at a door or above a site.
+    cam.controls.truckSpeed = 4;
+    cam.controls.dollySpeed = 1.2;
+    // Enough damping to feel smooth, little enough to feel direct; dragging
+    // gets less so the model tracks the cursor instead of trailing it.
+    cam.controls.smoothTime = 0.12;
+    cam.controls.draggingSmoothTime = 0.06;
+    // Without a floor the dolly walks through the far side and inverts.
+    cam.controls.minDistance = 0.5;
+    // Middle-drag pans, which frees the right button for the context menu and
+    // matches the habit from every other viewer in this app.
+    cam.controls.mouseButtons.middle = 2;   // CameraControls.ACTION.TRUCK
 
     world.scene.setup();
     world.scene.three.background = new THREE.Color(0x1a1d23);
@@ -907,6 +1169,37 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
         transparent: false,
       });
       highlighterRef.current = highlighter;
+
+      // ── Selection in an IMPORTED IFC → GUID + properties panel ────────────
+      // Hooked on the Highlighter's own event rather than on our click
+      // handler: whatever puts an element into the 'select' set — a click, a
+      // host's BIM_FOCUS_GUID, a later feature — lands here, so the panel and
+      // the console line cannot drift out of step with the highlight.
+      highlighter.events.select.onHighlight.add((map) => {
+        for (const [mId, lids] of Object.entries(map)) {
+          if (mId === BIM_MODEL_ID) continue;
+          const first = (lids as Set<number>).values().next();
+          if (first.done) continue;
+          const model = fragments.list.get(mId);
+          if (!model) continue;
+          const localId = first.value;
+          setIfcPick({ loading: true, element: null });
+          Promise.all([readItemGuid(model, localId), readItemProperties(model, localId)])
+            .then(([guid, element]) => {
+              getHostBridge().reportSelection({
+                viewer: 'toc', modelId: mId, localId,
+                guid: guid ?? element?.guid ?? null,
+                category: element?.category ?? null, name: element?.name ?? null,
+              });
+              setIfcPick({ loading: false, element });
+            })
+            .catch((err) => {
+              console.warn('[WebIfcViewer] IFC properties read failed:', err);
+              setIfcPick({ loading: false, element: null });
+            });
+          return;
+        }
+      });
     } catch (e) {
       console.warn('[WebIfcViewer] Highlighter setup skipped:', e);
     }
@@ -968,6 +1261,10 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
       cam.updateAspect();
     };
     window.addEventListener('resize', onResize);
+    // Same reason as the Three.js viewers: a side panel opening changes the
+    // container without a window resize, and the canvas would stay oversized.
+    const ro = new ResizeObserver(onResize);
+    if (containerRef.current) ro.observe(containerRef.current);
 
     worldRef.current = world;
     setIsReady(true);
@@ -980,17 +1277,57 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
     const onMousedownClick = (e: MouseEvent) => { clickStartX = e.clientX; clickStartY = e.clientY; clickDragDist = 0; clickIsDown = true; };
     const onMouseupClick   = () => { clickIsDown = false; };
     const onMousemoveClick = (e: MouseEvent) => {
+      // The rubber band to the cursor: without it you are clicking blind,
+      // because nothing shows the edge you are about to commit to.
+      if (extrusions.drawingRef.current) {
+        const p = planePoint(e);
+        if (p && (contourCursorRef.current?.x !== p.x || contourCursorRef.current?.y !== p.y)) {
+          contourCursorRef.current = p;
+          setContourCursor(p);
+        }
+      }
       if (!clickIsDown) return; // only accumulate while button held
       const dx = e.clientX - clickStartX; const dy = e.clientY - clickStartY;
       clickDragDist += Math.sqrt(dx * dx + dy * dy);
       clickStartX = e.clientX; clickStartY = e.clientY;
     };
+    /**
+     * Where a screen position lands on the contour plane (elevation zero,
+     * which is Three's y = 0), in drawing metres. Null when the ray runs
+     * parallel to it or hits it behind the camera.
+     */
+    const planePoint = (e: MouseEvent): Pt2 | null => {
+      const w = worldRef.current;
+      if (!w) return null;
+      const cam = (w.camera as OBC.OrthoPerspectiveCamera).three;
+      const rect = canvas.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ), cam);
+      const hit = ray.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3(),
+      );
+      // Three (x, y, z) → drawing (x east, y north): north is −z.
+      return hit ? { x: hit.x, y: -hit.z } : null;
+    };
+
     // Async click handler: tries Highlighter (fragments tiles) first,
     // then falls back to Three.js raycaster for IFC library elements.
     const onClickCanvasAsync = async (e: MouseEvent) => {
       if (clickDragDist > 4) return;
-      const cb = onSelectNodeRef.current;
-      if (!cb || !worldRef.current) return;
+      if (!worldRef.current) return;
+
+      // Drawing a contour takes the click before anything can be selected.
+      if (extrusions.drawingRef.current) {
+        const p = planePoint(e);
+        if (p) addPointRef.current(p);
+        return;
+      }
+      // Without a node callback there is still a pick to do — an imported
+      // IFC's properties do not depend on anyone listening for graph nodes.
+      const cb = onSelectNodeRef.current ?? (() => {});
 
       // ── Try Highlighter for fragments model tiles ────────────────────────
       const hl = highlighterRef.current;
@@ -1003,15 +1340,30 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
             if (comps) {
               const frags = comps.get(OBC.FragmentsManager);
               for (const [mId, lids] of Object.entries(sel)) {
-                if (mId !== BIM_MODEL_ID) continue;
+                const first = (lids as Set<number>).values().next();
+                if (first.done) continue;
+
+                if (mId !== BIM_MODEL_ID) {
+                  // An imported IFC. Nothing in the graph corresponds to it,
+                  // so it is not a node selection; the Highlighter's
+                  // onHighlight (above, in setup) has already opened the
+                  // properties panel and printed the GUID.
+                  cb(null);
+                  return;
+                }
+
                 for (const lid of (lids as Set<number>)) {
                   const bubbleId = await getBubbleIdByLocalId(frags.core, lid);
-                  if (bubbleId) { cb(bubbleId); return; }
+                  if (bubbleId) { setIfcPick(null); cb(bubbleId); return; }
                 }
               }
             }
           }
-        } catch { /* highlight failed — fall through */ }
+        } catch (err) {
+          // Fall through to the Three.js raycaster — but say so: a silent
+          // catch here is exactly how "clicking does nothing" stays unexplained.
+          console.warn('[WebIfcViewer] fragments pick failed, falling back to raycaster:', err);
+        }
       }
 
       // ── Fallback: Three.js raycaster for IFC library elements ────────────
@@ -1056,6 +1408,10 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
 
     // ── Double-click: create/delete clipping plane when Clipper is active ───
     const onDblClick = () => {
+      // A double-click while drawing closes the contour. The click that came
+      // with it already added its point, which is the behaviour every drawing
+      // tool has: the last corner is where you finished.
+      if (extrusions.drawingRef.current) { finishDrawRef.current(); return; }
       if (!clipperRef.current?.enabled) return;
       clipperRef.current.create(world);
     };
@@ -1063,6 +1419,10 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
 
     // ── Delete key: delete last clipping plane when Clipper active ───────────
     const onKeyDown = (e: KeyboardEvent) => {
+      if (extrusions.drawingRef.current) {
+        if (e.key === 'Enter') { e.preventDefault(); finishDrawRef.current(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); cancelDrawRef.current(); return; }
+      }
       if (e.key === 'Delete' && clipperRef.current?.enabled) {
         clipperRef.current.delete(world);
       }
@@ -1075,6 +1435,7 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
 
     return () => {
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       canvas.removeEventListener('mousedown', onMousedownClick);
       canvas.removeEventListener('mouseup',   onMouseupClick);
       canvas.removeEventListener('mousemove', onMousemoveClick);
@@ -1084,6 +1445,82 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
       components.dispose();
     };
   }, []);
+
+  // ── Draw the extrusions and the contour in progress ────────────────────────
+  // One effect owns the whole group: it is emptied and rebuilt on every
+  // change. The geometry already carries position, rotation and scale, so
+  // there is no transform to keep in step — a parameter edit is a rebuild.
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !isReady) return;
+    const scene = world.scene.three as THREE.Scene;
+    let group = extrudeGroupRef.current;
+    if (!group) {
+      group = new THREE.Group();
+      group.name = 'bb-extrusions';
+      group.userData.skipVisibilityFilter = true;
+      scene.add(group);
+      extrudeGroupRef.current = group;
+    }
+    for (const child of [...group.children]) {
+      group.remove(child);
+      const m = child as THREE.Mesh | THREE.LineSegments;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose();
+    }
+
+    for (const s of extrusions.solids) {
+      const geo = extrudedSolidGeometry(s);
+      if (!geo) continue;
+      const selected = s.id === extrusions.selectedId;
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: new THREE.Color(s.color),
+        transparent: true,
+        opacity: selected ? 0.85 : 0.6,
+        side: THREE.DoubleSide,
+        roughness: 0.75,
+      }));
+      // Tagged so the existing pick loop can select it like any other object,
+      // and skipped by the visibility filter, which speaks node types.
+      mesh.userData.extrusionId = s.id;
+      group.add(mesh);
+
+      const edges = extrudedSolidEdges(s);
+      if (edges) {
+        group.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+          color: selected ? 0xffd700 : 0x111111,
+          transparent: true,
+          opacity: selected ? 1 : 0.45,
+        })));
+      }
+    }
+
+    // The contour being clicked out, with a rubber band to the cursor and the
+    // closing edge shown dashed-in so the shape is legible before it exists.
+    if (extrusions.drawing && extrusions.contour.length > 0) {
+      const live = contourCursor ? [...extrusions.contour, contourCursor] : extrusions.contour;
+      const line = contourLineGeometry(live, 0, live.length > 2);
+      if (line) {
+        group.add(new THREE.Line(line, new THREE.LineBasicMaterial({ color: 0x38bdf8 })));
+      }
+      for (const p of extrusions.contour) {
+        const dot = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 8, 6),
+          new THREE.MeshBasicMaterial({ color: 0x38bdf8 }),
+        );
+        dot.position.set(p.x, 0, -p.y);
+        group.add(dot);
+      }
+    }
+  }, [isReady, extrusions.solids, extrusions.selectedId, extrusions.drawing, extrusions.contour, contourCursor]);
+
+  // Clear the rubber band when the drawing stops, so a stale segment does not
+  // hang in the scene until the next move.
+  useEffect(() => {
+    if (!extrusions.drawing) { contourCursorRef.current = null; setContourCursor(null); }
+  }, [extrusions.drawing]);
 
   // ── Rebuild BIM graph geometry when nodes / edges change ───────────────────
   useEffect(() => {
@@ -1121,27 +1558,16 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
 
       const root = buildSceneGeometry(scene, nodes, edges, ifcGroupCache, matConfig);
 
-      // ── Build fragments model for OBC selection / highlight / query ────────
-      const comps = componentsRef.current;
-      if (comps) {
-        const frags = comps.get(OBC.FragmentsManager);
-        let fragsBuildOk = false;
-        try {
-          await buildBimFragmentsModel(frags.core, nodes, edges, matConfig);
-          fragsBuildOk = true;
-        } catch (err) {
-          console.warn('[WebIfcViewer] BIM fragments model build failed — keeping Three.js geometry visible:', err);
-        }
-        if (fragsBuildOk) {
-          // Hide Three.js element meshes — fragments tiles render them instead
-          root.traverse((obj) => {
-            const t = obj.userData.nodeType as string | undefined;
-            if (t && FRAG_ELEMENT_TYPES.has(t)) {
-              obj.visible = false;
-              obj.userData.hiddenByFragments = true;
-            }
-          });
-        }
+      // ── The elements come from the IFC-loaded fragments model ──────────────
+      // Unless that model failed to load: then the scene's own meshes stand in.
+      if (bimIfcStateRef.current !== 'failed') {
+        root.traverse((obj) => {
+          const t = obj.userData.nodeType as string | undefined;
+          if (t && IFC_EXPORTED_NODE_TYPES.has(t)) {
+            obj.visible = false;
+            obj.userData.hiddenByFragments = true;
+          }
+        });
       }
 
       const box = new THREE.Box3();
@@ -1181,7 +1607,91 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
         obj.visible = true;
       });
     })();
-  }, [nodes, edges, isReady, matConfig, hiddenTypes, hiddenStoreyIds]);
+  }, [terrainModel, nodes, edges, isReady, matConfig, hiddenTypes, hiddenStoreyIds]);
+
+  // ── Load the graph's IFC into the BIM fragments model ──────────────────────
+  useEffect(() => {
+    const comps = componentsRef.current;
+    if (!isReady || !comps || !modelIfc) return;
+    let cancelled = false;
+    setBimLoading(true);
+    void withLoadLock(async () => {
+      // The loader finishes its own setup asynchronously.
+      for (let i = 0; !ifcLoaderRef.current && i < 100; i++) await new Promise((r) => setTimeout(r, 100));
+      const loader = ifcLoaderRef.current;
+      if (cancelled || !loader) return;
+      const frags = comps.get(OBC.FragmentsManager);
+      if (frags.list.has(BIM_MODEL_ID)) await frags.core.disposeModel(BIM_MODEL_ID);
+      if (cancelled) return;
+      // Not coordinated: the model stays in its own frame, the frame the
+      // storey planes, terrain and axes are drawn in.
+      await loader.load(new TextEncoder().encode(modelIfc.ifc), false, BIM_MODEL_ID, {
+        // web-ifc would move the model to the origin; this one is in the scene's
+        // own frame already (local BIM metres), shared with everything else drawn.
+        instanceCallback: (importer) => {
+          importer.webIfcSettings = { ...loader.settings.webIfc, COORDINATE_TO_ORIGIN: false };
+        },
+      });
+      await applyIndexedColours(BIM_MODEL_ID, modelIfc.ifc);
+      bimIfcStateRef.current = 'ready';
+      if (!cancelled) setBimModelVersion((v) => v + 1);
+    }).catch((err) => {
+      console.error('[WebIfcViewer] IFC model load failed — drawing the scene geometry instead:', err);
+      bimIfcStateRef.current = 'failed';
+      const root = worldRef.current?.scene.three.getObjectByName(SCENE_ROOT);
+      root?.traverse((obj) => {
+        if (obj.userData.hiddenByFragments) { obj.visible = true; obj.userData.hiddenByFragments = false; }
+      });
+    }).finally(() => { if (!cancelled) setBimLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelIfc?.ifc, isReady]);
+
+  // ── Visibility filter on the fragments model: by node type and storey ──────
+  useEffect(() => {
+    const model = componentsRef.current?.get(OBC.FragmentsManager).list.get(BIM_MODEL_ID);
+    if (!model) return;
+    void (async () => {
+      const ids = await model.getItemsIdsWithGeometry();
+      const data = await model.getItemsData(ids);
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+      const show: number[] = [], hide: number[] = [];
+      data.forEach((item, i) => {
+        const tag = (item?.['Tag'] as { value?: unknown } | undefined)?.value;
+        const node = nodeMap.get(nodeIdOfTag(tag) ?? '');
+        const storeyId = node ? resolveStoreyId(node, nodeMap) : undefined;
+        const hidden = !!node && (hiddenTypes.has(node.type) || (!!storeyId && hiddenStoreyIds.has(storeyId)));
+        (hidden ? hide : show).push(ids[i]);
+      });
+      if (show.length) await model.setVisible(show, true);
+      if (hide.length) await model.setVisible(hide, false);
+      await componentsRef.current?.get(OBC.FragmentsManager).core.update(true);
+    })().catch((err) => console.warn('[WebIfcViewer] visibility on the IFC model failed:', err));
+  }, [hiddenTypes, hiddenStoreyIds, bimModelVersion, nodes]);
+
+  /**
+   * Colour what web-ifc left grey: bodies an IfcIndexedColourMap colours
+   * (Revit's IFC4). fragments colours whole elements only, so each takes
+   * the colour most of its bodies have; the exports colour body by body.
+   */
+  const applyIndexedColours = useCallback(async (modelId: string, text: string) => {
+    const model = componentsRef.current?.get(OBC.FragmentsManager).list.get(modelId);
+    if (!model) return;
+    try {
+      const groups = productsByColour(readIndexedColours(text));
+      for (const { colour, ids } of groups) {
+        const [r, g, b] = colour.rgb;
+        await model.setColor(ids, new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace));
+        if (colour.opacity < 1) await model.setOpacity(ids, colour.opacity);
+      }
+      if (groups.length) {
+        await componentsRef.current!.get(OBC.FragmentsManager).core.update(true);
+        console.info(`[WebIfcViewer] ${modelId}: ${groups.reduce((n, g) => n + g.ids.length, 0)} elements coloured from IfcIndexedColourMap`);
+      }
+    } catch (err) {
+      console.warn('[WebIfcViewer] IfcIndexedColourMap colours not applied:', err);
+    }
+  }, []);
 
   // ── IFC file loader (drag-and-drop or file input) ──────────────────────────
   const handleLoadIfc = useCallback(async (file: File) => {
@@ -1192,26 +1702,176 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
     setLoadingIfc(true);
     try {
       const buffer = await file.arrayBuffer();
-      await ifcLoaderRef.current.load(new Uint8Array(buffer), true, file.name.replace(/\.ifc$/i, ''));
+      // The model id is the file name, so loading two files with the same
+      // name would replace the first. Suffix a repeat rather than lose it.
+      const base = file.name.replace(/\.ifc$/i, '');
+      const taken = new Set(ifcModelsRef.current.map((m) => m.id));
+      let name = base;
+      for (let i = 2; taken.has(name); i++) name = `${base} (${i})`;
+
+      // Read before loading: the loader may hand the buffer to its worker.
+      const text = new TextDecoder().decode(buffer);
+      const loader = ifcLoaderRef.current;
+      await withLoadLock(() => loader.load(new Uint8Array(buffer), true, name));
+      ifcFilesRef.current.set(name, file);
+      await applyIndexedColours(name, text);
+      setIfcModels((l) => [...l, { id: name, name, visible: true }]);
+      getHostBridge().post({ type: 'BIM_MODEL_LOADED', payload: { modelId: name, name, viewer: 'toc' } });
     } catch (e) {
       console.error('[WebIfcViewer] IFC load error:', e);
+      getHostBridge().post({ type: 'BIM_ERROR', payload: { message: `IFC load: ${(e as Error).message}` } });
       alert(`Failed to load IFC: ${(e as Error).message}`);
     } finally {
       setLoadingIfc(false);
     }
+  }, [applyIndexedColours, withLoadLock]);
+
+  /**
+   * Point the camera at a box, from the south-east and above.
+   *
+   * The same framing the scene rebuild uses, so a model opened from a file and
+   * the project's own graph are looked at from the same angle. Extracted
+   * because a loaded model is often nowhere near the project origin — the
+   * photovoltaic site this was first tried on stands 100 m away, so without
+   * this the model loads correctly and the screen shows nothing, which reads
+   * as a failed import.
+   */
+  const frameBox = useCallback((box: THREE.Box3) => {
+    const world = worldRef.current;
+    if (!world || box.isEmpty()) return false;
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    const diag = Math.hypot(size.x, size.y, size.z);
+    if (!Number.isFinite(diag)) return false;
+    const dist = Math.max(diag * 0.9, 5);
+    const alpha = -Math.PI / 4;   // south-east
+    const beta = 1.1;             // ~63° down from vertical
+    const cam = world.camera as OBC.OrthoPerspectiveCamera;
+    cam.controls.setLookAt(
+      center.x + dist * Math.sin(beta) * Math.sin(alpha),
+      center.y + dist * Math.cos(beta),
+      center.z + dist * Math.sin(beta) * Math.cos(alpha),
+      center.x, center.y, center.z,
+      true,   // animated: the jump is large, and it should read as a move
+    );
+    return true;
+  }, []);
+
+  /**
+   * Open a `.frag` directly — no conversion, because there is nothing to
+   * convert: the file already IS the fragments model this viewer works with.
+   *
+   * `fragments.list` is `core.models.list`, so loading through the core fires
+   * the `onItemSet` handler set up with the world, which is what puts the model
+   * in the scene, gives it the camera and hands it the clipping planes. Every
+   * feature that follows — the tree, picking, sections, the .frag export — sees
+   * an ordinary FragmentsModel and cannot tell how it arrived.
+   */
+  const handleLoadFrag = useCallback(async (file: File) => {
+    const fragments = componentsRef.current?.get(OBC.FragmentsManager);
+    if (!fragments?.initialized) {
+      alert('Vizualizatorul nu este gata încă — încearcă peste o clipă.');
+      return;
+    }
+    setLoadingIfc(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // A `.frag` is normally zlib-compressed, and `raw` must match or the
+      // parse fails silently and yields a model with nothing in it. The zlib
+      // header is the only way to tell from the outside.
+      const raw = bytes[0] !== 0x78;
+      const base = file.name.replace(/\.frag$/i, '');
+      const taken = new Set(ifcModelsRef.current.map((m) => m.id));
+      let name = base;
+      for (let i = 2; taken.has(name); i++) name = `${base} (${i})`;
+
+      await fragments.core.load(bytes, { modelId: name, raw });
+      await fragments.core.update(true);
+
+      const model = fragments.list.get(name);
+      const items = model ? (await model.getItemsIdsWithGeometry()).length : 0;
+      if (items === 0) {
+        console.warn(`[WebIfcViewer] ${file.name} loaded but carries no geometry`);
+      }
+      setIfcModels((l) => [...l, { id: name, name, visible: true }]);
+      getHostBridge().post({ type: 'BIM_MODEL_LOADED', payload: { modelId: name, name, viewer: 'toc' } });
+      if (model && items > 0) frameBox(model.box);
+      console.info(`[WebIfcViewer] loaded ${file.name}: ${items} elements with geometry`);
+    } catch (e) {
+      console.error('[WebIfcViewer] .frag load error:', e);
+      getHostBridge().post({ type: 'BIM_ERROR', payload: { message: `Fragments load: ${(e as Error).message}` } });
+      alert(`Nu am putut deschide ${file.name}: ${(e as Error).message}`);
+    } finally {
+      setLoadingIfc(false);
+    }
+  }, [frameBox]);
+
+  /** Files load one after another: two IfcLoader runs at once fight over the
+   *  same worker, and the second id would be chosen before the first landed. */
+  const handleLoadIfcFiles = useCallback(async (files: File[]) => {
+    for (const f of files) {
+      if (/\.frag$/i.test(f.name)) await handleLoadFrag(f);
+      else await handleLoadIfc(f);
+    }
+  }, [handleLoadIfc, handleLoadFrag]);
+
+  const toggleIfcModel = useCallback((id: string) => {
+    const comps = componentsRef.current;
+    const model = comps?.get(OBC.FragmentsManager).list.get(id);
+    if (!model) return;
+    model.object.visible = !model.object.visible;
+    setIfcModels((l) => l.map((m) => (m.id === id ? { ...m, visible: model.object.visible } : m)));
+  }, []);
+
+  // ── Export to .frag ────────────────────────────────────────────────────────
+  // Nothing is converted here: OBC.IfcLoader already turned the IFC into a
+  // fragments model in its worker, and the graph is built into one too. This
+  // asks for the buffer that model is holding and writes it to disk, so the
+  // next open is instant instead of another IFC conversion.
+  const [exportingFrag, setExportingFrag] = useState<string | null>(null);
+
+  const exportFrag = useCallback(async (modelId: string, fileLabel: string) => {
+    const comps = componentsRef.current;
+    const model = comps?.get(OBC.FragmentsManager).list.get(modelId);
+    if (!model) {
+      alert('Modelul nu mai este încărcat.');
+      return;
+    }
+    setExportingFrag(modelId);
+    try {
+      const size = await exportFragmentsModel(model, fragFileName(fileLabel));
+      console.info(`[WebIfcViewer] exported ${fragFileName(fileLabel)} (${formatBytes(size)})`);
+    } catch (e) {
+      console.error('[WebIfcViewer] fragments export failed:', e);
+      alert(`Exportul în Fragments a eșuat: ${(e as Error).message}`);
+    } finally {
+      setExportingFrag(null);
+    }
+  }, []);
+
+  const removeIfcModel = useCallback((id: string) => {
+    const comps = componentsRef.current;
+    void comps?.get(OBC.FragmentsManager).core.disposeModel(id).catch((err) => {
+      console.warn('[WebIfcViewer] disposing model failed:', err);
+    });
+    setIfcModels((l) => l.filter((m) => m.id !== id));
+    ifcFilesRef.current.delete(id);
+    setIfcPick(null);
   }, []);
 
   const onFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleLoadIfc(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) void handleLoadIfcFiles(files);
     e.target.value = '';
-  }, [handleLoadIfc]);
+  }, [handleLoadIfcFiles]);
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file?.name.endsWith('.ifc')) handleLoadIfc(file);
-  }, [handleLoadIfc]);
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) => /\.(ifc|frag)$/i.test(f.name));
+    if (files.length) void handleLoadIfcFiles(files);
+  }, [handleLoadIfcFiles]);
 
   // ── Clipper toggle ─────────────────────────────────────────────────────────
   const toggleClipper = useCallback(() => {
@@ -1285,6 +1945,83 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
     setActiveViewMode('3d');
   }, []);
 
+  // ── Host integration (iframe) ──────────────────────────────────────────────
+  // Announce readiness, then act on what the host asks: focus an element by
+  // GUID, reset, colour elements by GUID. Everything addresses elements by
+  // GUID because that is the only id the host and the file share.
+  useEffect(() => {
+    if (!isReady) return;
+    const bridge = getHostBridge();
+    bridge.post({ type: 'BIM_READY' });
+
+    const foreignModels = () => {
+      const comps = componentsRef.current;
+      if (!comps) return [] as [string, FragmentsModel][];
+      return [...comps.get(OBC.FragmentsManager).list].filter(([id]) => id !== BIM_MODEL_ID);
+    };
+    /** GUID → { modelId, localId } across every imported model. */
+    const locate = async (guid: string) => {
+      for (const [id, model] of foreignModels()) {
+        const [lid] = await model.getLocalIdsByGuids([guid]);
+        if (lid !== null && lid !== undefined) return { id, lid };
+      }
+      return null;
+    };
+    const HOST_STYLE = 'host:';
+
+    const off = bridge.onMessage(async (msg) => {
+      const hl = highlighterRef.current;
+      if (!hl) return;
+      try {
+        switch (msg.type) {
+          case 'BIM_FOCUS_GUID': {
+            const hit = await locate(msg.payload.guid);
+            if (!hit) { console.warn(`[WebIfcViewer] BIM_FOCUS_GUID: ${msg.payload.guid} is in no loaded model`); return; }
+            await hl.highlightByID('select', { [hit.id]: new Set([hit.lid]) }, true, true);
+            break;
+          }
+          case 'BIM_RESET_VIEW':
+            await hl.clear();
+            setIfcPick(null);
+            switchTo3D();
+            break;
+          case 'BIM_COLOR_BY_VALUES': {
+            // One style per colour, its selection being every GUID that
+            // maps to it. Styles are named after the colour so a repeat
+            // message replaces rather than stacks.
+            const byColour = new Map<string, OBC.ModelIdMap>();
+            for (const [guid, colour] of Object.entries(msg.payload.colors)) {
+              const hit = await locate(guid);
+              if (!hit) continue;
+              const map = byColour.get(colour) ?? {};
+              (map[hit.id] ??= new Set()).add(hit.lid);
+              byColour.set(colour, map);
+            }
+            for (const [colour, map] of byColour) {
+              const name = HOST_STYLE + colour;
+              if (!hl.styles.has(name)) {
+                hl.styles.set(name, { color: new THREE.Color(colour), renderedFaces: 1, opacity: 1, transparent: false });
+              }
+              await hl.highlightByID(name, map, true, false);
+            }
+            break;
+          }
+          case 'BIM_CLEAR_COLORS':
+            for (const name of [...hl.styles.keys()]) {
+              if (name.startsWith(HOST_STYLE)) await hl.clear(name);
+            }
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        console.warn(`[WebIfcViewer] host message ${msg.type} failed:`, err);
+        bridge.post({ type: 'BIM_ERROR', payload: { message: `${msg.type}: ${(err as Error).message}` } });
+      }
+    });
+    return off;
+  }, [isReady, switchTo3D]);
+
   // ── Collect storeys for plan mode dropdown ─────────────────────────────────
   const storeys = useMemo(() =>
     nodes.filter((n) => n.type === 'storey').sort((a, b) => {
@@ -1349,11 +2086,64 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
       {/* Loading overlay */}
       {(!isReady || loadingIfc) && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-sm z-10 pointer-events-none">
-          {loadingIfc ? 'Loading IFC model…' : 'Initializing That Open Components viewer…'}
+          {loadingIfc ? 'Se încarcă modelul…' : 'Initializing That Open Components viewer…'}
         </div>
       )}
 
+      {/* Extrusion editor */}
+      {extrudeOpen && (
+        <ExtrudePanel
+          className="absolute top-12 left-2 bottom-2 w-64 z-20"
+          solids={extrusions.solids}
+          selectedId={extrusions.selectedId}
+          drawing={extrusions.drawing}
+          pointCount={extrusions.contour.length}
+          planeLabel="cota 0"
+          defaultHeight={extrusions.defaultHeight}
+          onDefaultHeightChange={extrusions.changeDefaultHeight}
+          onStartDraw={extrusions.startDraw}
+          onCancelDraw={extrusions.cancelDraw}
+          onFinishDraw={() => extrusions.finishDraw()}
+          onSelect={extrusions.setSelectedId}
+          onPatch={extrusions.patch}
+          onHeight={extrusions.setHeight}
+          onRename={extrusions.rename}
+          onType={extrusions.setType}
+          onDelete={extrusions.remove}
+          onExport={() => extrusions.exportIfc('extrudari')}
+        />
+      )}
+      {extrudeProblem && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 rounded-full bg-destructive text-destructive-foreground text-[11px] shadow">
+          {extrudeProblem}
+          <button className="ml-2 opacity-70 hover:opacity-100" onClick={() => setExtrudeProblem(null)}>✕</button>
+        </div>
+      )}
+      {extrusions.drawing && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-full bg-sky-500 text-white text-[11px] shadow pointer-events-none">
+          ✏ Click pe cota 0 pentru colțuri · dublu-click sau Enter închide · Esc anulează
+        </div>
+      )}
+
+      {/* Properties of a picked element in an imported IFC */}
+      {ifcPick && (
+        <IfcPropertiesPanel
+          className="absolute top-12 right-2 bottom-2 w-72 z-20"
+          element={ifcPick.element}
+          loading={ifcPick.loading}
+          onClose={() => {
+            setIfcPick(null);
+            highlighterRef.current?.clear('select').catch(() => {});
+          }}
+        />
+      )}
+
       {/* ── View Toolbar ─────────────────────────────────────────────────── */}
+      {(bimLoading || modelIfcError) && (
+        <div className="absolute right-3 bottom-3 z-20 rounded-full border border-border bg-card/90 px-3 py-1 text-[11px] text-muted-foreground">
+          {modelIfcError ? `⚠ Modelul IFC: ${modelIfcError}` : '⟳ Actualizez modelul…'}
+        </div>
+      )}
       {isReady && (
         <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-black/50 backdrop-blur rounded-md px-1.5 py-1">
           {/* 3D button */}
@@ -1446,20 +2236,6 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
         </div>
       )}
 
-      {/* Visibility filter */}
-      {isReady && (
-        <VisibilityFilter
-          types={visibleTypes}
-          hiddenTypes={hiddenTypes}
-          onChange={setHiddenTypes}
-          counts={typeCounts}
-          nodes={nodes}
-          hiddenStoreyIds={hiddenStoreyIds}
-          onChangeStoreyIds={setHiddenStoreyIds}
-          className="top-2 right-24"
-        />
-      )}
-
       {/* Annotation tools toolbar */}
       {isReady && (
         <AnnotationsToolbar
@@ -1494,19 +2270,91 @@ export function WebIfcViewer({ nodes, edges, buildingAxes: _buildingAxes, classN
       {/* Axis inter-ax dimension lines (perspective-projected) */}
       <AxisInteraxOverlay nodes={nodes} projectBimPoint={projectBimPoint} viewerReady={isReady} />
 
-      {/* Load IFC button */}
+      {/*
+        Everything that lives in the top-right corner, in ONE column.
+
+        The visibility filter used to be a second absolutely-positioned box at
+        `right-24`, on the same row as this one at `right-2`. Whether they
+        collided depended on how wide the buttons happened to be — and they
+        did, the moment "Load IFC" became "Load IFC / .frag". Coordinates
+        cannot express "next to, never on top of"; a flex column can.
+      */}
       {isReady && (
-        <label className="absolute top-2 right-2 z-10 cursor-pointer">
-          <input
-            type="file"
-            accept=".ifc"
-            className="hidden"
-            onChange={onFileInput}
+        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setExtrudeOpen((v) => !v)}
+              title="Desenează contururi și extrudează-le pe verticală"
+              className={cn('px-2 py-1 text-xs rounded select-none',
+                extrudeOpen ? 'bg-sky-500 text-white' : 'bg-white/10 hover:bg-white/20 text-white')}
+            >
+              ✏ Extrudare
+            </button>
+            <label className="cursor-pointer">
+              <input type="file" accept=".ifc,.frag" multiple className="hidden" onChange={onFileInput} />
+              <span
+                title="Deschide un IFC (se convertește) sau un .frag (se deschide direct)"
+                className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-white select-none"
+              >
+                Load IFC / .frag
+              </span>
+            </label>
+            {/* The project's own graph is a fragments model too — same export. */}
+            <button
+              onClick={() => void exportFrag(BIM_MODEL_ID, 'BubbleGraph')}
+              disabled={exportingFrag !== null}
+              title="Salvează modelul proiectului în formatul .frag (That Open)"
+              className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-white select-none disabled:opacity-40"
+            >
+              {exportingFrag === BIM_MODEL_ID ? '⏳' : '⭳'} .frag
+            </button>
+          </div>
+
+          {/* `relative` so the panel it opens pushes the list below it down
+              rather than being positioned over it. */}
+          <VisibilityFilter
+            types={visibleTypes}
+            hiddenTypes={hiddenTypes}
+            onChange={setHiddenTypes}
+            counts={typeCounts}
+            nodes={nodes}
+            hiddenStoreyIds={hiddenStoreyIds}
+            onChangeStoreyIds={setHiddenStoreyIds}
+            className="relative top-0 right-0 z-auto"
           />
-          <span className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-white select-none">
-            Load IFC
-          </span>
-        </label>
+
+          {ifcModels.length > 0 && (
+            <div className="rounded bg-black/55 backdrop-blur px-1.5 py-1 flex flex-col gap-0.5 max-w-[15rem]">
+              {ifcModels.map((m) => (
+                <div key={m.id} className="flex items-center gap-1.5 text-[11px] text-white">
+                  <button
+                    className="w-4 shrink-0 opacity-70 hover:opacity-100"
+                    title={m.visible ? 'Ascunde' : 'Arată'}
+                    onClick={() => toggleIfcModel(m.id)}
+                  >
+                    {m.visible ? '👁' : '◌'}
+                  </button>
+                  <span className="flex-1 min-w-0 truncate" title={m.id}>{m.name}</span>
+                  <button
+                    className="w-4 shrink-0 opacity-70 hover:opacity-100 disabled:opacity-30"
+                    title="Exportă în .frag (formatul That Open) — se deschide instant data viitoare"
+                    disabled={exportingFrag !== null}
+                    onClick={() => void exportFrag(m.id, m.name)}
+                  >
+                    {exportingFrag === m.id ? '⏳' : '⭳'}
+                  </button>
+                  <button
+                    className="w-4 shrink-0 opacity-70 hover:opacity-100 hover:text-red-400"
+                    title="Închide modelul"
+                    onClick={() => removeIfcModel(m.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

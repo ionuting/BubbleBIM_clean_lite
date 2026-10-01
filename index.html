@@ -6,11 +6,16 @@
   <title>BubbleGraph — Visual Building Editor</title>
   <script>
     (function() {
-      var saved = localStorage.getItem('bubble-graph-theme');
-      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      // The shell's theme (Studio Night by default) — the key the theme toggle writes.
+      var saved = localStorage.getItem('bubblebim_clean_theme') || localStorage.getItem('bubble-graph-theme');
+      var theme = saved || 'dark';
       if (theme === 'dark') document.documentElement.classList.add('dark');
     })();
   </script>
+  <!-- Shell typefaces; offline, the system fonts in each stack stand in. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
 </head>
 <body class="bg-background text-foreground">
   <div id="root"></div>
